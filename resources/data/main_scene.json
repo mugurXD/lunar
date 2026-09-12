@@ -20,10 +20,6 @@
       },
       "components": [
         {
-          "type": "core.scriptComponent",
-          "scriptName": "dev/lunar/TestScript"
-        },
-        {
           "type": "testComp",
           "x": 1.0,
           "y": 2048.0

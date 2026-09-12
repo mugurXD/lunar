@@ -43,9 +43,6 @@
 #   define LUNAR_FN_NAME __FUNCTION__
 #endif
 
-// TODO: add possibility to enable/disable this flag
-#define LUNAR_JVM_VERBOSE 0
-
 namespace lunar
 {
 	template<typename BitType>

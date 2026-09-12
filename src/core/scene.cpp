@@ -105,12 +105,6 @@ namespace lunar
 
 //namespace Core
 //{
-//	SceneBuilder& SceneBuilder::useScriptingVm(std::shared_ptr<Script::VirtualMachine>& vm)
-//	{
-//		scriptingVm = vm;
-//		return *this;
-//	}
-//
 //	SceneBuilder& SceneBuilder::setName(const std::string_view& name)
 //	{
 //		this->name = name;
@@ -121,7 +115,7 @@ namespace lunar
 //
 //	std::shared_ptr<Scene> SceneBuilder::create()
 //	{
-//		auto scene = std::make_shared<Scene>(name, scriptingVm);
+//		auto scene = std::make_shared<Scene>(name);
 //
 //		if (!std::filesystem::exists(jsonFile))
 //			return scene;
@@ -142,11 +136,9 @@ namespace lunar
 //
 //	Scene::Scene
 //	(
-//		const std::string& name,
-//		std::shared_ptr<Script::VirtualMachine>& scriptingVm
+//		const std::string& name
 //	) : name(name),
 //		nameHash(std::hash<std::string>{}(name)),
-//		scriptingVm(scriptingVm),
 //		objects(),
 //		Identifiable()
 //	{

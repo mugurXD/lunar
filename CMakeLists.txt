@@ -4,6 +4,7 @@ project(lunar VERSION 0.2.0)
 message("-- lunar: Version ${lunar_VERSION_MAJOR}.${lunar_VERSION_MINOR}.${lunar_VERSION_PATCH}")
 
 set(LUNAR_RENDER_BACKEND "OPENGL")
+set(LUNAR_BUILD_EXAMPLE ON)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -23,7 +24,6 @@ find_package(glm CONFIG REQUIRED)
 find_package(glfw3 REQUIRED)
 find_package(fastgltf REQUIRED)
 find_package(nlohmann_json REQUIRED)
-find_package(JNI REQUIRED)
 
 file(GLOB LUNAR_HEADERS "inc/lunar/*.hpp")
 message(${LUNAR_HEADERS})
@@ -127,8 +127,6 @@ target_sources(lunar PRIVATE "stb_image.h")
 target_include_directories(lunar PUBLIC inc)
 target_link_libraries(lunar PUBLIC 
     nlohmann_json::nlohmann_json
-    JNI::JNI 
-    JNI::JVM 
     glm::glm 
     glfw
     fastgltf::fastgltf 
@@ -151,4 +149,11 @@ endif()
 if(MINGW)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -static-libgcc -static-libstdc++ -static")
     message("-- lunar: Found MinGW build environment.")
+endif()
+
+if(${LUNAR_BUILD_EXAMPLE})
+    message("-- lunar: Building example application")
+    add_executable(lunar_example "examples/app.cpp")
+    target_link_libraries(lunar_example PUBLIC lunar)
+    target_include_directories(lunar_example PUBLIC lunar)
 endif()

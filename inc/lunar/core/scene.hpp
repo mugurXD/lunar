@@ -13,7 +13,6 @@
 
 #include <reactphysics3d/reactphysics3d.h>
 
-namespace Script { class LUNAR_API VirtualMachine; }
 namespace Render { class LUNAR_API Camera; }
 
 namespace lunar
@@ -131,8 +130,7 @@ namespace Core
 	//{
 	//public:
 	//	Scene(
-	//		const std::string& name,
-	//		std::shared_ptr<Script::VirtualMachine>& scriptingVm
+	//		const std::string& name
 	//	);
 	//	Scene() = default;
 	//	Scene(Scene&&)            = delete;
@@ -170,7 +168,6 @@ namespace Core
 	//	std::vector<GameObject>                  objects       = {};
 	//	rp3d::PhysicsCommon                      physicsCommon = {};
 	//	rp3d::PhysicsWorld*                      physicsWorld  = nullptr;
-	//	std::shared_ptr<Script::VirtualMachine>& scriptingVm;
 	//};
 
 

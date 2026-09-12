@@ -294,14 +294,7 @@ namespace Core
 	//	using json_obj = nlohmann::json;
 	//	using comp_ptr = std::unique_ptr<Component>;
 
-	//	static std::map<std::string, std::function<void(json_obj&, comp_ptr&)>> component_types = {
-	//		{
-	//			"core.scriptComponent", [](auto& json, auto& res) {
-	//				std::string script_name = json["scriptName"];
-	//				res = std::make_unique<ScriptComponent>(script_name);
-	//			},
-	//		}
-	//	};
+	//	static std::map<std::string, std::function<void(json_obj&, comp_ptr&)>> component_types = {};
 
  //       name = json["name"];
 	//	nameHash = std::hash<std::string>{}(name);

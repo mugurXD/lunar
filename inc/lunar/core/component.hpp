@@ -6,7 +6,6 @@
 #include <glm/glm.hpp>
 #include <string_view>
 #include <string>
-#include <jni.h>
 
 namespace Render { class LUNAR_API RenderContext; }
 
@@ -94,25 +93,6 @@ namespace lunar
 //		Scene*                   _scene      = nullptr;
 //		Identifiable::NativeType _gameObject = -1;
 //		friend class GameObject;
-//	};
-//
-//	class LUNAR_API ScriptComponent : public Component
-//	{
-//	public:
-//		ScriptComponent(const std::string_view& name);
-//		ScriptComponent();
-//		~ScriptComponent();
-//
-//		void update() override;
-//
-//		const std::string& getScriptName() const;
-//
-//	private:
-//		std::string scriptName;
-//		jobject instance;
-//		jmethodID onLoad;
-//		jmethodID onUnload;
-//		jmethodID onUpdate;
 //	};
 //
 //	class LUNAR_API TransformComponent : public Component
