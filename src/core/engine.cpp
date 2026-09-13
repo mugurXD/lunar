@@ -29,6 +29,7 @@ namespace lunar
 		{
 			window.pollEvents();
 			timeContext.update();
+			activeScene.flushDestroyedEntities();
 			window.update();
 		}
 	}

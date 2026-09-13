@@ -7,8 +7,6 @@
 
 namespace lunar
 {
-	LUNAR_HANDLE_IMPL(GameObject);
-
 	reactphysics3d::PhysicsCommon PHYSICS_COMMON;
 
 	Scene::Scene(const std::string_view& name) noexcept
@@ -29,9 +27,15 @@ namespace lunar
 
 	GameObject Scene::getGameObject(const std::string_view& name)
 	{
-		return objects.find([&](const GameObject_T& object) { 
-			return object.getName() == name; 
-		});
+		ComponentStorage<Name>* names = findStorage<Name>();
+		if (names == nullptr)
+			return nullptr;
+
+		for (const Entity& entity : names->getEntities())
+			if (names->get(entity)->value == name)
+				return GameObject(this, entity);
+
+		return nullptr;
 	}
 
 	GameObject Scene::createGameObject(const std::string_view& name, GameObject parent)
@@ -39,22 +43,76 @@ namespace lunar
 		DEBUG_ASSERT(name.size() > 0);
 		DEBUG_ASSERT(parent == nullptr || parent->getScene() == this);
 
-		GameObject handle = objects.create(this, name, parent);
-		auto       event  = Events::SceneObjectCreated(*this, handle);
-		
+		const Entity entity = createEntity();
+		addComponent<Name>(entity, std::string(name));
+		addComponent<Transform>(entity);
+		addComponent<Hierarchy>(entity);
+
+		if (parent != nullptr)
+			attachChild(parent.getEntity(), entity);
+
+		GameObject object = GameObject(this, entity);
+		auto       event  = Events::SceneObjectCreated(*this, object);
+
 		fireEvent(SceneEventType::eObjectCreated, event);
 
-		return handle;
+		return object;
+	}
+
+	void Scene::attachChild(const Entity& parent, const Entity& child)
+	{
+		getComponent<Hierarchy>(child)->parent = parent;
+
+		Hierarchy* parent_hierarchy = getComponent<Hierarchy>(parent);
+		if (parent_hierarchy->firstChild == nullptr)
+		{
+			parent_hierarchy->firstChild = child;
+			return;
+		}
+
+		Entity last_child = parent_hierarchy->firstChild;
+		while (getComponent<Hierarchy>(last_child)->nextSibling != nullptr)
+			last_child = getComponent<Hierarchy>(last_child)->nextSibling;
+
+		getComponent<Hierarchy>(last_child)->nextSibling = child;
+	}
+
+	Entity Scene::createEntity()
+	{
+		return entities.create();
+	}
+
+	void Scene::destroyEntity(const Entity& entity)
+	{
+		destroyedEntities.push_back(entity);
+	}
+
+	void Scene::flushDestroyedEntities()
+	{
+		for (const Entity& entity : destroyedEntities)
+		{
+			const EntityRecord* record = entities.get(entity);
+			if (record == nullptr)
+				continue;
+
+			for (size_t type_id = 0; type_id < componentStorages.size(); type_id++)
+				if (record->components.test(type_id))
+					componentStorages[type_id]->remove(entity);
+
+			entities.destroy(entity);
+		}
+
+		destroyedEntities.clear();
 	}
 
 	void Scene::setMainCamera(Camera* camera)
 	{
-		this->mainCamera = camera;
+		this->mainCamera = camera == nullptr ? nullptr : camera->getGameObject();
 	}
 
 	Camera* Scene::getMainCamera()
 	{
-		return mainCamera;
+		return mainCamera == nullptr ? nullptr : mainCamera.getComponent<Camera>();
 	}
 
 	std::string_view Scene::getName() const

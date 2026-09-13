@@ -1,6 +1,7 @@
 #pragma once
 #include <lunar/api.hpp>
 #include <lunar/core/common.hpp>
+#include <lunar/core/gameobject.hpp>
 #include <lunar/core/handle.hpp>
 #include <lunar/utils/identifiable.hpp>
 #include <glm/glm.hpp>
@@ -11,13 +12,6 @@ namespace Render { class LUNAR_API RenderContext; }
 
 namespace lunar
 {
-	struct LUNAR_API Transform
-	{
-		glm::vec3 position   = { 0, 0, 0 };
-		glm::vec3 rotation   = { 0, 0, 0 };
-		glm::vec3 scale      = { 1, 1, 1 };
-	};
-
 	class LUNAR_API Component_T
 	{
 	public:
@@ -39,7 +33,7 @@ namespace lunar
 		GameObject gameObject = nullptr;
 		Scene*   scene      = nullptr;
 
-		friend class GameObject_T;
+		friend class GameObject;
 	};
 	
 	template<typename T>

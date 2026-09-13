@@ -1,66 +1,76 @@
 #pragma once
 #include <lunar/core/common.hpp>
-#include <lunar/core/component.hpp>
-#include <lunar/core/handle.hpp>
-#include <lunar/file/json_file.hpp>
-#include <lunar/utils/identifiable.hpp>
-#include <lunar/debug/assert.hpp>
+#include <lunar/core/component_storage.hpp>
 #include <lunar/api.hpp>
-#include <concepts>
+#include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
+#include <cstddef>
 #include <string>
-#include <memory>
+#include <string_view>
 #include <vector>
 
 namespace lunar
 {
-	class LUNAR_API GameObject_T
+	struct LUNAR_API Name
+	{
+		std::string value = {};
+	};
+
+	struct LUNAR_API Transform
+	{
+		glm::vec3 position   = { 0, 0, 0 };
+		glm::vec3 rotation   = { 0, 0, 0 };
+		glm::vec3 scale      = { 1, 1, 1 };
+	};
+
+	struct LUNAR_API Hierarchy
+	{
+		Entity parent      = nullptr;
+		Entity firstChild  = nullptr;
+		Entity nextSibling = nullptr;
+	};
+
+	class LUNAR_API GameObject
 	{
 	public:
-		GameObject_T(Scene* scene, const std::string_view& name, GameObject parent = nullptr) noexcept;
-		GameObject_T()  noexcept = default;
-		~GameObject_T() noexcept = default;
+		GameObject()                                   noexcept = default;
+		GameObject(std::nullptr_t)                     noexcept {}
+		GameObject(Scene* scene, const Entity& entity) noexcept;
+		~GameObject()                                  noexcept = default;
 
-		void                   update();
-		size_t                 getId()             const;
-		std::string_view       getName()           const;
-		Scene*                 getScene();
-		GameObject             getParent();
-		std::vector<Component> getComponents();
-		Component              getComponent(const std::type_info& ty);
-		const Transform&       getTransform()      const;
-		Transform&             getTransform();
-		glm::vec3              getWorldPos()       const;
-		glm::quat              getWorldRotation()  const;
-		glm::vec3              getWorldScale()     const;
-		glm::mat4              getWorldTransform() const;
-		glm::vec3              getLocalPos()       const;
-		glm::vec3              getLocalRotation()  const;
-		glm::vec3              getLocalScale()     const;
-		void                   setWorldPos(glm::vec3 pos);
-		void                   setLocalPos(glm::vec3 pos);
+		GameObject*             operator->()                        { return this; }
+		const GameObject*       operator->()                  const { return this; }
+		bool                    operator==(const GameObject&) const = default;
+		bool                    operator==(std::nullptr_t)    const { return !valid(); }
 
-		template<typename T> requires IsComponentType<T>
-		T*                     getComponent() { return static_cast<T*>(getComponent(typeid(T)).get()); }
-
-		Component_T*           addComponent(Component created);
-		template <typename T, class... _Valty> requires IsComponentType<T>
-		T*                     addComponent(_Valty&&... ctor_values)
-		{
-			DEBUG_ASSERT(getComponent<T>() == nullptr, "There can exist only one component of type <T> on a single gameobject.");
-			auto new_component = std::make_shared<T>(std::forward<_Valty>(ctor_values)...);
-			addComponent(new_component);
-			return new_component.get();
-		}
-
-		std::vector<GameObject> getChildren();
+		bool                    valid()             const;
+		Entity                  getEntity()         const;
+		Scene*                  getScene()          const;
+		std::string_view        getName()           const;
+		GameObject              getParent()         const;
+		std::vector<GameObject> getChildren()       const;
+		const Transform&        getTransform()      const;
+		Transform&              getTransform();
+		glm::vec3               getWorldPos()       const;
+		glm::quat               getWorldRotation()  const;
+		glm::vec3               getWorldScale()     const;
+		glm::mat4               getWorldTransform() const;
+		glm::vec3               getLocalPos()       const;
+		glm::vec3               getLocalRotation()  const;
+		glm::vec3               getLocalScale()     const;
+		void                    setWorldPos(glm::vec3 pos);
+		void                    setLocalPos(glm::vec3 pos);
 		GameObject              createChildObject(const std::string_view& name);
+
+		template<typename T>
+		T*                      getComponent();
+
+		template<typename T, typename... Args>
+		T*                      addComponent(Args&&... args);
+
 	private:
-		size_t      id        = 0;
-		Scene*      scene     = nullptr;
-		GameObject  parent    = nullptr;
-		std::string name      = "GameObject";
-		size_t      nameHash  = 0;
-		Transform   transform = {};
+		Scene* scene  = nullptr;
+		Entity entity = nullptr;
 	};
 }
 

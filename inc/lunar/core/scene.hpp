@@ -1,6 +1,8 @@
 #pragma once
 #include <lunar/core/handle.hpp>
+#include <lunar/core/component_storage.hpp>
 #include <lunar/core/gameobject.hpp>
+#include <lunar/core/component.hpp>
 #include <lunar/core/scene_event.hpp>
 #include <lunar/core/event.hpp>
 #include <lunar/render/common.hpp>
@@ -48,6 +50,63 @@ namespace lunar
 			GameObject              parent = nullptr
 		);
 
+		Entity                  createEntity();
+		void                    destroyEntity(const Entity& entity);
+		void                    flushDestroyedEntities();
+
+		template<typename T, typename... Args>
+		T& addComponent(const Entity& entity, Args&&... args)
+		{
+			EntityRecord* record = entities.get(entity);
+			DEBUG_ASSERT(record != nullptr, "Entity is stale or belongs to another scene");
+
+			T& component = getOrCreateStorage<T>().add(entity, std::forward<Args>(args)...);
+			record->components.set(GetComponentTypeId<T>());
+			return component;
+		}
+
+		template<typename T>
+		T* getComponent(const Entity& entity)
+		{
+			ComponentStorage<T>* storage = findStorage<T>();
+			return storage == nullptr ? nullptr : storage->get(entity);
+		}
+
+		template<typename T>
+		bool hasComponent(const Entity& entity) const
+		{
+			const ComponentStorage<T>* storage = findStorage<T>();
+			return storage != nullptr && storage->has(entity);
+		}
+
+		template<typename T>
+		void removeComponent(const Entity& entity)
+		{
+			EntityRecord*        record  = entities.get(entity);
+			ComponentStorage<T>* storage = findStorage<T>();
+			if (record == nullptr || storage == nullptr)
+				return;
+
+			storage->remove(entity);
+			record->components.reset(GetComponentTypeId<T>());
+		}
+
+		template<typename... Ts, typename Function>
+		void forEach(Function&& function)
+		{
+			const ComponentStorageBase* smallest = findSmallestStorage<Ts...>();
+			if (smallest == nullptr)
+				return;
+
+			const vector<Entity>& candidates = smallest->getEntities();
+			for (size_t position = 0; position < candidates.size(); position++)
+			{
+				const Entity entity = candidates[position];
+				if ((findStorage<Ts>()->has(entity) && ...))
+					function(entity, *findStorage<Ts>()->get(entity)...);
+			}
+		}
+
 		template<SceneEventClass T>
 		inline void             addEventListener(EventListener_T<T> listener)
 		{
@@ -69,22 +128,85 @@ namespace lunar
 
 	private:
 		std::string         name         = "Scene";
-		Pool<GameObject_T>  objects      = {};
-		Pool<Component>     components   = {};
 		rp3d::PhysicsWorld* physicsWorld = nullptr;
-		Camera*             mainCamera   = nullptr;
+		GameObject          mainCamera   = nullptr;
+
+		Pool<EntityRecord>                            entities          = {};
+		vector<std::unique_ptr<ComponentStorageBase>> componentStorages = {};
+		vector<Entity>                                destroyedEntities = {};
 
 		inline void fireEvent(SceneEventType type, Event& e)
 		{
 			EventHandler::fireEvent((size_t)type, e);
 		}
 
-		friend class GameObject_T;
+		void attachChild(const Entity& parent, const Entity& child);
+
+		template<typename T>
+		ComponentStorage<T>* findStorage() const
+		{
+			const size_t type_id = GetComponentTypeId<T>();
+			if (type_id >= componentStorages.size())
+				return nullptr;
+
+			return static_cast<ComponentStorage<T>*>(componentStorages[type_id].get());
+		}
+
+		template<typename T>
+		ComponentStorage<T>& getOrCreateStorage()
+		{
+			const size_t type_id = GetComponentTypeId<T>();
+			if (type_id >= componentStorages.size())
+				componentStorages.resize(type_id + 1);
+
+			std::unique_ptr<ComponentStorageBase>& storage = componentStorages[type_id];
+			if (storage == nullptr)
+				storage = std::make_unique<ComponentStorage<T>>();
+
+			return static_cast<ComponentStorage<T>&>(*storage);
+		}
+
+		template<typename... Ts>
+		const ComponentStorageBase* findSmallestStorage() const
+		{
+			const ComponentStorageBase* smallest = nullptr;
+			for (const ComponentStorageBase* storage : { static_cast<const ComponentStorageBase*>(findStorage<Ts>())... })
+			{
+				if (storage == nullptr)
+					return nullptr;
+
+				if (smallest == nullptr || storage->size() < smallest->size())
+					smallest = storage;
+			}
+
+			return smallest;
+		}
 	};
+
+	template<typename T>
+	T* GameObject::getComponent()
+	{
+		return scene->getComponent<T>(entity);
+	}
+
+	template<typename T, typename... Args>
+	T* GameObject::addComponent(Args&&... args)
+	{
+		T& component = scene->addComponent<T>(entity, std::forward<Args>(args)...);
+
+		if constexpr (std::derived_from<T, Component_T>)
+		{
+			component.gameObject = *this;
+			component.scene      = scene;
+			component.start();
+		}
+
+		return &component;
+	}
 
 	struct LUNAR_API SceneLoader
 	{
-		using ComponentJsonParser = std::function<Component(const nlohmann::json&)>;
+		using ComponentJsonParser = std::function<void(GameObject, const nlohmann::json&)>;
 		using VisitorDict         = std::unordered_map<std::string, ComponentJsonParser>;
 
 
@@ -104,9 +226,8 @@ namespace lunar
 		template<typename T> requires IsComponentType<T> && IsJsonSerializable<T>
 		SceneLoader& useClassSerializer(const std::string& componentName)
 		{
-			return useCustomClassSerializer(componentName, [](const nlohmann::json& json) -> Component {
-				auto component = std::make_shared<T>(T::Deserialize(json));
-				return component;
+			return useCustomClassSerializer(componentName, [](GameObject object, const nlohmann::json& json) {
+				object.addComponent<T>(T::Deserialize(json));
 			});
 		}
 

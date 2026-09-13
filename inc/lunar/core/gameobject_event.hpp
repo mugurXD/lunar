@@ -1,7 +1,7 @@
 #pragma once
 #include <lunar/api.hpp>
 #include <lunar/core/event.hpp>
-#include <lunar/core/common.hpp>
+#include <lunar/core/gameobject.hpp>
 #include <functional>
 
 namespace lunar

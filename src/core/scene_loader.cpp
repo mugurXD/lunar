@@ -43,20 +43,18 @@ namespace lunar
 
 	SceneLoader& SceneLoader::useCoreSerializers()
 	{
-		useCustomClassSerializer("core.render.camera",        [](const nlohmann::json& json) -> Component { 
-			auto camera = make_shared<Camera>();
-			camera->fov = json.value<float>("fov", camera->fov);
-			
+		useCustomClassSerializer("core.render.camera",        [](GameObject object, const nlohmann::json& json) {
+			Camera* camera = object.addComponent<Camera>();
+			camera->fov    = json.value<float>("fov", camera->fov);
+
 			LoadVec3f(json, "front", camera->front);
 			LoadVec3f(json, "right", camera->right);
 			LoadVec3f(json, "up",    camera->up);
-
-			return camera;
 		});
 
-		useCustomClassSerializer("core.render.mesh_renderer", [&](const nlohmann::json& json) -> Component {
-			auto mesh_renderer     = make_shared<MeshRenderer>();
-			mesh_renderer->program = renderContext->getProgram(Render::GpuDefaultPrograms::eBasicPbrShader);
+		useCustomClassSerializer("core.render.mesh_renderer", [&](GameObject object, const nlohmann::json& json) {
+			MeshRenderer* mesh_renderer = object.addComponent<MeshRenderer>();
+			mesh_renderer->program      = renderContext->getProgram(Render::GpuDefaultPrograms::eBasicPbrShader);
 
 			if (json.contains("meshPath"))
 			{
@@ -69,8 +67,6 @@ namespace lunar
 
 				mesh_renderer->mesh = mesh;
 			}
-
-			return mesh_renderer;
 		});
 
 		
@@ -108,9 +104,9 @@ namespace lunar
 
 	inline void LoadComponent
 	(
-		GameObject               object,
-		SceneLoader::VisitorDict visitors,
-		const nlohmann::json&    json
+		GameObject                      object,
+		const SceneLoader::VisitorDict& visitors,
+		const nlohmann::json&           json
 	)
 	{
 		std::string type = json["type"];
@@ -120,15 +116,7 @@ namespace lunar
 			return;
 		}
 
-		auto parser    = visitors.at(type);
-		auto component = parser(json);
-		if (component == nullptr)
-		{
-			DEBUG_WARN("Parsed component of type '{}', yet result was nullptr. Skipping...", type);
-			return;
-		}
-
-		object->addComponent(component);
+		visitors.at(type)(object, json);
 	}
 
 	void SceneLoader::parseComponents

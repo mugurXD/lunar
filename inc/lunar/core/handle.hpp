@@ -66,6 +66,7 @@ namespace lunar
 		const T* operator->()                     const { return &get(); }
 		T*       pointer()                              { return pool == nullptr ? nullptr : pool->get(*this); }
 		bool     valid()                          const { return pool != nullptr && pool->contains(*this); }
+		uint32_t getIndex()                       const { return index; }
 		bool     operator==(const PoolHandle&)    const = default;
 		bool     operator==(std::nullptr_t)       const { return !valid(); }
 
