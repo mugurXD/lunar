@@ -1,21 +1,33 @@
 #pragma once
 #include <lunar/api.hpp>
 #include <atomic>
+#include <chrono>
 
 namespace lunar::Time
 {
 	class LUNAR_API TimeContext_T
 	{
 	public:
-		std::atomic<double>   lastTime    = 0.f;
-		std::atomic<double>   currentTime = 0.f;
-		std::atomic<double>   deltaTime   = 0.f;
-		std::atomic<double>   timer       = 0.f;
-		std::atomic<int>      fps         = 0;
-		std::atomic<uint64_t> frames      = 0;
+		TimeContext_T();
+		~TimeContext_T() = default;
 
-		void update();
+		void   update();
+		float  getDeltaTime()     const;
+		double getElapsedTime()   const;
+		double getDeltaTimeMs()   const;
+		double getCurrentTimeMs() const;
+		int    getFramerate()     const;
+
+	private:
+		static constexpr std::chrono::steady_clock::duration MAX_DELTA_TIME = std::chrono::milliseconds(250);
+
+		std::chrono::steady_clock             clock            = {};
+		std::chrono::steady_clock::time_point startTime;
+		std::chrono::steady_clock::time_point currentTime;
+		std::chrono::steady_clock::time_point lastTime;
+		std::chrono::steady_clock::duration   deltaTime        = {};
+		std::chrono::steady_clock::time_point secondsTimer;
+		int                                   framesThisSecond = 0;
+		int                                   framesPerSecond  = 0;
 	};
-
-	using TimeContext = TimeContext_T*;
 }

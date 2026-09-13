@@ -1,24 +1,58 @@
 #include <lunar/core/time.hpp>
 #include <lunar/debug.hpp>
-#include <GLFW/glfw3.h>
-#include <vector>
-#include <mutex>
+#include <algorithm>
 
 namespace lunar::Time
 {
+	using namespace std::literals;
+	using namespace std::chrono;
+
+	TimeContext_T::TimeContext_T()
+		: startTime(clock.now()),
+		currentTime(startTime),
+		lastTime(startTime),
+		secondsTimer(startTime)
+	{
+	}
+
 	void TimeContext_T::update()
 	{
-		lastTime    = currentTime.load();
-		currentTime = glfwGetTime();
-		deltaTime   = currentTime - lastTime;
+		lastTime    = currentTime;
+		currentTime = clock.now();
+		deltaTime   = std::min(currentTime - lastTime, MAX_DELTA_TIME);
 
-		frames      = frames + 1;
+		framesThisSecond++;
 
-		if (currentTime - timer >= 1.f)
+		if (currentTime - secondsTimer >= 1s)
 		{
-			fps    = frames / (currentTime - timer);
-			timer  = currentTime.load();
-			frames = 0;
+			framesPerSecond  = framesThisSecond;
+			secondsTimer     = currentTime;
+			framesThisSecond = 0;
 		}
+	}
+
+	float TimeContext_T::getDeltaTime() const
+	{
+		return duration<float>(deltaTime).count();
+	}
+
+	double TimeContext_T::getElapsedTime() const
+	{
+		return duration<double>(currentTime - startTime).count();
+	}
+
+	double TimeContext_T::getDeltaTimeMs() const
+	{
+		return duration<double, std::milli>(deltaTime).count();
+	}
+
+	double TimeContext_T::getCurrentTimeMs() const
+	{
+		return duration<double, std::milli>(currentTime - startTime).count();
+	}
+
+	int TimeContext_T::getFramerate() const
+	{
+		return framesPerSecond;
 	}
 }
