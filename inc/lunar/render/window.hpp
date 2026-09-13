@@ -99,7 +99,7 @@ namespace lunar::Render
 		WindowBuilder& size(int width, int height);
 		WindowBuilder& samples(int msaa);
 		WindowBuilder& fullscreen(bool value);
-		Window         build(RenderContext context, const std::string_view& title);
+		Window         build(RenderContext context, const std::string_view& title) const;
 
 	private:
 		int  width        = -1;
