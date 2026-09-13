@@ -6,32 +6,19 @@
 
 namespace lunar::Time
 {
-	TimeContext_T TIME_CONTEXT = {};
-
-	void Update()
+	void TimeContext_T::update()
 	{
-		auto& context = TIME_CONTEXT;
-		context.lastTime    = context.currentTime.load();
-		context.currentTime = glfwGetTime();
-		context.deltaTime   = context.currentTime - context.lastTime;
+		lastTime    = currentTime.load();
+		currentTime = glfwGetTime();
+		deltaTime   = currentTime - lastTime;
 
-		context.frames      = context.frames + 1;
+		frames      = frames + 1;
 
-		if (context.currentTime - context.timer >= 1.f)
+		if (currentTime - timer >= 1.f)
 		{
-			context.fps    = context.frames / (context.currentTime - context.timer);
-			context.timer  = context.currentTime.load();
-			context.frames = 0;
+			fps    = frames / (currentTime - timer);
+			timer  = currentTime.load();
+			frames = 0;
 		}
-	}
-
-	TimeContext GetGlobalContext()
-	{
-		return &TIME_CONTEXT;
-	}
-
-	double DeltaTime()
-	{
-		return TIME_CONTEXT.deltaTime;
 	}
 }
