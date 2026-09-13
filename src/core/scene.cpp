@@ -237,11 +237,6 @@ namespace lunar
 		this->name = name;
 	}
 
-	void Scene::update()
-	{
-		// TODO: add
-	}
-
 	void Scene::physicsUpdate(double dt)
 	{
 		this->physicsWorld->update(dt);

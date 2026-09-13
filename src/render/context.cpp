@@ -8,9 +8,6 @@ namespace lunar::Render
 	LUNAR_REF_HANDLE_IMPL(GpuTexture);
 	LUNAR_REF_HANDLE_IMPL(GpuProgram);
 	LUNAR_REF_HANDLE_IMPL(GpuBuffer);
-	LUNAR_HANDLE_IMPL(GpuMesh);
-	LUNAR_HANDLE_IMPL(GpuCubemap);
-	LUNAR_HANDLE_IMPL(Window);
 
 	void RenderContext_T::useCamera(const Camera& camera)
 	{
@@ -110,8 +107,7 @@ namespace lunar::Render
 		GpuTexture   materialsAtlas
 	)
 	{
-		meshes.emplace_back(this, vertexBuffer, indexBuffer, topology, materialsBuffer, materialsAtlas);
-		return make_handle(meshes);
+		return meshes.create(this, vertexBuffer, indexBuffer, topology, materialsBuffer, materialsAtlas);
 	}
 
 	GpuCubemap RenderContext_T::createCubemap
@@ -122,8 +118,7 @@ namespace lunar::Render
 		bool  isSourceHdr
 	)
 	{
-		cubemaps.emplace_back(this, width, height, data, isSourceHdr);
-		return make_handle(cubemaps);
+		return cubemaps.create(this, width, height, data, isSourceHdr);
 	}
 
 	void RenderContext_T::loadDefaultMeshes()
@@ -200,13 +195,13 @@ namespace lunar::Render
 			2, 1, 3
 		};
 
-		GpuMeshBuilder()
+		cubeMesh = GpuMeshBuilder()
 			.useRenderContext(this)
 			.fromVertexArray(cube_vertices)
 			.fromIndexArray(cube_indices)
 			.build();
 
-		GpuMeshBuilder()
+		quadMesh = GpuMeshBuilder()
 			.useRenderContext(this)
 			.fromVertexArray(quad_vertices)
 			.fromIndexArray(quad_indices)

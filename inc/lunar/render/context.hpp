@@ -23,8 +23,6 @@ namespace lunar::Render
 		RenderContext_T()  noexcept;
 		~RenderContext_T() noexcept;
 
-		template <typename T>
-		inline void begin(Handle<T> target) { begin(&target.get()); }
 		void        begin(RenderTarget* target);
 		void        clear(float r, float g, float b, float a);
 		void        draw(Scene& scene);
@@ -104,9 +102,10 @@ namespace lunar::Render
 		vector<GpuBuffer_T*>            buffers              = {};
 		vector<GpuProgram_T*>           programs             = {};
 		vector<GpuTexture_T*>           textures             = {};
-		vector<GpuMesh_T>               meshes               = {};
-		vector<GpuCubemap_T>            cubemaps             = {};
-		vector<Window_T*>               windows              = {};
+		Pool<GpuMesh_T>                 meshes               = {};
+		Pool<GpuCubemap_T>              cubemaps             = {};
+		GpuMesh                         cubeMesh             = nullptr;
+		GpuMesh                         quadMesh             = nullptr;
 		RenderTarget*                   target               = nullptr;
 		bool                            inFrameScope         = false;
 		bool                            defaultProgramsBuilt = false;

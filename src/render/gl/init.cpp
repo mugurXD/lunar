@@ -21,15 +21,6 @@ namespace lunar::Render
 	RenderContext_T::RenderContext_T() noexcept
 	{
 		/*
-			If the vector exceeds capacity, all the window user pointers passed
-			to GLFW will suddenly be invalidated and will probably make the
-			program crash.
-
-			I think 5 windows is a reasonable amount of windows to set as the maximum.
-		*/
-		windows.reserve(5);
-
-		/* 
 			Calling the function assures the static variable inside of it (i.e.: the global
 			context) gets initialized.
 		*/
@@ -50,7 +41,6 @@ namespace lunar::Render
 		textures.clear();
 		buffers.clear();
 		//vertexArrays.clear();
-		windows.clear();
 
 		glDeleteFramebuffers(1, &frameBuffer);
 		glDeleteRenderbuffers(1, &renderBuffer);

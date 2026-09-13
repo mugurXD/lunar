@@ -10,48 +10,6 @@
 namespace lunar
 {
 	template<typename T>
-	concept HasValidCheck = requires(T t) {
-		{ t.valid() } -> std::same_as<bool>;
-		{ t.setValid( bool() ) };
-	};
-
-	//template<typename T>
-	//concept RefCounted = requires(T t) { 
-	//	{ t.refCount } -> std::same_as<size_t>; 
-	//};
-
-	/*
-		A Handle<T> object acts like a normal raw pointer, except it guarantees that it 
-		will not be invalidated in the future due to something out of the API caller's 
-		control (e.g.: vector resizing).
-	*/
-	template<typename T>
-	class LUNAR_API Handle
-	{
-	public:
-		Handle(std::nullptr_t)                      noexcept : ref(nullptr), idx(0) {}
-		Handle(vector<T>& collection, size_t index) noexcept : ref(&collection), idx(index) {}
-		Handle(vector<T>& collection, T* object)    noexcept : ref(&collection), idx((size_t)(object - collection.data())) {}
-		Handle()                                    noexcept = default;
-		~Handle()                                   noexcept = default;
-
-		T* operator->()                           { return &(ref->operator[](idx)); }
-		const T* operator->()               const { return &(ref->operator[](idx)); }
-		T& get()                                  { return ref->operator[](idx); }
-		const T& get()                      const { return ref->operator[](idx); }
-		T*       pointer()                        { if (ref == nullptr) return nullptr; return &(get()); }
-		bool     operator==(T* pointer)     const { return pointer == (ref->data() + idx); }
-		bool     operator==(std::nullptr_t) const { return ref == nullptr; }
-
-		template<typename = typename std::enable_if<HasValidCheck<T>>::type>
-		bool     valid()     const { return get().valid(); }
-
-	protected:
-		vector<T>* ref = nullptr;
-		size_t     idx = 0;
-	};
-
-	template<typename T>
 	class Pool;
 
 	template<typename T>
@@ -135,6 +93,13 @@ namespace lunar
 
 			if (slot.generation != PoolHandle<T>::NULL_GENERATION)
 				freeSlots.push_back(handle.index);
+		}
+
+		void clear()
+		{
+			for (uint32_t index = 0; index < slots.size(); index++)
+				if (slots[index].value.has_value())
+					destroy(PoolHandle<T>(this, index, slots[index].generation));
 		}
 
 		bool contains(const PoolHandle<T>& handle) const
@@ -299,28 +264,7 @@ namespace lunar
 		vector<TyPtr>* ref = nullptr;
 		size_t         idx = 0;
 	};
-
-	template<typename T>
-	inline Handle<T> make_handle(vector<T>& collection, size_t index)
-	{
-		return Handle<T>(collection, index);
-	}
-
-	template<typename T>
-	inline Handle<T> make_handle(vector<T>& collection)
-	{
-		return Handle<T>(collection, collection.size() - 1);
-	}
-
-	template<typename T>
-	inline Handle<T> make_handle(vector<T>& collection, T* object)
-	{
-		return Handle<T>(collection, object);
-	}
 }
-
-#define LUNAR_HANDLE(Type)          using Type = lunar::Handle<Type##_T>
-#define LUNAR_HANDLE_IMPL(Type)     template class LUNAR_API lunar::Handle<Type##_T>
 
 #define LUNAR_POOL_HANDLE(Type)     using Type = lunar::PoolHandle<Type##_T>
 

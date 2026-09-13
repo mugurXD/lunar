@@ -35,7 +35,6 @@ namespace lunar
 		Scene()                             noexcept;
 		~Scene()                            noexcept;
 
-		void                    update();
 		void                    physicsUpdate(double dt);
 		PhysicsWorld*           getPhysicsWorld();
 		Camera*                 getMainCamera();
@@ -46,8 +45,6 @@ namespace lunar
 		std::string_view        getName() const;
 		void                    setName(const std::string_view& name);
 		GameObject              getGameObject(const std::string_view& name);
-		//std::span<GameObject_T> getGameObjects();
-		//std::span<Component>    getComponents();
 		GameObject              createGameObject
 		(
 			const std::string_view& name,

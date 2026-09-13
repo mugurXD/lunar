@@ -317,6 +317,11 @@ namespace lunar::Render
 
 	GpuMesh RenderContext_T::getMesh(MeshPrimitive primitive)
 	{
-		return make_handle(meshes, (size_t)primitive);
+		switch (primitive)
+		{
+		case MeshPrimitive::eCube: return cubeMesh;
+		case MeshPrimitive::eQuad: return quadMesh;
+		default:                   return nullptr;
+		}
 	}
 }
