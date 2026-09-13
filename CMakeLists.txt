@@ -113,6 +113,18 @@ if(${LUNAR_RENDER_BACKEND} STREQUAL "OPENGL")
     target_compile_definitions(lunar PUBLIC LUNAR_OPENGL)
 endif()
 
+# TODO: add if guard Vulkan
+include(FetchContent)
+FetchContent_Declare(
+    fetch_vk_bootstrap
+    GIT_REPOSITORY https://github.com/charles-lunarg/vk-bootstrap
+    GIT_TAG        9064ea7
+)
+FetchContent_MakeAvailable(fetch_vk_bootstrap)
+target_link_libraries(lunar PUBLIC vk-bootstrap::vk-bootstrap)
+# ----------------------------
+
+
 if(NOT EXISTS "${CMAKE_CURRENT_LIST_DIR}/stb_image.h")
     message("-- lunar: Downloading 'stb_image.h' file")
     file(
