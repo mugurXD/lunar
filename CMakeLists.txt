@@ -25,16 +25,17 @@ find_package(glfw3 REQUIRED)
 find_package(fastgltf REQUIRED)
 find_package(nlohmann_json REQUIRED)
 
-file(GLOB LUNAR_HEADERS "inc/lunar/*.hpp")
-message(${LUNAR_HEADERS})
-
-file(GLOB LUNAR_SRC 
+file(GLOB_RECURSE LUNAR_HEADERS "inc/lunar/*.hpp")
+file(GLOB_RECURSE LUNAR_SRC 
     "src/core/*.cpp"
     "src/debug/*.cpp"
+    "src/utils/*.cpp"
     "src/file/*.cpp"
     "src/exp/*.cpp"
-    "src/utils/*.cpp"
 )
+
+message(${LUNAR_HEADERS})
+message(${LUNAR_SRC})
 
 add_library(lunar STATIC)
 target_sources(lunar PRIVATE 
@@ -107,7 +108,7 @@ if(${LUNAR_RENDER_BACKEND} STREQUAL "OPENGL")
         "src/render/gl/draw.cpp"
     )
 
-    target_compile_definitions(lunar PRIVATE GLFW_INCLUDE_NONE)
+    target_compile_definitions(lunar PUBLIC GLFW_INCLUDE_NONE)
     target_compile_definitions(lunar PUBLIC LUNAR_OPENGL)
 endif()
 
