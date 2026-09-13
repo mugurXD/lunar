@@ -105,14 +105,16 @@ namespace lunar::Render
 		WindowBuilder& size(int width, int height);
 		WindowBuilder& samples(int msaa);
 		WindowBuilder& fullscreen(bool value);
-		Window_T       build(RenderContext_T& context, const std::string_view& title) const;
+		WindowBuilder& title(const std::string_view& title);
+		Window_T       build(RenderContext_T& context) const;
 
 	private:
-		int  width        = -1;
-		int  height       = -1;
-		int  msaa         = 0;
-		bool isFullscreen = false;
-		bool enableVsync  = false;
+		int              width        = -1;
+		int              height       = -1;
+		int              msaa         = 0;
+		bool             isFullscreen = false;
+		bool             enableVsync  = false;
+		std::string_view windowTitle  = "<no title>";
 	};
 
 	namespace imp
