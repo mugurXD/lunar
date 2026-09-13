@@ -62,7 +62,7 @@ namespace lunar::Render
 	LUNAR_REF_HANDLE(GpuBuffer);
 	LUNAR_REF_HANDLE(GpuTexture);
 	LUNAR_REF_HANDLE(GpuProgram);
-	LUNAR_REF_HANDLE(Window);
+	//LUNAR_REF_HANDLE(Window);
 	LUNAR_HANDLE(GpuCubemap);
 	LUNAR_HANDLE(GpuMesh);
 	LUNAR_SHARED_HANDLE(RenderContext);

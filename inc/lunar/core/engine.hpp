@@ -20,6 +20,7 @@ namespace lunar
 		Scene&                   getActiveScene();
 		Render::RenderContext_T& getRenderContext();
 		Render::Window_T&        getWindow();
+		Time::TimeContext_T&     getTimeContext();
 		void runGameLoop();
 
 	private:
@@ -42,8 +43,7 @@ namespace lunar
 
 		EngineBuilder& applicationName(const std::string_view& name);
 		EngineBuilder& window(Render::WindowBuilder builder);
-		Engine build();
-		
+		Engine build() const;
 
 	private:
 		Render::WindowBuilder windowBuilder = {};

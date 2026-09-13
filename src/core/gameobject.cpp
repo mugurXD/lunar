@@ -37,22 +37,23 @@ namespace lunar
 
 	Component GameObject_T::getComponent(const std::type_info& ty)
 	{
-		for (auto& component : scene->components)
-		{
-			if (typeid(*component).hash_code() == ty.hash_code() && component->getGameObject()->getId() == id)
-				return component;
-		}
+		//for (auto& component : scene->components)
+		//{
+		//	if (typeid(*component).hash_code() == ty.hash_code() && component->getGameObject()->getId() == id)
+		//		return component;
+		//}
 
 		return nullptr;
 	}
 
 	std::vector<Component> GameObject_T::getComponents()
 	{
-		auto list = std::vector<Component>();
-		for (auto& component : scene->components)
-			if (component->getGameObject() == this)
-				list.emplace_back(component);
-		return list;
+		//auto list = std::vector<Component>();
+		//for (auto& component : scene->components)
+		//	if (component->getGameObject() == this)
+		//		list.emplace_back(component);
+		//return list;
+		return {};
 	}
 
 	std::string_view GameObject_T::getName() const
@@ -67,26 +68,29 @@ namespace lunar
 
 	Component_T* GameObject_T::addComponent(Component created)
 	{
-		auto& comp       = scene->components.emplace_back(created);
-		comp->gameObject = make_handle(scene->objects, this);
-		comp->scene      = scene;
-		comp->start();
-		return comp.get();
+		//auto& comp       = scene->components.emplace_back(created);
+		//comp->gameObject = make_handle(scene->objects, this);
+		//comp->scene      = scene;
+		//comp->start();
+		//return comp.get();
+		return nullptr;
 	}
 
 	GameObject GameObject_T::createChildObject(const std::string_view& name)
 	{
-		return getScene()->createGameObject(name, this);
+		return nullptr;
+		//return getScene()->createGameObject(name, this);
 	}
 
 	std::vector<GameObject> GameObject_T::getChildren()
 	{
-		auto  children = std::vector<GameObject>();
-		auto& objects  = getScene()->objects;
-		for (auto& object : objects)
-			if (object.parent == this)
-				children.push_back(make_handle(objects, &object));
-		return children;
+		//auto  children = std::vector<GameObject>();
+		//auto& objects  = getScene()->objects;
+		//for (auto& object : objects)
+		//	if (object.parent == this)
+		//		children.push_back(make_handle(objects, &object));
+		//return children;
+		return {};
 	}
 
 	void GameObject_T::update()

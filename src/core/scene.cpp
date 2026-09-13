@@ -27,43 +27,24 @@ namespace lunar
 	{
 	}
 
-	GameObject Scene::getGameObject(size_t number)
-	{
-		return make_handle(objects, number);
-	}
-
 	GameObject Scene::getGameObject(const std::string_view& name)
 	{
-		for (size_t i = 0; i < objects.size(); i++)
-			if (objects[i].getName().compare(name) == 0)
-				return make_handle(objects, i);
-
-		return nullptr;
+		return objects.find([&](const GameObject_T& object) { 
+			return object.getName() == name; 
+		});
 	}
 
-	GameObject Scene::createGameObject(const std::string_view& name, GameObject_T* parent)
+	GameObject Scene::createGameObject(const std::string_view& name, GameObject parent)
 	{
 		DEBUG_ASSERT(name.size() > 0);
 		DEBUG_ASSERT(parent == nullptr || parent->getScene() == this);
 
-		objects.emplace_back(this, name, parent == nullptr ? nullptr : make_handle(objects, parent));
-		
-		GameObject handle = make_handle(objects);
+		GameObject handle = objects.create(this, name, parent);
 		auto       event  = Events::SceneObjectCreated(*this, handle);
 		
 		fireEvent(SceneEventType::eObjectCreated, event);
 
-		return make_handle(objects);
-	}
-
-	std::span<GameObject_T> Scene::getGameObjects()
-	{
-		return objects;
-	}
-
-	std::span<Component> Scene::getComponents()
-	{
-		return components;
+		return handle;
 	}
 
 	void Scene::setMainCamera(Camera* camera)
@@ -88,8 +69,7 @@ namespace lunar
 
 	void Scene::update()
 	{
-		for (auto& component : components)
-			component->update();
+		// TODO: add
 	}
 
 	void Scene::physicsUpdate(double dt)

@@ -1,4 +1,5 @@
 #pragma once
+#include <lunar/core/handle.hpp>
 #include <lunar/core/gameobject.hpp>
 #include <lunar/core/scene_event.hpp>
 #include <lunar/core/event.hpp>
@@ -38,14 +39,13 @@ namespace lunar
 		void                    setMainCamera(Camera* camera);
 		std::string_view        getName() const;
 		void                    setName(const std::string_view& name);
-		GameObject              getGameObject(size_t number);
 		GameObject              getGameObject(const std::string_view& name);
-		std::span<GameObject_T> getGameObjects();
-		std::span<Component>    getComponents();
+		//std::span<GameObject_T> getGameObjects();
+		//std::span<Component>    getComponents();
 		GameObject              createGameObject
 		(
 			const std::string_view& name,
-			GameObject_T*           parent = nullptr
+			GameObject              parent = nullptr
 		);
 
 		template<SceneEventClass T>
@@ -68,11 +68,11 @@ namespace lunar
 		Scene& operator=(Scene&&)      = delete;
 
 	private:
-		std::string          name         = "Scene";
-		vector<GameObject_T> objects      = {};
-		vector<Component>    components   = {};
-		rp3d::PhysicsWorld*  physicsWorld = nullptr;
-		Camera*              mainCamera   = nullptr;
+		std::string         name         = "Scene";
+		Pool<GameObject_T>  objects      = {};
+		Pool<Component>     components   = {};
+		rp3d::PhysicsWorld* physicsWorld = nullptr;
+		Camera*             mainCamera   = nullptr;
 
 		inline void fireEvent(SceneEventType type, Event& e)
 		{

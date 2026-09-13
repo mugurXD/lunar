@@ -13,13 +13,22 @@ namespace lunar
 		return renderContext;
 	}
 
+	Time::TimeContext_T& Engine::getTimeContext()
+	{
+		return timeContext;
+	}
+
+	Render::Window_T& Engine::getWindow()
+	{
+		return window;
+	}
+
 	void Engine::runGameLoop()
 	{
 		while (window.isActive())
 		{
 			window.pollEvents();
 			timeContext.update();
-			DEBUG_LOG("FPS: {}, Current time: {}ms, Delta: {}ms", timeContext.getFramerate(), timeContext.getCurrentTimeMs(), timeContext.getDeltaTimeMs());
 			window.update();
 		}
 	}
@@ -35,7 +44,7 @@ namespace lunar
 
 	}
 
-	Engine EngineBuilder::build()
+	Engine EngineBuilder::build() const
 	{
 		return Engine(*this);
 	}

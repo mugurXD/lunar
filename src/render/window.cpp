@@ -22,8 +22,6 @@
 
 namespace lunar::Render
 {
-	LUNAR_REF_HANDLE_IMPL(Window);
-
 	void GLFW_FramebufferSizeCb(GLFWwindow*, int, int);
 	void GLFW_KeyCallback(GLFWwindow*, int, int, int, int);
 	void GLFW_MouseBtnCallback(GLFWwindow*, int, int, int);

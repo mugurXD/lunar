@@ -36,10 +36,10 @@ namespace lunar::Render
 		Window_T()  noexcept = default;
 		~Window_T() noexcept;
 
-		Window_T(Window_T&)             = delete; 
-		Window_T(Window_T&&)            = delete;
-		Window_T& operator=(Window_T&)  = delete;
-		Window_T& operator=(Window_T&&) = delete;
+		Window_T(const Window_T&)             = delete; 
+		Window_T(const Window_T&&)            = delete;
+		Window_T& operator=(const Window_T&)  = delete;
+		Window_T& operator=(const Window_T&&) = delete;
 
 
 		void                    toggleFullscreen();
@@ -66,7 +66,6 @@ namespace lunar::Render
 
 		static void pollEvents();
 
-		size_t                            refCount     = 0;
 	private:
 		GLFWwindow*                       handle       = nullptr;
 		int                               width        = -1;

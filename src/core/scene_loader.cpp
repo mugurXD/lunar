@@ -155,7 +155,7 @@ namespace lunar
 			? json["name"]
 			: "GameObject";
 
-		GameObject object = result->createGameObject(name, parent.pointer());
+		GameObject object = result->createGameObject(name, parent);
 		parseTransform(object, json);
 		parseComponents(object, json);
 

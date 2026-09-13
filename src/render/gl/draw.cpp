@@ -102,38 +102,38 @@ namespace lunar::Render
 		window_data.sceneDataUniform->upload(scene_data);
 		window_data.sceneDataUniform->bind(0);
 
-		auto components = scene.getComponents();
-		for (Component& component : components)
-		{
-			if (component == nullptr || typeid(*component).hash_code() != typeid(MeshRenderer).hash_code())
-				continue;
+		//auto components = scene.getComponents();
+		//for (Component& component : components)
+		//{
+		//	if (component == nullptr || typeid(*component).hash_code() != typeid(MeshRenderer).hash_code())
+		//		continue;
 
-			MeshRenderer* mesh_renderer = static_cast<MeshRenderer*>(component.get());
-			auto&         mesh          = mesh_renderer->mesh;
-			auto&         program       = mesh_renderer->program;
-			auto          mesh_atlas    = mesh->getMaterialsAtlas();
-			auto          mesh_data     = imp::GpuMeshData
-			{
-				.model = mesh_renderer
-					->getGameObject()
-					->getWorldTransform()
-			};
+		//	MeshRenderer* mesh_renderer = static_cast<MeshRenderer*>(component.get());
+		//	auto&         mesh          = mesh_renderer->mesh;
+		//	auto&         program       = mesh_renderer->program;
+		//	auto          mesh_atlas    = mesh->getMaterialsAtlas();
+		//	auto          mesh_data     = imp::GpuMeshData
+		//	{
+		//		.model = mesh_renderer
+		//			->getGameObject()
+		//			->getWorldTransform()
+		//	};
 
-			program->use();
-			program->bind("environmentMap", 0, cubemap->environmentMap);
-			program->bind("irradianceMap", 1, cubemap->irradianceMap);
-			program->bind("prefilterMap", 2, cubemap->prefilterMap);
-			program->bind("brdfMap", 3, cubemap->brdfLut);
+		//	program->use();
+		//	program->bind("environmentMap", 0, cubemap->environmentMap);
+		//	program->bind("irradianceMap", 1, cubemap->irradianceMap);
+		//	program->bind("prefilterMap", 2, cubemap->prefilterMap);
+		//	program->bind("brdfMap", 3, cubemap->brdfLut);
 
-			if(mesh_atlas.exists())
-				program->bind("albedoAtlas", 4, mesh_atlas);
-			
+		//	if(mesh_atlas.exists())
+		//		program->bind("albedoAtlas", 4, mesh_atlas);
+		//	
 
-			window_data.meshDataUniform->upload(mesh_data);
-			window_data.meshDataUniform->bind(1);
+		//	window_data.meshDataUniform->upload(mesh_data);
+		//	window_data.meshDataUniform->bind(1);
 
-			draw(mesh);
-		}
+		//	draw(mesh);
+		//}
 	}
 
 	void RenderContext_T::draw(GpuCubemap cubemap)
