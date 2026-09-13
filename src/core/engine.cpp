@@ -1,8 +1,11 @@
 #include "lunar/core/engine.hpp"
+#include <lunar/render/components.hpp>
 #include <lunar/debug.hpp>
 
 namespace lunar
 {
+	const glm::vec4 CLEAR_COLOR = { 0.1f, 0.1f, 0.12f, 1.f };
+
 	Scene& Engine::getActiveScene()
 	{
 		return activeScene;
@@ -35,9 +38,30 @@ namespace lunar
 			window.pollEvents();
 			timeContext.update();
 			systemScheduler.runFrame(activeScene, timeContext.getFrameTime());
+			renderFrame();
 			activeScene.flushDestroyedEntities();
 			window.update();
 		}
+	}
+
+	void Engine::renderFrame()
+	{
+		renderContext.begin(&window);
+		renderContext.clear(CLEAR_COLOR.r, CLEAR_COLOR.g, CLEAR_COLOR.b, CLEAR_COLOR.a);
+
+		const Camera* camera = activeScene.getMainCamera();
+		if (camera != nullptr)
+		{
+			renderContext.useCamera(camera);
+
+			const Render::GpuCubemap environment = activeScene.getEnvironment();
+			if (environment != nullptr)
+				renderContext.draw(environment);
+
+			renderContext.draw(activeScene);
+		}
+
+		renderContext.end();
 	}
 
 	Engine::Engine(const EngineBuilder& builder)
@@ -49,9 +73,17 @@ namespace lunar
 		appName(builder.appName),
 		systemScheduler(builder.fixedTimestepSeconds)
 	{
+		Input::SetGlobalHandler(window);
+
 		systemScheduler.addSystem(SystemPhase::eFixedUpdate, [](Scene& scene, const FrameTime& frame_time) {
 			scene.physicsUpdate(frame_time.deltaTime);
 		});
+
+		systemScheduler.addSystem(SystemPhase::eUpdate, [](Scene& scene, const FrameTime& frame_time) {
+			scene.updateBehaviours(frame_time);
+		});
+
+		systemScheduler.addSystem(SystemPhase::eLateUpdate, UpdateCameras);
 	}
 
 	Engine EngineBuilder::build() const

@@ -1,37 +1,34 @@
 #pragma once
-#include <lunar/core/component.hpp>
+#include <lunar/api.hpp>
+#include <lunar/core/time.hpp>
 #include <lunar/render/imp.hpp>
 #include <lunar/render/mesh.hpp>
+#include <glm/glm.hpp>
 
 namespace lunar
 {
-	class LUNAR_API Camera : public Component_T
+	class LUNAR_API Scene;
+
+	struct LUNAR_API Camera
 	{
-	public:
-		Camera(GameObject parent);
-		Camera() = default;
+		float     fov       = 60.f;
+		float     nearPlane = 0.1f;
+		float     farPlane  = 1000000.f;
+		glm::vec3 front     = { 0.f, 0.f, -1.f };
+		glm::vec3 right     = { 1.f, 0.f, 0.f };
+		glm::vec3 up        = { 0.f, 1.f, 0.f };
+		glm::vec3 position  = { 0.f, 0.f, 0.f };
+		glm::mat4 view      = glm::mat4(1.f);
 
-		void             start()  override;
-		void             update() override;
-		glm::mat4        getViewMatrix() const;
-		glm::mat4        getProjectionMatrix(int renderWidth, int renderHeight) const;
-
-	public:
-		glm::vec3 front = { 0.f, 0.f, -1.f };
-		glm::vec3 right = { 1.f, 0.f, 0.f };
-		glm::vec3 up    = { 0.f, 1.f, 0.f };
-		glm::vec3 view  = {};
-		float     fov   = 60.f;
+		glm::mat4 getViewMatrix()                                       const;
+		glm::mat4 getProjectionMatrix(int renderWidth, int renderHeight) const;
 	};
 
-	class LUNAR_API MeshRenderer : public Component_T
+	struct LUNAR_API MeshRenderer
 	{
-	public:
-		MeshRenderer() = default;
-
-		glm::mat4 getModelMatrix() const;
-
 		Render::GpuMesh    mesh    = nullptr;
 		Render::GpuProgram program = nullptr;
 	};
+
+	LUNAR_API void UpdateCameras(Scene& scene, const FrameTime& frame_time);
 }

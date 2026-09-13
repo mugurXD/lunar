@@ -29,6 +29,8 @@ namespace lunar
 		Engine(const EngineBuilder& builder);
 		friend class EngineBuilder;
 
+		void renderFrame();
+
 	private:
 		Time::TimeContext_T     timeContext   = {};
 		Render::RenderContext_T renderContext = {};

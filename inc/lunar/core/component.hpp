@@ -3,6 +3,7 @@
 #include <lunar/core/common.hpp>
 #include <lunar/core/gameobject.hpp>
 #include <lunar/core/handle.hpp>
+#include <lunar/core/time.hpp>
 #include <lunar/utils/identifiable.hpp>
 #include <glm/glm.hpp>
 #include <string_view>
@@ -19,8 +20,8 @@ namespace lunar
 		Component_T()                  noexcept = default;
 		virtual ~Component_T()         noexcept = default;
 
-		virtual void     start()                {};
-		virtual void     update()               {};
+		virtual void     start()                  {};
+		virtual void     update(const FrameTime&) {};
 		const char*      getClassName()  const;
 		const GameObject getGameObject() const;
 		GameObject       getGameObject();

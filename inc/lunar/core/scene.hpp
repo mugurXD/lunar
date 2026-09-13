@@ -4,6 +4,7 @@
 #include <lunar/core/gameobject.hpp>
 #include <lunar/core/component.hpp>
 #include <lunar/core/scene_event.hpp>
+#include <lunar/core/system.hpp>
 #include <lunar/core/event.hpp>
 #include <lunar/render/common.hpp>
 #include <lunar/file/json_file.hpp>
@@ -38,7 +39,10 @@ namespace lunar
 		void                    physicsUpdate(double dt);
 		PhysicsWorld*           getPhysicsWorld();
 		Camera*                 getMainCamera();
-		void                    setMainCamera(Camera* camera);
+		void                    setMainCamera(GameObject camera_object);
+		Render::GpuCubemap      getEnvironment() const;
+		void                    setEnvironment(Render::GpuCubemap environment_map);
+		void                    updateBehaviours(const FrameTime& frame_time);
 		std::string_view        getName() const;
 		void                    setName(const std::string_view& name);
 		GameObject              getGameObject(const std::string_view& name);
@@ -132,11 +136,29 @@ namespace lunar
 		std::string         name         = "Scene";
 		rp3d::PhysicsWorld* physicsWorld = nullptr;
 		GameObject          mainCamera   = nullptr;
+		Render::GpuCubemap  environment  = nullptr;
 
 		Pool<EntityRecord>                            entities          = {};
 		vector<std::unique_ptr<ComponentStorageBase>> componentStorages = {};
 		vector<Entity>                                destroyedEntities = {};
 		uint64_t                                      transformVersion  = 0;
+		vector<System>                                behaviourUpdaters = {};
+		ComponentMask                                 behaviourTypes    = {};
+
+		template<typename T>
+		void registerBehaviourType()
+		{
+			const size_t type_id = GetComponentTypeId<T>();
+			if (behaviourTypes.test(type_id))
+				return;
+
+			behaviourTypes.set(type_id);
+			behaviourUpdaters.push_back([](Scene& scene, const FrameTime& frame_time) {
+				scene.forEach<T>([&](Entity, T& behaviour) { behaviour.update(frame_time); });
+			});
+		}
+
+		friend class GameObject;
 
 		inline void fireEvent(SceneEventType type, Event& e)
 		{
@@ -203,6 +225,7 @@ namespace lunar
 		{
 			component.gameObject = *this;
 			component.scene      = scene;
+			scene->registerBehaviourType<T>();
 			component.start();
 		}
 

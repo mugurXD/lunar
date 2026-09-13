@@ -197,14 +197,34 @@ namespace lunar
 		detachFromParent(entity);
 	}
 
-	void Scene::setMainCamera(Camera* camera)
+	void Scene::setMainCamera(GameObject camera_object)
 	{
-		this->mainCamera = camera == nullptr ? nullptr : camera->getGameObject();
+		DEBUG_ASSERT(camera_object == nullptr || camera_object->getScene() == this, "Camera belongs to another scene");
+		this->mainCamera = camera_object;
 	}
 
 	Camera* Scene::getMainCamera()
 	{
 		return mainCamera == nullptr ? nullptr : mainCamera.getComponent<Camera>();
+	}
+
+	Render::GpuCubemap Scene::getEnvironment() const
+	{
+		return environment;
+	}
+
+	void Scene::setEnvironment(Render::GpuCubemap environment_map)
+	{
+		this->environment = environment_map;
+	}
+
+	void Scene::updateBehaviours(const FrameTime& frame_time)
+	{
+		for (size_t position = 0; position < behaviourUpdaters.size(); position++)
+		{
+			const System updater = behaviourUpdaters[position];
+			updater(*this, frame_time);
+		}
 	}
 
 	std::string_view Scene::getName() const

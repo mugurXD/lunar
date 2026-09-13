@@ -1,41 +1,15 @@
 #include <lunar/render/components.hpp>
-#include <lunar/debug/log.hpp>
+#include <lunar/core/scene.hpp>
 
-#define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtx/quaternion.hpp>
 
 namespace lunar
 {
-	Camera::Camera(GameObject parent)
-		: Component_T(parent)
+	const glm::vec3 WORLD_UP = { 0.f, 1.f, 0.f };
+
+	glm::mat4 Camera::getViewMatrix() const
 	{
-	}
-
-	void Camera::start()
-	{
-		DEBUG_LOG("Hello, world!");
-	}
-
-	void Camera::update()
-	{
-		static const glm::vec3 worldUp = { 0.f, 1.f, 0.f };
-
-		const auto& transform = getTransform();
-
-		auto& position  = transform.position;
-		auto& rotation  = transform.rotation;
-
-		auto  new_front = glm::vec3
-		{
-			glm::cos(glm::radians(rotation.x)) * glm::cos(glm::radians(rotation.y)),
-			glm::sin(glm::radians(rotation.y)),
-			glm::sin(glm::radians(rotation.x)) * glm::cos(glm::radians(rotation.y))
-		};
-
-		front = glm::normalize(new_front);
-		right = glm::normalize(glm::cross(front, worldUp));
-		up    = glm::normalize(glm::cross(right, front));
+		return view;
 	}
 
 	glm::mat4 Camera::getProjectionMatrix(int renderWidth, int renderHeight) const
@@ -43,24 +17,26 @@ namespace lunar
 		return glm::perspective(
 			glm::radians(fov),
 			static_cast<float>(renderWidth) / static_cast<float>(renderHeight),
-			.1f,
-			1000000.f
+			nearPlane,
+			farPlane
 		);
 	}
 
-	glm::mat4 Camera::getViewMatrix() const
+	void UpdateCameras(Scene& scene, const FrameTime&)
 	{
-		const auto& transform = getTransform();
-		return glm::lookAt(transform.position, transform.position + front, up);
-	}
+		scene.forEach<Camera>([&](Entity entity, Camera& camera) {
+			const Transform* transform = scene.getComponent<Transform>(entity);
+			if (transform == nullptr)
+				return;
 
-	glm::mat4 MeshRenderer::getModelMatrix() const
-	{
-		const auto& transform   = getTransform();
-		auto        scale       = glm::scale(glm::mat4(1.f), transform.scale);
-		auto        translation = glm::translate(glm::mat4(1.f), transform.position);
-		auto        rot_quat    = glm::quat(glm::radians(transform.rotation));
-		auto        rotation    = glm::mat4(rot_quat);
-		return translation * rotation * scale;
+			const float yaw   = glm::radians(transform->rotation.x);
+			const float pitch = glm::radians(transform->rotation.y);
+
+			camera.front    = glm::normalize(glm::vec3(glm::cos(yaw) * glm::cos(pitch), glm::sin(pitch), glm::sin(yaw) * glm::cos(pitch)));
+			camera.right    = glm::normalize(glm::cross(camera.front, WORLD_UP));
+			camera.up       = glm::normalize(glm::cross(camera.right, camera.front));
+			camera.position = glm::vec3(scene.resolveWorldTransform(entity).matrix[3]);
+			camera.view     = glm::lookAt(camera.position, camera.position + camera.front, camera.up);
+		});
 	}
 }
