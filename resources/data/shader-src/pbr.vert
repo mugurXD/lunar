@@ -17,16 +17,18 @@ layout (std140, binding = 1) uniform MeshData
 	mat4 model;
 };
 
+struct Material
+{
+	vec2 atlasBegin;
+	vec2 atlasEnd;
+	float metallic;
+	float roughness;
+	float ao;
+};
+
 layout (std430, binding = 2) buffer MaterialBuffer
 {
-	struct Material
-	{
-		vec2 atlasBegin;
-		vec2 atlasEnd;
-		float metallic;
-		float roughness;
-		float ao;
-	} materials[20];
+	Material materials[20];
 	int primitiveToMaterial[];
 };
 
