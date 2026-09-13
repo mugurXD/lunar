@@ -157,6 +157,25 @@ TEST(Pool, FindReturnsFirstMatch)
 	EXPECT_EQ(pool.find([](const Node& node) { return node.name == "same"; }), second);
 }
 
+TEST(Pool, ClearDestroysEverythingAndInvalidatesHandles)
+{
+	lunar::Pool<Node> pool;
+
+	auto first  = pool.create("first", nullptr);
+	auto second = pool.create("second", nullptr);
+	pool.clear();
+
+	EXPECT_EQ(pool.size(), 0u);
+	EXPECT_FALSE(first.valid());
+	EXPECT_FALSE(second.valid());
+
+	auto recreated = pool.create("recreated", nullptr);
+
+	EXPECT_TRUE(recreated.valid());
+	EXPECT_FALSE(first.valid());
+	EXPECT_EQ(pool.size(), 1u);
+}
+
 TEST(Pool, FindReturnsNullWhenNothingMatches)
 {
 	lunar::Pool<Node> pool;
