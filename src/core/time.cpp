@@ -21,6 +21,7 @@ namespace lunar::Time
 		currentTime = clock.now();
 		deltaTime   = std::min(currentTime - lastTime, MAX_DELTA_TIME);
 
+		frameIndex++;
 		framesThisSecond++;
 
 		if (currentTime - secondsTimer >= 1s)
@@ -54,5 +55,15 @@ namespace lunar::Time
 	int TimeContext_T::getFramerate() const
 	{
 		return framesPerSecond;
+	}
+
+	FrameTime TimeContext_T::getFrameTime() const
+	{
+		return FrameTime
+		{
+			.deltaTime   = getDeltaTime(),
+			.elapsedTime = getElapsedTime(),
+			.frameIndex  = frameIndex
+		};
 	}
 }

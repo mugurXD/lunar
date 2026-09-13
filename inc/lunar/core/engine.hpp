@@ -4,6 +4,7 @@
 
 #include <lunar/core/time.hpp>
 #include <lunar/core/scene.hpp>
+#include <lunar/core/system.hpp>
 #include <lunar/core/common.hpp>
 #include <lunar/render/window.hpp>
 #include <lunar/render/context.hpp>
@@ -21,7 +22,8 @@ namespace lunar
 		Render::RenderContext_T& getRenderContext();
 		Render::Window_T&        getWindow();
 		Time::TimeContext_T&     getTimeContext();
-		void runGameLoop();
+		void                     addSystem(SystemPhase phase, System system);
+		void                     runGameLoop();
 
 	private:
 		Engine(const EngineBuilder& builder);
@@ -32,7 +34,8 @@ namespace lunar
 		Render::RenderContext_T renderContext = {};
 		Render::Window_T        window        = {};
 		Scene                   activeScene   = {};
-		const std::string&      appName       = {};
+		std::string             appName       = {};
+		SystemScheduler         systemScheduler;
 	};
 
 	struct LUNAR_API EngineBuilder
@@ -43,11 +46,13 @@ namespace lunar
 
 		EngineBuilder& applicationName(const std::string_view& name);
 		EngineBuilder& window(Render::WindowBuilder builder);
+		EngineBuilder& fixedTimestep(double seconds);
 		Engine build() const;
 
 	private:
-		Render::WindowBuilder windowBuilder = {};
-		std::string           appName       = "lunar";
+		Render::WindowBuilder windowBuilder        = {};
+		std::string           appName              = "lunar";
+		double                fixedTimestepSeconds = DEFAULT_FIXED_TIMESTEP;
 
 		friend class Engine;
 	};
