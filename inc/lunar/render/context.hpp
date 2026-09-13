@@ -39,7 +39,7 @@ namespace lunar::Render
 		GpuProgram  getProgram(size_t number);
 		GpuProgram  getProgram(GpuDefaultPrograms program);
 
-		Window               createWindow
+		Window_T             createWindow
 		(
 			int                     width,
 			int                     height,

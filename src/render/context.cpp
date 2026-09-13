@@ -22,7 +22,7 @@ namespace lunar::Render
 		this->renderCamera = camera;
 	}
 
-	Window RenderContext_T::createWindow
+	Window_T RenderContext_T::createWindow
 	(
 		int                     width,
 		int                     height,
@@ -32,10 +32,7 @@ namespace lunar::Render
 		bool                    vsync
 	)
 	{
-		Window_T* window = new Window_T(this, width, height, fullscreen, name, msaa, vsync);
-		windows.push_back(window);
-		glfwMakeContextCurrent(window->glfwGetHandle());
-		return RefHandle<Window_T>(windows, windows.size() - 1);
+		return Window_T(this, width, height, fullscreen, name, msaa, vsync);
 	}
 
 	GpuTexture RenderContext_T::createTexture

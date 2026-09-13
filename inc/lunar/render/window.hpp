@@ -36,6 +36,12 @@ namespace lunar::Render
 		Window_T()  noexcept = default;
 		~Window_T() noexcept;
 
+		Window_T(Window_T&)             = delete; 
+		Window_T(Window_T&&)            = delete;
+		Window_T& operator=(Window_T&)  = delete;
+		Window_T& operator=(Window_T&&) = delete;
+
+
 		void                    toggleFullscreen();
 		void                    setFullscreen(bool value);
 		void                    toggleCursorLocked();
@@ -99,7 +105,7 @@ namespace lunar::Render
 		WindowBuilder& size(int width, int height);
 		WindowBuilder& samples(int msaa);
 		WindowBuilder& fullscreen(bool value);
-		Window         build(RenderContext context, const std::string_view& title) const;
+		Window_T       build(RenderContext_T& context, const std::string_view& title) const;
 
 	private:
 		int  width        = -1;

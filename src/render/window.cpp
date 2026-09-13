@@ -452,9 +452,9 @@ namespace lunar::Render
 		return *this;
 	}
 
-	Window WindowBuilder::build(RenderContext context, const std::string_view& title) const
+	Window_T WindowBuilder::build(RenderContext_T& context, const std::string_view& title) const
 	{
-		return context->createWindow(
+		return context.createWindow(
 			this->width,
 			this->height,
 			this->isFullscreen,
