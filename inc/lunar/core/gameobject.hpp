@@ -21,6 +21,8 @@ namespace lunar
 		glm::vec3 position   = { 0, 0, 0 };
 		glm::vec3 rotation   = { 0, 0, 0 };
 		glm::vec3 scale      = { 1, 1, 1 };
+
+		bool operator==(const Transform&) const = default;
 	};
 
 	struct LUNAR_API Hierarchy
@@ -28,6 +30,17 @@ namespace lunar
 		Entity parent      = nullptr;
 		Entity firstChild  = nullptr;
 		Entity nextSibling = nullptr;
+	};
+
+	struct LUNAR_API WorldTransform
+	{
+		glm::mat4 matrix        = glm::mat4(1.f);
+		glm::quat rotation      = glm::quat(1.f, 0.f, 0.f, 0.f);
+		glm::vec3 scale         = { 1, 1, 1 };
+		Transform source        = {};
+		Entity    parent        = nullptr;
+		uint64_t  parentVersion = 0;
+		uint64_t  version       = 0;
 	};
 
 	class LUNAR_API GameObject
@@ -60,6 +73,8 @@ namespace lunar
 		glm::vec3               getLocalScale()     const;
 		void                    setWorldPos(glm::vec3 pos);
 		void                    setLocalPos(glm::vec3 pos);
+		void                    setParent(GameObject parent);
+		void                    destroy();
 		GameObject              createChildObject(const std::string_view& name);
 
 		template<typename T>

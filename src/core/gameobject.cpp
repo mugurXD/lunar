@@ -69,46 +69,35 @@ namespace lunar
 		return scene->createGameObject(name, *this);
 	}
 
+	void GameObject::setParent(GameObject parent)
+	{
+		DEBUG_ASSERT(parent == nullptr || parent->getScene() == scene, "Parent belongs to another scene");
+		scene->setParent(entity, parent.getEntity());
+	}
+
+	void GameObject::destroy()
+	{
+		scene->destroyEntity(entity);
+	}
+
 	glm::mat4 GameObject::getWorldTransform() const
 	{
-		auto scale       = getWorldScale();
-		auto rotation    = getWorldRotation();
-		auto position    = getWorldPos();
-		auto scale_mat   = glm::scale(glm::mat4(1.f), scale);
-		auto translation = glm::translate(glm::mat4(1.f), position);
-		auto rot_mat     = glm::mat4(rotation);
-		return translation * rot_mat * scale_mat;
+		return scene->resolveWorldTransform(entity).matrix;
 	}
 
 	glm::vec3 GameObject::getWorldPos() const
 	{
-		const GameObject parent = getParent();
-		if (parent == nullptr)
-			return getTransform().position;
-		else
-			return glm::vec3(
-				parent->getWorldTransform() * glm::vec4(getTransform().position, 1)
-			);
+		return glm::vec3(scene->resolveWorldTransform(entity).matrix[3]);
 	}
 
 	glm::quat GameObject::getWorldRotation() const
 	{
-		const GameObject parent = getParent();
-		if (parent == nullptr)
-			return glm::quat(glm::radians(getTransform().rotation));
-		else
-			return glm::normalize(
-				parent->getWorldRotation() * glm::quat(glm::radians(getTransform().rotation))
-			);
+		return scene->resolveWorldTransform(entity).rotation;
 	}
 
 	glm::vec3 GameObject::getWorldScale() const
 	{
-		const GameObject parent = getParent();
-		if (parent == nullptr)
-			return getTransform().scale;
-		else
-			return getTransform().scale * parent->getWorldScale();
+		return scene->resolveWorldTransform(entity).scale;
 	}
 
 	glm::vec3 GameObject::getLocalPos() const

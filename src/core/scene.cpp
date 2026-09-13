@@ -4,6 +4,8 @@
 #include <lunar/render/components.hpp>
 
 #include <reactphysics3d/reactphysics3d.h>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 namespace lunar
 {
@@ -47,6 +49,7 @@ namespace lunar
 		addComponent<Name>(entity, std::string(name));
 		addComponent<Transform>(entity);
 		addComponent<Hierarchy>(entity);
+		addComponent<WorldTransform>(entity);
 
 		if (parent != nullptr)
 			attachChild(parent.getEntity(), entity);
@@ -77,6 +80,78 @@ namespace lunar
 		getComponent<Hierarchy>(last_child)->nextSibling = child;
 	}
 
+	void Scene::detachFromParent(const Entity& child)
+	{
+		Hierarchy*   child_hierarchy = getComponent<Hierarchy>(child);
+		const Entity parent          = child_hierarchy->parent;
+		const Entity next_sibling    = child_hierarchy->nextSibling;
+
+		child_hierarchy->parent      = nullptr;
+		child_hierarchy->nextSibling = nullptr;
+
+		if (parent == nullptr)
+			return;
+
+		Hierarchy* parent_hierarchy = getComponent<Hierarchy>(parent);
+		if (parent_hierarchy->firstChild == child)
+		{
+			parent_hierarchy->firstChild = next_sibling;
+			return;
+		}
+
+		Entity previous_sibling = parent_hierarchy->firstChild;
+		while (previous_sibling != nullptr && getComponent<Hierarchy>(previous_sibling)->nextSibling != child)
+			previous_sibling = getComponent<Hierarchy>(previous_sibling)->nextSibling;
+
+		if (previous_sibling != nullptr)
+			getComponent<Hierarchy>(previous_sibling)->nextSibling = next_sibling;
+	}
+
+	void Scene::setParent(const Entity& child, const Entity& parent)
+	{
+		for (Entity ancestor = parent; ancestor != nullptr; ancestor = getComponent<Hierarchy>(ancestor)->parent)
+			DEBUG_ASSERT(ancestor != child, "Cannot parent an object to itself or to one of its descendants");
+
+		detachFromParent(child);
+
+		if (parent != nullptr)
+			attachChild(parent, child);
+	}
+
+	const WorldTransform& Scene::resolveWorldTransform(const Entity& entity)
+	{
+		WorldTransform*  world     = getComponent<WorldTransform>(entity);
+		const Transform* local     = getComponent<Transform>(entity);
+		const Hierarchy* hierarchy = getComponent<Hierarchy>(entity);
+		DEBUG_ASSERT(world != nullptr && local != nullptr && hierarchy != nullptr, "Entity is missing its transform components");
+
+		const WorldTransform* parent_world   = hierarchy->parent == nullptr ? nullptr : &resolveWorldTransform(hierarchy->parent);
+		const uint64_t        parent_version = parent_world == nullptr ? 0 : parent_world->version;
+
+		const bool is_up_to_date = world->version != 0
+			&& world->source == *local
+			&& world->parent == hierarchy->parent
+			&& world->parentVersion == parent_version;
+
+		if (is_up_to_date)
+			return *world;
+
+		const glm::quat local_rotation = glm::quat(glm::radians(local->rotation));
+		const glm::mat4 local_matrix   = glm::translate(glm::mat4(1.f), local->position)
+			* glm::mat4(local_rotation)
+			* glm::scale(glm::mat4(1.f), local->scale);
+
+		world->matrix        = parent_world == nullptr ? local_matrix   : parent_world->matrix * local_matrix;
+		world->rotation      = parent_world == nullptr ? local_rotation : glm::normalize(parent_world->rotation * local_rotation);
+		world->scale         = parent_world == nullptr ? local->scale   : parent_world->scale * local->scale;
+		world->source        = *local;
+		world->parent        = hierarchy->parent;
+		world->parentVersion = parent_version;
+		world->version       = ++transformVersion;
+
+		return *world;
+	}
+
 	Entity Scene::createEntity()
 	{
 		return entities.create();
@@ -89,12 +164,16 @@ namespace lunar
 
 	void Scene::flushDestroyedEntities()
 	{
-		for (const Entity& entity : destroyedEntities)
+		for (size_t position = 0; position < destroyedEntities.size(); position++)
 		{
-			const EntityRecord* record = entities.get(entity);
-			if (record == nullptr)
+			const Entity entity = destroyedEntities[position];
+			if (!entities.contains(entity))
 				continue;
 
+			if (hasComponent<Hierarchy>(entity))
+				prepareGameObjectDestruction(entity);
+
+			const EntityRecord* record = entities.get(entity);
 			for (size_t type_id = 0; type_id < componentStorages.size(); type_id++)
 				if (record->components.test(type_id))
 					componentStorages[type_id]->remove(entity);
@@ -103,6 +182,19 @@ namespace lunar
 		}
 
 		destroyedEntities.clear();
+	}
+
+	void Scene::prepareGameObjectDestruction(const Entity& entity)
+	{
+		GameObject object = GameObject(this, entity);
+		auto       event  = Events::SceneObjectDeleted(*this, object);
+
+		fireEvent(SceneEventType::eObjectDeleted, event);
+
+		for (Entity child = getComponent<Hierarchy>(entity)->firstChild; child != nullptr; child = getComponent<Hierarchy>(child)->nextSibling)
+			destroyedEntities.push_back(child);
+
+		detachFromParent(entity);
 	}
 
 	void Scene::setMainCamera(Camera* camera)

@@ -53,6 +53,8 @@ namespace lunar
 		Entity                  createEntity();
 		void                    destroyEntity(const Entity& entity);
 		void                    flushDestroyedEntities();
+		void                    setParent(const Entity& child, const Entity& parent);
+		const WorldTransform&   resolveWorldTransform(const Entity& entity);
 
 		template<typename T, typename... Args>
 		T& addComponent(const Entity& entity, Args&&... args)
@@ -134,6 +136,7 @@ namespace lunar
 		Pool<EntityRecord>                            entities          = {};
 		vector<std::unique_ptr<ComponentStorageBase>> componentStorages = {};
 		vector<Entity>                                destroyedEntities = {};
+		uint64_t                                      transformVersion  = 0;
 
 		inline void fireEvent(SceneEventType type, Event& e)
 		{
@@ -141,6 +144,8 @@ namespace lunar
 		}
 
 		void attachChild(const Entity& parent, const Entity& child);
+		void detachFromParent(const Entity& child);
+		void prepareGameObjectDestruction(const Entity& entity);
 
 		template<typename T>
 		ComponentStorage<T>* findStorage() const
