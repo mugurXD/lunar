@@ -27,7 +27,6 @@ namespace lunar::Render
 	public:
 		Window_T
 		(
-			RenderContext_T*        context,
 			int                     width,
 			int                     height,
 			bool                    fullscreen,
@@ -84,7 +83,6 @@ namespace lunar::Render
 		glm::vec2                         lastMouse    = { 0, 0 };
 		bool                              mouseInside  = true;
 		bool                              mouseLocked  = false;
-		RenderContext_T*                  context      = nullptr;
 		ImGuiContext*                     imguiContext = nullptr;
 		imp::WindowBackendData            imp          = {};
 
@@ -110,7 +108,7 @@ namespace lunar::Render
 		WindowBuilder& fullscreen(bool value);
 		WindowBuilder& title(const std::string_view& title);
 		WindowBuilder& renderBackend(Backend backend);
-		Window_T       build(RenderContext_T& context) const;
+		Window_T       build() const;
 
 	private:
 		int              width        = -1;
@@ -121,176 +119,4 @@ namespace lunar::Render
 		std::string_view windowTitle  = "<no title>";
 		Backend          backend      = Backend::eDefault;
 	};
-
-	namespace imp
-	{
-		struct LUNAR_API GLFWGlobalContext
-		{
-		public:
-			GLFWGlobalContext()  noexcept;
-			~GLFWGlobalContext() noexcept;
-
-			GLFWwindow* headless = nullptr;
-			GLuint      vao      = 0;
-		};
-	}
 }
-
-//namespace lunar::Render
-//{
-//#	ifdef LUNAR_VULKAN
-//	constexpr size_t FRAME_OVERLAP = 2;
-//
-//	struct VulkanFrameData
-//	{
-//		struct
-//		{
-//			vk::Image image;
-//			vk::ImageView view;
-//			vk::Semaphore imageAvailable;
-//		} swapchain;
-//
-//		struct
-//		{
-//			VulkanImage image;
-//			VulkanImage depthImage;
-//			vk::Extent2D extent;
-//			vk::Semaphore renderFinished;
-//		} internal;
-//
-//		struct
-//		{
-//			vk::DescriptorSetLayout descriptorLayout;
-//			vk::DescriptorSet descriptorSet;
-//			VulkanBuffer buffer;
-//		} uniformBuffer;
-//
-//		VulkanCommandBuffer commandBuffer;
-//	};
-//#	endif
-//
-//
-//	class LUNAR_API Window : public RenderTarget, public InputHandler
-//	{
-//	public:
-//		Window(
-//			int width,
-//			int height,
-//			bool fullscreen,
-//			const char* title,
-//			RenderContext context
-//		);
-//
-//		~Window();
-//
-//		void      init(int width, int height, bool fullscreen, const char* title, RenderContext context);
-//		void        destroy();
-//		void        close();
-//		void        update() override;
-//		bool        shouldClose() const;
-//		bool        isMinimized() const;
-//		bool        exists() const;
-//		void        lockCursor();
-//		void        unlockCursor();
-//		void        toggleCursor();
-//		bool        isCursorLocked() const;
-//
-//		int         getRenderWidth() const override;
-//		int         getRenderHeight() const override;
-//
-//		bool        getActionDown(const std::string_view& name) const override;
-//		bool        getActionUp(const std::string_view& name) const override;
-//		bool        getAction(const std::string_view& name) const override;
-//		glm::vec2   getAxis()     const override;
-//		glm::vec2   getRotation() const override;
-//
-//
-//		static void pollEvents();
-//
-//#		ifdef LUNAR_VULKAN
-//		vk::SurfaceKHR& getVkSurface();
-//		vk::SwapchainKHR& getVkSwapchain();
-//		VulkanFrameData& getVkFrameData(size_t idx);
-//		size_t getVkSwapImageCount();
-//		const vk::Extent2D& getVkSwapExtent() const;
-//
-//		vk::Extent2D& getVkSwapExtent();
-//		vk::Image& getVkSwapImage(size_t idx);
-//		vk::Semaphore& getVkImageAvailable(size_t idx);
-//		vk::Semaphore& getVkImagePresentable(size_t idx);
-//		VulkanCommandBuffer& getVkCommandBuffer(size_t idx);
-//
-//
-//		size_t getVkCurrentFrame() const;
-//		void endVkFrame();
-//#		endif
-//	protected:
-//		GLFWwindow*                       handle      = nullptr;
-//		RenderContext                     renderCtx   = nullptr;
-//		bool                              initialized = false;
-//		std::unordered_map<int, KeyState> keys        = {};
-//		glm::vec2                         axis        = { 0, 0 };
-//		glm::vec2                         rotation    = { 0, 0 };
-//		glm::vec2                         lastMouse   = { 0, 0 };
-//		bool                              mouseInside = false;
-//		bool                              mouseLocked = false;
-//
-//		bool checkActionValue(const std::string_view& name, KeyState required) const;
-//
-//		friend void Glfw_FramebufferSizeCb(GLFWwindow*, int, int);
-//		friend void Glfw_KeyCallback(GLFWwindow*, int, int, int, int);
-//		friend void Glfw_MouseBtnCallback(GLFWwindow*, int, int, int);
-//		friend void Glfw_CursorPosCb(GLFWwindow*, double, double);
-//		friend void Glfw_CursorEnterCb(GLFWwindow*, int);
-//
-//#		ifdef LUNAR_OPENGL
-//		void _glInitialize();
-//#		endif
-//
-//#		ifdef LUNAR_VULKAN
-//		vk::SurfaceKHR _vkSurface;
-//		vk::SurfaceFormatKHR _vkSurfaceFmt;
-//		vk::PresentModeKHR _vkPresentMode;
-//		
-//		vk::SwapchainKHR _vkSwapchain;
-//		vk::Extent2D _vkSwapExtent;
-//		size_t _vkSwapImgCount;
-//
-//		VulkanFrameData _vkFrameData[FRAME_OVERLAP];
-//		VulkanCommandPool _vkCommandPool;
-//		VulkanGrowableDescriptorAllocator _vkDescriptorAlloc;
-//		size_t _vkCurrentFrame;
-//
-//		VulkanContext& _getVkContext();
-//
-//		void _vkInitialize();
-//		void _vkInitSwap();
-//		void _vkDestroy();
-//		void _vkDestroySwap();
-//		void _vkUpdateSwapExtent();
-//		void _vkHandleResize(int width, int height);
-//
-//		friend class VulkanContext;
-//#		endif
-//	};
-//
-//	struct LUNAR_API WindowBuilder
-//	{
-//	public:
-//		WindowBuilder& setWidth(int width);
-//		WindowBuilder& setHeight(int height);
-//		WindowBuilder& setSize(int width, int height);
-//		WindowBuilder& setFullscreen(bool value = true);
-//		WindowBuilder& setTitle(const std::string_view& title);
-//		WindowBuilder& setRenderContext(RenderContext context);
-//		WindowBuilder& setDefaultRenderContext();
-//		WindowBuilder& loadFromConfigFile(const Fs::Path& path);
-//		Window create();
-//
-//	private:
-//		int w = 800, h = 600;
-//		bool fs = false;
-//		std::string_view title = "lunar";
-//		RenderContext renderContext = nullptr;
-//	};
-//}

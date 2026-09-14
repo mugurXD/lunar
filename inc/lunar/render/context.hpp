@@ -17,23 +17,13 @@ namespace lunar { class LUNAR_API Camera; }
 
 namespace lunar::Render
 {
-	namespace imp { class LUNAR_API RenderDevice; }
-
 	struct LUNAR_API RenderDeviceSettings
 	{
 		std::string_view appName = {};
 		Window_T*        pWindow = nullptr;
 	};
 
-	class LUNAR_API RenderDevice
-	{
-	public:
-		RenderDevice(const RenderDeviceSettings&)  noexcept;
-		~RenderDevice()                            noexcept;
-
-	private:
-		std::unique_ptr<imp::RenderDevice> imp = nullptr;
-	};
+	class LUNAR_API RenderDevice {};
 
 	class LUNAR_API RenderContext_T
 	{
@@ -143,15 +133,4 @@ namespace lunar::Render
 		GLFWwindow*                    headless     = nullptr;
 #		endif
 	};
-
-	namespace imp
-	{
-		struct LUNAR_API GlobalRenderContext
-		{
-			bool              initialized = false;
-			GLFWGlobalContext glfw        = {};
-		};
-
-		GlobalRenderContext& GetGlobalRenderContext();
-	}
 }

@@ -30,7 +30,6 @@ namespace lunar::Render
 
 	Window_T::Window_T
 	(
-		RenderContext_T*        context,
 		int                     width,
 		int                     height,
 		bool                    fullscreen,
@@ -43,8 +42,7 @@ namespace lunar::Render
 		fullscreen(fullscreen),
 		title(title),
 		msaa(msaa),
-		vsync(true),
-		context(context)
+		vsync(true)
 	{
 		glfwWindowHint(GLFW_SAMPLES, msaa);
 
@@ -54,9 +52,12 @@ namespace lunar::Render
 			glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 			break;
 		case Backend::eOpenGL:
+			glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);
 			glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-			glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
+			glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
 			glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+			glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE); // for Mac
+			glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);
 			break;
 		}
 		
@@ -67,8 +68,9 @@ namespace lunar::Render
 			(fullscreen)
 				? glfwGetPrimaryMonitor() // TODO: monitor selection
 				: nullptr,
-			imp::GetGlobalRenderContext()
-				.glfw.headless
+			//imp::GetGlobalRenderContext()
+			//	.glfw.headless
+			nullptr
 		);
 
 		if (glfwRawMouseMotionSupported())
@@ -100,7 +102,7 @@ namespace lunar::Render
 		case Backend::eOpenGL:
 			ImGui_ImplGlfw_InitForOpenGL(handle, true);
 			ImGui_ImplOpenGL3_Init();
-			initializeBackendData();
+			//initializeBackendData();
 			break;
 		default:
 			break;
@@ -113,7 +115,7 @@ namespace lunar::Render
 	{
 		if (handle != nullptr)
 		{
-			clearBackendData();
+			//clearBackendData();
 			glfwDestroyWindow(handle);
 			DEBUG_LOG("Window destroyed.");
 		}
@@ -400,60 +402,6 @@ namespace lunar::Render
 	}
 
 	/*
-		Global GLFW context
-	*/
-
-	namespace imp
-	{
-		GLFWGlobalContext::~GLFWGlobalContext() noexcept
-		{
-			glDeleteVertexArrays(1, &vao);
-
-			glfwDestroyWindow(headless);
-			glfwTerminate();
-			DEBUG_LOG("Context destroyed.");
-		}
-
-		GLFWGlobalContext::GLFWGlobalContext() noexcept
-		{
-			glfwInit();
-
-			int major, minor, patch;
-			glfwGetVersion(&major, &minor, &patch);
-
-			DEBUG_LOG("GLFW initialized (version: {}.{}.{})", major, minor, patch);
-
-			glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);
-			glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-			glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
-			glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-			glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE); // for Mac
-			glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);
-			glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
-
-			this->headless = glfwCreateWindow(640, 480, "", nullptr, nullptr);
-			glfwMakeContextCurrent(this->headless);
-
-			int version = gladLoadGL(glfwGetProcAddress);
-			DEBUG_LOG("OpenGL context initialized (version: {}.{})", GLAD_VERSION_MAJOR(version), GLAD_VERSION_MINOR(version));
-
-			glfwWindowHint(GLFW_VISIBLE, GLFW_TRUE);
-
-			glGenVertexArrays(1, &vao);
-
-			if (!GLAD_GL_ARB_bindless_texture)
-			{
-				DEBUG_LOG("Extension 'GL_ARB_bindless_texture' not supported on this device.");
-				//abort();
-			}
-			else
-			{
-				DEBUG_LOG("Found support for all required OpenGL extensions.");
-			}
-		}
-	}
-
-	/*
 		Window builder
 	*/
 
@@ -488,10 +436,9 @@ namespace lunar::Render
 		return *this;
 	}
 
-	Window_T WindowBuilder::build(RenderContext_T& context) const
+	Window_T WindowBuilder::build() const
 	{
 		return Window_T(
-			&context,
 			this->width,
 			this->height,
 			this->isFullscreen,

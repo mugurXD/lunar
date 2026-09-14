@@ -1,6 +1,7 @@
 #include "lunar/core/engine.hpp"
 #include <lunar/render/components.hpp>
 #include <lunar/debug.hpp>
+#include <lunar/render/imp/vk/render_device.hpp>
 
 namespace lunar
 {
@@ -11,10 +12,10 @@ namespace lunar
 		return activeScene;
 	}
 
-	Render::RenderContext_T& Engine::getRenderContext()
-	{
-		return renderContext;
-	}
+	//Render::RenderContext_T& Engine::getRenderContext()
+	//{
+	//	return renderContext;
+	//}
 
 	Time::TimeContext_T& Engine::getTimeContext()
 	{
@@ -38,7 +39,7 @@ namespace lunar
 			window.pollEvents();
 			timeContext.update();
 			systemScheduler.runFrame(activeScene, timeContext.getFrameTime());
-			renderFrame();
+			//renderFrame();
 			activeScene.flushDestroyedEntities();
 			window.update();
 		}
@@ -46,29 +47,40 @@ namespace lunar
 
 	void Engine::renderFrame()
 	{
-		renderContext.begin(&window);
-		renderContext.clear(CLEAR_COLOR.r, CLEAR_COLOR.g, CLEAR_COLOR.b, CLEAR_COLOR.a);
+		//renderContext.begin(&window);
+		//renderContext.clear(CLEAR_COLOR.r, CLEAR_COLOR.g, CLEAR_COLOR.b, CLEAR_COLOR.a);
 
-		const Camera* camera = activeScene.getMainCamera();
-		if (camera != nullptr)
-		{
-			renderContext.useCamera(camera);
+		//const Camera* camera = activeScene.getMainCamera();
+		//if (camera != nullptr)
+		//{
+		//	renderContext.useCamera(camera);
 
-			const Render::GpuCubemap environment = activeScene.getEnvironment();
-			if (environment != nullptr)
-				renderContext.draw(environment);
+		//	const Render::GpuCubemap environment = activeScene.getEnvironment();
+		//	if (environment != nullptr)
+		//		renderContext.draw(environment);
 
-			renderContext.draw(activeScene);
-		}
+		//	renderContext.draw(activeScene);
+		//}
 
-		renderContext.end();
+		//renderContext.end();
 	}
 
 	Engine::Engine(const EngineBuilder& builder)
 		:
 		timeContext(),
-		renderContext(),
-		window(builder.windowBuilder.build(renderContext)),
+		//renderContext(),
+		window(
+			Render::WindowBuilder(builder.windowBuilder)
+				.renderBackend(builder.backend)
+				.build()
+		),
+		renderDevice(std::make_unique<Render::imp::VkRenderDevice>(
+			Render::RenderDeviceSettings
+			{
+				.appName = builder.appName,
+				.pWindow = builder.useWindow ? &window : nullptr
+			}
+		)),
 		activeScene(),
 		appName(builder.appName),
 		systemScheduler(builder.fixedTimestepSeconds)
@@ -106,6 +118,18 @@ namespace lunar
 	EngineBuilder& EngineBuilder::fixedTimestep(double seconds)
 	{
 		fixedTimestepSeconds = seconds;
+		return *this;
+	}
+
+	EngineBuilder& EngineBuilder::renderBackend(Render::Backend backend)
+	{
+		this->backend = backend;
+		return *this;
+	}
+
+	EngineBuilder& EngineBuilder::noWindow()
+	{
+		useWindow = false;
 		return *this;
 	}
 }

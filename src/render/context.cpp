@@ -29,7 +29,7 @@ namespace lunar::Render
 		bool                    vsync
 	)
 	{
-		return Window_T(this, width, height, fullscreen, name, msaa, vsync, Backend::eDefault);
+		return Window_T(width, height, fullscreen, name, msaa, vsync, Backend::eDefault);
 	}
 
 	GpuTexture RenderContext_T::createTexture
@@ -272,18 +272,5 @@ namespace lunar::Render
 
 		defaultProgramsBuilt = true;
 		DEBUG_LOG("Built default GPU programs.");
-	}
-
-	/*
-		Global render context
-	*/
-
-	namespace imp
-	{
-		GlobalRenderContext& GetGlobalRenderContext()
-		{
-			static GlobalRenderContext context = {};
-			return context;
-		}
 	}
 }
