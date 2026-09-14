@@ -44,6 +44,7 @@ namespace lunar::Render
 
 		void                    toggleFullscreen();
 		void                    setFullscreen(bool value);
+		void                    setTitle(const std::string_view& title);
 		void                    toggleCursorLocked();
 		void                    setCursorLocked(bool value);
 		void                    update()                                    override;

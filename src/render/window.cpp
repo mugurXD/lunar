@@ -179,6 +179,12 @@ namespace lunar::Render
 		}
 	}
 
+	void Window_T::setTitle(const std::string_view& title)
+	{
+		this->title = title;
+		glfwSetWindowTitle(handle, this->title.c_str());
+	}
+
 	/*
 		Input handling
 	*/
