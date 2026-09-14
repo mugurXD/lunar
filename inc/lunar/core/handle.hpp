@@ -25,6 +25,7 @@ namespace lunar
 		T*       pointer()                              { return pool == nullptr ? nullptr : pool->get(*this); }
 		bool     valid()                          const { return pool != nullptr && pool->contains(*this); }
 		uint32_t getIndex()                       const { return index; }
+		uint32_t getGeneration()                  const { return generation; }
 		bool     operator==(const PoolHandle&)    const = default;
 		bool     operator==(std::nullptr_t)       const { return !valid(); }
 
@@ -140,6 +141,11 @@ namespace lunar
 					return PoolHandle<T>(this, index, slots[index].generation);
 
 			return nullptr;
+		}
+
+		PoolHandle<T> getHandleFor(uint32_t index, uint32_t generation)
+		{
+			return PoolHandle<T>(this, index, generation);
 		}
 
 	private:
