@@ -121,7 +121,14 @@ FetchContent_Declare(
     GIT_TAG        9064ea7
 )
 FetchContent_MakeAvailable(fetch_vk_bootstrap)
-target_link_libraries(lunar PUBLIC vk-bootstrap::vk-bootstrap)
+
+find_package(Vulkan REQUIRED)
+target_link_libraries(lunar PRIVATE vk-bootstrap::vk-bootstrap)
+target_include_directories(lunar PRIVATE Vulkan::Vulkan)
+
+file(GLOB_RECURSE LUNAR_VK_SRC "src/render/vk/*.cpp")
+target_sources(lunar PRIVATE ${LUNAR_VK_SRC})
+
 # ----------------------------
 
 
@@ -170,6 +177,10 @@ if(${LUNAR_BUILD_EXAMPLE})
     add_executable(lunar_example "examples/app.cpp")
     target_link_libraries(lunar_example PUBLIC lunar)
     target_include_directories(lunar_example PUBLIC lunar)
+
+    add_executable(lunar_objects_stresstest "examples/objects_stresstest.cpp")
+    target_link_libraries(lunar_objects_stresstest PUBLIC lunar)
+    target_include_directories(lunar_objects_stresstest PUBLIC lunar)
 endif()
 
 if(${LUNAR_UNIT_TESTS})
