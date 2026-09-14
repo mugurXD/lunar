@@ -49,6 +49,7 @@ target_sources(lunar PRIVATE
     "src/render/program.cpp"
     "src/render/components.cpp"
     "src/render/window.cpp"
+    "src/render/render_device.cpp"
     "src/stb_image.cpp"
 )
 
@@ -123,8 +124,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(fetch_vk_bootstrap)
 
 find_package(Vulkan REQUIRED)
-target_link_libraries(lunar PRIVATE vk-bootstrap::vk-bootstrap)
-target_include_directories(lunar PRIVATE Vulkan::Vulkan)
+target_link_libraries(lunar PRIVATE vk-bootstrap::vk-bootstrap Vulkan::Vulkan)
 
 file(GLOB_RECURSE LUNAR_VK_SRC "src/render/vk/*.cpp")
 target_sources(lunar PRIVATE ${LUNAR_VK_SRC})
