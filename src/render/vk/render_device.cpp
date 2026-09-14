@@ -210,7 +210,8 @@ namespace lunar::Render::imp
 			return;
 		}
 
-		this->graphicsQueue = graphics_queue_res.value();
+		this->graphicsQueue            = graphics_queue_res.value();
+		this->graphicsQueueFamilyIndex = device.get_queue_index(vkb::QueueType::graphics).value();
 
 		if (surface != VK_NULL_HANDLE)
 		{
@@ -221,7 +222,37 @@ namespace lunar::Render::imp
 				return;
 			}
 
-			this->presentQueue = present_queue_res.value();
+			this->presentQueue            = present_queue_res.value();
+			this->presentQueueFamilyIndex = device.get_queue_index(vkb::QueueType::present).value();
+		}
+
+		VkCommandPoolCreateInfo command_pool_info =
+		{
+			.sType            = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+			.flags            = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+			.queueFamilyIndex = graphicsQueueFamilyIndex,
+		};
+
+		VkResult result;
+		result = vkCreateCommandPool(this->device, &command_pool_info, nullptr, &commandPool);
+		if (result != VK_SUCCESS)
+		{
+			DEBUG_ERROR("Failed to create command pool: {}", string_VkResult(result));
+			return;
+		}
+
+		VkCommandBufferAllocateInfo command_buffer_info =
+		{
+			.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+			.commandPool        = commandPool,
+			.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY,	
+			.commandBufferCount = 1,
+		};
+		result = vkAllocateCommandBuffers(this->device, &command_buffer_info, &mainCommandBuffer);
+		if (result != VK_SUCCESS)
+		{
+			DEBUG_ERROR("Failed to allocate command buffer: {}", string_VkResult(result));
+			return;
 		}
 
 		DEBUG_LOG("Vulkan rendering interface initialized.");
