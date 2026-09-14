@@ -36,7 +36,8 @@ namespace lunar::Render
 		bool                    fullscreen,
 		const std::string_view& title,
 		int                     msaa,
-		bool                    vsync
+		bool                    vsync,
+		Backend				    backend
 	) noexcept : width(width),
 		height(height),
 		fullscreen(fullscreen),
@@ -47,6 +48,18 @@ namespace lunar::Render
 	{
 		glfwWindowHint(GLFW_SAMPLES, msaa);
 
+		switch (backend)
+		{
+		case Backend::eVulkan:
+			glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+			break;
+		case Backend::eOpenGL:
+			glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+			glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
+			glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+			break;
+		}
+		
 		this->handle = glfwCreateWindow(
 			this->width, 
 			this->height,
@@ -81,10 +94,17 @@ namespace lunar::Render
 		IMGUI_CHECKVERSION();
 		imguiContext = ImGui::CreateContext();
 		ImGui::SetCurrentContext(imguiContext);
-		ImGui_ImplGlfw_InitForOpenGL(handle, true);
-		ImGui_ImplOpenGL3_Init();
 
-		initializeBackendData();
+		switch (backend)
+		{
+		case Backend::eOpenGL:
+			ImGui_ImplGlfw_InitForOpenGL(handle, true);
+			ImGui_ImplOpenGL3_Init();
+			initializeBackendData();
+			break;
+		default:
+			break;
+		}
 
 		DEBUG_LOG("Window initialized.");
 	}
@@ -462,15 +482,23 @@ namespace lunar::Render
 		return *this;
 	}
 
+	WindowBuilder& WindowBuilder::renderBackend(Backend backend)
+	{
+		this->backend = backend;
+		return *this;
+	}
+
 	Window_T WindowBuilder::build(RenderContext_T& context) const
 	{
-		return context.createWindow(
+		return Window_T(
+			&context,
 			this->width,
 			this->height,
 			this->isFullscreen,
 			this->windowTitle,
 			this->msaa,
-			this->enableVsync
+			this->enableVsync,
+			this->backend
 		);
 	}
 }

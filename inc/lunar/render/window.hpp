@@ -9,6 +9,8 @@
 #include <unordered_map>
 #include <imgui.h>
 
+#include <lunar/render/common.hpp>
+
 #ifdef LUNAR_VULKAN
 #	include <lunar/render/internal/render_vk.hpp>
 #	include <vulkan/vulkan.hpp>
@@ -31,7 +33,8 @@ namespace lunar::Render
 			bool                    fullscreen,
 			const std::string_view& title,
 			int                     msaa,
-			bool                    vsync
+			bool                    vsync,
+			Backend				    backend
 		) noexcept;
 		Window_T()  noexcept = default;
 		~Window_T() noexcept;
@@ -106,6 +109,7 @@ namespace lunar::Render
 		WindowBuilder& samples(int msaa);
 		WindowBuilder& fullscreen(bool value);
 		WindowBuilder& title(const std::string_view& title);
+		WindowBuilder& renderBackend(Backend backend);
 		Window_T       build(RenderContext_T& context) const;
 
 	private:
@@ -115,6 +119,7 @@ namespace lunar::Render
 		bool             isFullscreen = false;
 		bool             enableVsync  = false;
 		std::string_view windowTitle  = "<no title>";
+		Backend          backend      = Backend::eDefault;
 	};
 
 	namespace imp

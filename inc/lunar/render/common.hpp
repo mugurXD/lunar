@@ -9,6 +9,13 @@
 
 namespace lunar::Render
 {
+	enum class LUNAR_API Backend
+	{
+		eVulkan  = 0,
+		eOpenGL  = 1,
+		eDefault = eVulkan
+	};
+
 	struct LUNAR_API Vertex
 	{
 		glm::vec3 position;
