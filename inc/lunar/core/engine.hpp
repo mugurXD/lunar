@@ -10,6 +10,7 @@
 #include <lunar/render/window.hpp>
 #include <lunar/render/context.hpp>
 #include <lunar/render/common.hpp>
+#include <lunar/render/render_device.hpp>
 
 namespace lunar
 {
@@ -40,6 +41,7 @@ namespace lunar
 		Render::Window_T                      window        = {};
 		//Render::RenderContext_T               renderContext = {};
 		std::unique_ptr<Render::RenderDevice> renderDevice;
+		std::unique_ptr<Render::Swapchain>    swapchain;
 		Scene                                 activeScene   = {};
 		SystemScheduler                       systemScheduler;
 	};

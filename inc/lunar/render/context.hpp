@@ -18,28 +18,6 @@ namespace lunar { class LUNAR_API Camera; }
 
 namespace lunar::Render
 {
-	struct LUNAR_API RenderDeviceSettings
-	{
-		std::string_view appName = {};
-		Window_T*        pWindow = nullptr;
-	};
-
-	struct LUNAR_API RenderDeviceCapabilities
-	{
-		bool rayQuery           = false;
-		bool rayTracingPipeline = false;
-		bool memoryBudget       = false;
-	};
-
-	class LUNAR_API RenderDevice
-	{
-	public:
-		const RenderDeviceCapabilities& getCapabilities() const { return capabilities; }
-
-	protected:
-		RenderDeviceCapabilities capabilities = {};
-	};
-
 	class LUNAR_API RenderContext_T
 	{
 	public:

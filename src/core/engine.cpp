@@ -1,7 +1,6 @@
 #include "lunar/core/engine.hpp"
 #include <lunar/render/components.hpp>
 #include <lunar/debug.hpp>
-#include <lunar/render/imp/vk/render_device.hpp>
 
 namespace lunar
 {
@@ -74,13 +73,15 @@ namespace lunar
 				.renderBackend(builder.backend)
 				.build()
 		),
-		renderDevice(std::make_unique<Render::imp::VkRenderDevice>(
+		renderDevice(Render::CreateRenderDevice(
 			Render::RenderDeviceSettings
 			{
 				.appName = builder.appName,
-				.pWindow = builder.useWindow ? &window : nullptr
+				.pWindow = builder.useWindow ? &window : nullptr,
+				.backend = builder.backend
 			}
 		)),
+		swapchain(builder.useWindow ? renderDevice->createSwapchain(window) : nullptr),
 		activeScene(),
 		appName(builder.appName),
 		systemScheduler(builder.fixedTimestepSeconds)

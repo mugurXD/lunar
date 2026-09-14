@@ -1,10 +1,10 @@
-#include <vulkan/vulkan.h>
+#include "vk_render_device.hpp"
+#include "vk_swapchain.hpp"
+
 #include <vulkan/vk_enum_string_helper.h>
-#include <VkBootstrap.h>
 #include <GLFW/glfw3.h>
 
-#include <lunar/render/context.hpp>
-#include <lunar/render/imp/vk/render_device.hpp>
+#include <lunar/render/window.hpp>
 #include <lunar/debug.hpp>
 
 namespace lunar::Render::imp
@@ -144,26 +144,25 @@ namespace lunar::Render::imp
 			return;
 		}
 
-		vkb::Instance               vkb_instance = instance_res.value();
+		this->instance = instance_res.value();
 
-		VkSurfaceKHR surface     = VK_NULL_HANDLE;
-		VkResult     surface_res = {};
 		if (settings.pWindow != nullptr)
 		{
-			surface_res = glfwCreateWindowSurface(vkb_instance, settings.pWindow->glfwGetHandle(), nullptr, &surface);
+			const VkResult surface_res = glfwCreateWindowSurface(instance, settings.pWindow->glfwGetHandle(), nullptr, &surface);
 			if (surface_res != VK_SUCCESS)
 			{
 				DEBUG_ERROR("Failed to create Vulkan surface: {}", string_VkResult(surface_res));
 				return;
 			}
+
+			this->presentWindow = settings.pWindow;
 		}
 
-
-		vkb::PhysicalDeviceSelector vkb_selector { vkb_instance };
+		vkb::PhysicalDeviceSelector vkb_selector { instance };
 		auto                        phys_res = vkb_selector
 			.set_minimum_version(1, 3)
 			.prefer_gpu_device_type(vkb::PreferredDeviceType::discrete)
-			.require_present(settings.pWindow != nullptr)
+			.require_present(surface != VK_NULL_HANDLE)
 			.set_surface(surface)
 			.set_required_features(RequiredCoreFeatures())
 			.set_required_features_11(RequiredFeatures11())
@@ -202,33 +201,50 @@ namespace lunar::Render::imp
 			return;
 		}
 
-		vkb::Device           vkb_device        = device_res.value();
-		
-		if (settings.pWindow != nullptr)
+		this->device = device_res.value();
+
+		const auto graphics_queue_res = device.get_queue(vkb::QueueType::graphics);
+		if (!graphics_queue_res)
 		{
-			vkb::SwapchainBuilder swapchain_builder { vkb_device };
-			auto                  swapchain_res     = swapchain_builder.build();
-			if (!swapchain_res)
-			{
-				DEBUG_ERROR("{}", swapchain_res.error().message());
-				return;
-			}
-			vkb::Swapchain vkb_swapchain = swapchain_res.value();
-			this->swapchain = std::make_optional<Swapchain>(surface, vkb_swapchain);
+			DEBUG_ERROR("Failed to get graphics queue: {}", graphics_queue_res.error().message());
+			return;
 		}
 
-		this->instance      = vkb_instance;
-		this->device        = device_res.value();
-		this->graphicsQueue = device.get_queue(vkb::QueueType::graphics).value();
-		this->presentQueue  = device.get_queue(vkb::QueueType::present).value();
+		this->graphicsQueue = graphics_queue_res.value();
 
+		if (surface != VK_NULL_HANDLE)
+		{
+			const auto present_queue_res = device.get_queue(vkb::QueueType::present);
+			if (!present_queue_res)
+			{
+				DEBUG_ERROR("Failed to get present queue: {}", present_queue_res.error().message());
+				return;
+			}
+
+			this->presentQueue = present_queue_res.value();
+		}
 
 		DEBUG_LOG("Vulkan rendering interface initialized.");
 	}
 
-	VkRenderDevice::~VkRenderDevice()
+	VkRenderDevice::~VkRenderDevice() noexcept
 	{
-		vkb::destroy_device(device);
-		vkb::destroy_instance(instance);
+		if (device.device != VK_NULL_HANDLE)
+		{
+			vkDeviceWaitIdle(device);
+			vkb::destroy_device(device);
+		}
+
+		if (surface != VK_NULL_HANDLE)
+			vkb::destroy_surface(instance, surface);
+
+		if (instance.instance != VK_NULL_HANDLE)
+			vkb::destroy_instance(instance);
+	}
+
+	std::unique_ptr<Swapchain> VkRenderDevice::createSwapchain(Window_T& window)
+	{
+		DEBUG_ASSERT(&window == presentWindow, "Swapchains can currently only be created for the window the device was created with");
+		return std::make_unique<VkSwapchain>(device, window);
 	}
 }
