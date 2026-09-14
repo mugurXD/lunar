@@ -7,6 +7,7 @@
 #include <lunar/render/program.hpp>
 #include <lunar/render/mesh.hpp>
 #include <lunar/render/window.hpp>
+#include <lunar/core/handle.hpp>
 #include <lunar/core/common.hpp>
 
 #include <imgui.h>
@@ -23,7 +24,21 @@ namespace lunar::Render
 		Window_T*        pWindow = nullptr;
 	};
 
-	class LUNAR_API RenderDevice {};
+	struct LUNAR_API RenderDeviceCapabilities
+	{
+		bool rayQuery           = false;
+		bool rayTracingPipeline = false;
+		bool memoryBudget       = false;
+	};
+
+	class LUNAR_API RenderDevice
+	{
+	public:
+		const RenderDeviceCapabilities& getCapabilities() const { return capabilities; }
+
+	protected:
+		RenderDeviceCapabilities capabilities = {};
+	};
 
 	class LUNAR_API RenderContext_T
 	{
