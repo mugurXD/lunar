@@ -152,6 +152,11 @@ namespace lunar
 		return *world;
 	}
 
+	uint64_t Scene::getEntityCount() const
+	{
+		return entities.size();
+	}
+
 	Entity Scene::createEntity()
 	{
 		return entities.create();

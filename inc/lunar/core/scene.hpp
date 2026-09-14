@@ -51,6 +51,7 @@ namespace lunar
 			GameObject              parent = nullptr
 		);
 
+		uint64_t                getEntityCount() const;
 		Entity                  createEntity();
 		void                    destroyEntity(const Entity& entity);
 		void                    flushDestroyedEntities();
