@@ -29,6 +29,11 @@ namespace lunar
 		return renderer;
 	}
 
+	JobSystem& Engine::getJobSystem()
+	{
+		return jobSystem;
+	}
+
 	void Engine::addSystem(SystemPhase phase, System system)
 	{
 		systemScheduler.addSystem(phase, std::move(system));
@@ -40,6 +45,7 @@ namespace lunar
 		{
 			window.pollEvents();
 			timeContext.update();
+			jobSystem.processCompleted();
 			systemScheduler.runFrame(activeScene, timeContext.getFrameTime());
 			renderFrame();
 			activeScene.flushDestroyedEntities();
@@ -90,7 +96,8 @@ namespace lunar
 		renderer(*renderDevice, swapchain.get()),
 		activeScene(),
 		appName(builder.appName),
-		systemScheduler(builder.fixedTimestepSeconds)
+		systemScheduler(builder.fixedTimestepSeconds),
+		jobSystem(JobSystem::defaultWorkerCount())
 	{
 		Input::SetGlobalHandler(window);
 

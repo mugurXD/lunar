@@ -3,6 +3,7 @@
 #include <memory>
 
 #include <lunar/core/time.hpp>
+#include <lunar/core/jobs.hpp>
 #include <lunar/core/scene.hpp>
 #include <lunar/core/system.hpp>
 #include <lunar/core/common.hpp>
@@ -26,6 +27,7 @@ namespace lunar
 		//Render::RenderContext_T& getRenderContext();
 		Render::Window_T&        getWindow();
 		Render::Renderer&        getRenderer();
+		JobSystem&               getJobSystem();
 		Time::TimeContext_T&     getTimeContext();
 		void                     addSystem(SystemPhase phase, System system);
 		void                     runGameLoop();
@@ -47,6 +49,7 @@ namespace lunar
 		Render::Renderer                      renderer;
 		Scene                                 activeScene   = {};
 		SystemScheduler                       systemScheduler;
+		JobSystem                             jobSystem;
 	};
 
 	struct LUNAR_API EngineBuilder
