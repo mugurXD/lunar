@@ -52,21 +52,20 @@ namespace lunar
 			LoadVec3f(json, "up",    camera->up);
 		});
 
-		useCustomClassSerializer("core.render.mesh_renderer", [&](GameObject object, const nlohmann::json& json) {
-			MeshRenderer* mesh_renderer = object.addComponent<MeshRenderer>();
-			mesh_renderer->program      = renderContext->getProgram(Render::GpuDefaultPrograms::eBasicPbrShader);
+		useCustomClassSerializer("core.render.mesh_renderer", [&](GameObject object, const nlohmann::json&) {
+			object.addComponent<MeshRenderer>();
 
-			if (json.contains("meshPath"))
-			{
-				auto path = Fs::fromData(json["meshPath"]);
-				auto mesh_builder = Render::GpuMeshBuilder();
-				auto mesh = mesh_builder
-					.useRenderContext(renderContext.get())
-					.fromMeshFile(path)
-					.build();
+			//if (json.contains("meshPath"))
+			//{
+			//	auto path = Fs::fromData(json["meshPath"]);
+			//	auto mesh_builder = Render::GpuMeshBuilder();
+			//	auto mesh = mesh_builder
+			//		.useRenderContext(renderContext.get())
+			//		.fromMeshFile(path)
+			//		.build();
 
-				mesh_renderer->mesh = mesh;
-			}
+			//	mesh_renderer->mesh = mesh;
+			//}
 		});
 
 		

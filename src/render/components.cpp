@@ -14,12 +14,15 @@ namespace lunar
 
 	glm::mat4 Camera::getProjectionMatrix(int renderWidth, int renderHeight) const
 	{
-		return glm::perspective(
-			glm::radians(fov),
-			static_cast<float>(renderWidth) / static_cast<float>(renderHeight),
-			nearPlane,
-			farPlane
-		);
+		const float aspect_ratio = static_cast<float>(renderWidth) / static_cast<float>(renderHeight);
+		const float focal_length = 1.f / glm::tan(glm::radians(fov) * 0.5f);
+
+		glm::mat4 projection = glm::mat4(0.f);
+		projection[0][0] = focal_length / aspect_ratio;
+		projection[1][1] = focal_length;
+		projection[2][3] = -1.f;
+		projection[3][2] = nearPlane;
+		return projection;
 	}
 
 	void UpdateCameras(Scene& scene, const FrameTime&)

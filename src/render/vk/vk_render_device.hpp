@@ -71,18 +71,6 @@ namespace lunar::Render::imp
 		std::vector<VkBufferAllocation> stagingBuffers = {};
 	};
 
-	template<typename Tag, typename T>
-	GpuHandle<Tag> ToGpuHandle(const PoolHandle<T>& handle)
-	{
-		return { handle.getIndex(), handle.getGeneration() };
-	}
-
-	template<typename T, typename Tag>
-	PoolHandle<T> FromGpuHandle(Pool<T>& pool, GpuHandle<Tag> handle)
-	{
-		return pool.getHandleFor(handle.index, handle.generation);
-	}
-
 	template<typename From, typename To, size_t Count>
 	constexpr To Translate(const std::pair<From, To> (&table)[Count], From value)
 	{

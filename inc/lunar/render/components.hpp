@@ -3,6 +3,7 @@
 #include <lunar/core/time.hpp>
 #include <lunar/render/imp.hpp>
 #include <lunar/render/mesh.hpp>
+#include <lunar/render/gpu_types.hpp>
 #include <glm/glm.hpp>
 
 namespace lunar
@@ -26,8 +27,7 @@ namespace lunar
 
 	struct LUNAR_API MeshRenderer
 	{
-		Render::GpuMesh    mesh    = nullptr;
-		Render::GpuProgram program = nullptr;
+		Render::MeshHandle mesh = {};
 	};
 
 	LUNAR_API void UpdateCameras(Scene& scene, const FrameTime& frame_time);

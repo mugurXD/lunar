@@ -25,6 +25,7 @@ namespace lunar
 		Scene&                   getActiveScene();
 		//Render::RenderContext_T& getRenderContext();
 		Render::Window_T&        getWindow();
+		Render::Renderer&        getRenderer();
 		Time::TimeContext_T&     getTimeContext();
 		void                     addSystem(SystemPhase phase, System system);
 		void                     runGameLoop();

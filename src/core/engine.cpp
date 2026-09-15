@@ -24,6 +24,11 @@ namespace lunar
 		return window;
 	}
 
+	Render::Renderer& Engine::getRenderer()
+	{
+		return renderer;
+	}
+
 	void Engine::addSystem(SystemPhase phase, System system)
 	{
 		systemScheduler.addSystem(phase, std::move(system));
@@ -44,7 +49,7 @@ namespace lunar
 
 	void Engine::renderFrame()
 	{
-		renderer.render();
+		renderer.render(activeScene);
 
 		//renderContext.begin(&window);
 		//renderContext.clear(CLEAR_COLOR.r, CLEAR_COLOR.g, CLEAR_COLOR.b, CLEAR_COLOR.a);

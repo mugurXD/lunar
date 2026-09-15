@@ -1,5 +1,6 @@
 #pragma once
 #include <lunar/api.hpp>
+#include <lunar/core/handle.hpp>
 #include <cstdint>
 
 namespace lunar::Render
@@ -16,10 +17,24 @@ namespace lunar::Render
 	struct BufferTag;
 	struct ImageTag;
 	struct PipelineTag;
+	struct MeshTag;
 
 	using BufferHandle   = GpuHandle<BufferTag>;
 	using ImageHandle    = GpuHandle<ImageTag>;
 	using PipelineHandle = GpuHandle<PipelineTag>;
+	using MeshHandle     = GpuHandle<MeshTag>;
+
+	template<typename Tag, typename T>
+	GpuHandle<Tag> ToGpuHandle(const PoolHandle<T>& handle)
+	{
+		return { handle.getIndex(), handle.getGeneration() };
+	}
+
+	template<typename T, typename Tag>
+	PoolHandle<T> FromGpuHandle(Pool<T>& pool, GpuHandle<Tag> handle)
+	{
+		return pool.getHandleFor(handle.index, handle.generation);
+	}
 
 	struct LUNAR_API Extent2D
 	{
