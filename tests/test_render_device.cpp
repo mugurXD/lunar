@@ -1,4 +1,5 @@
 #include <lunar/render/render_device.hpp>
+#include <lunar/render/mesh_registry.hpp>
 #include <lunar/file/binary_file.hpp>
 #include <gtest/gtest.h>
 
@@ -424,6 +425,41 @@ TEST_F(RenderDeviceTest, RenderingToColorAndDepthAcrossFrames)
 	device->destroyPipeline(pipeline);
 	device->destroyImage(depth);
 	device->destroyImage(color);
+}
+
+TEST_F(RenderDeviceTest, MeshRegistryCreatesCubeMesh)
+{
+	MeshRegistry     registry(*device);
+	const MeshHandle cube = registry.create(CreateCubeMeshData());
+	const Mesh*      mesh = registry.get(cube);
+
+	ASSERT_NE(mesh, nullptr);
+	EXPECT_EQ(mesh->indexCount, CreateCubeMeshData().indices.size());
+	EXPECT_NE(mesh->vertexAddress, 0u);
+	EXPECT_EQ(registry.size(), 1u);
+	EXPECT_EQ(device->getStats().bufferCount, baseline.bufferCount + 2);
+}
+
+TEST_F(RenderDeviceTest, DestroyedMeshHandleBecomesStale)
+{
+	MeshRegistry     registry(*device);
+	const MeshHandle cube = registry.create(CreateCubeMeshData());
+
+	registry.destroy(cube);
+	EXPECT_EQ(registry.get(cube), nullptr);
+
+	registry.destroy(cube);
+	EXPECT_EQ(registry.size(), 0u);
+	EXPECT_EQ(device->getStats().bufferCount, baseline.bufferCount);
+}
+
+TEST_F(RenderDeviceTest, EmptyMeshDataReturnsNullMesh)
+{
+	MeshRegistry registry(*device);
+
+	EXPECT_EQ(registry.create({}), MeshHandle {});
+	EXPECT_EQ(registry.size(), 0u);
+	EXPECT_EQ(device->getStats().bufferCount, baseline.bufferCount);
 }
 
 TEST(RenderDeviceLifetime, DestroyingDeviceReleasesLiveResources)

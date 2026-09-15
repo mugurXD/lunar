@@ -5,6 +5,8 @@ add_executable(lunar_tests
     "test_gameobject.cpp"
     "test_systems.cpp"
     "test_time.cpp"
+    "test_camera.cpp"
+    "test_mesh_data.cpp"
 )
 
 target_link_libraries(lunar_tests PRIVATE lunar GTest::gtest_main)
