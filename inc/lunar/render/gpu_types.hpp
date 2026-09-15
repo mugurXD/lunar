@@ -1,5 +1,6 @@
 #pragma once
 #include <lunar/api.hpp>
+#include <cstdint>
 
 namespace lunar::Render
 {
@@ -17,4 +18,9 @@ namespace lunar::Render
 
 	using BufferHandle = GpuHandle<BufferTag>;
 	using ImageHandle  = GpuHandle<ImageTag>;
+
+	struct LUNAR_API UploadTicket
+	{
+		uint64_t value = 0;
+	};
 }

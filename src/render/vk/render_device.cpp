@@ -255,6 +255,37 @@ namespace lunar::Render::imp
 			return;
 		}
 
+		const VkFenceCreateInfo fence_info =
+		{
+			.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO
+		};
+
+		result = vkCreateFence(this->device, &fence_info, nullptr, &immediateFence);
+		if (result != VK_SUCCESS)
+		{
+			DEBUG_ERROR("Failed to create immediate submit fence: {}", string_VkResult(result));
+			return;
+		}
+
+		const VmaAllocatorCreateFlags allocator_flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT
+			| (capabilities.memoryBudget ? VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT : 0);
+
+		const VmaAllocatorCreateInfo allocator_info =
+		{
+			.flags            = allocator_flags,
+			.physicalDevice   = device.physical_device,
+			.device           = device,
+			.instance         = instance,
+			.vulkanApiVersion = VK_API_VERSION_1_3
+		};
+
+		result = vmaCreateAllocator(&allocator_info, &allocator);
+		if (result != VK_SUCCESS)
+		{
+			DEBUG_ERROR("Failed to create memory allocator: {}", string_VkResult(result));
+			return;
+		}
+
 		DEBUG_LOG("Vulkan rendering interface initialized.");
 	}
 
@@ -263,6 +294,21 @@ namespace lunar::Render::imp
 		if (device.device != VK_NULL_HANDLE)
 		{
 			vkDeviceWaitIdle(device);
+
+			buffers.forEach([&](PoolHandle<VkBufferRecord>, VkBufferRecord& record) {
+				vmaDestroyBuffer(allocator, record.buffer, record.allocation);
+			});
+			buffers.clear();
+
+			if (allocator != VK_NULL_HANDLE)
+				vmaDestroyAllocator(allocator);
+
+			if (immediateFence != VK_NULL_HANDLE)
+				vkDestroyFence(device, immediateFence, nullptr);
+
+			if (commandPool != VK_NULL_HANDLE)
+				vkDestroyCommandPool(device, commandPool, nullptr);
+
 			vkb::destroy_device(device);
 		}
 
