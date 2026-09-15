@@ -27,6 +27,8 @@ namespace
 	constexpr size_t           SMALL_BUFFER_SIZE   = 64;
 	constexpr int              FRAME_COUNT         = 10;
 	constexpr uint32_t         UPLOAD_BATCH_ROUNDS = 10;
+	constexpr Extent2D         IMAGE_EXTENT        = { 64, 32 };
+	constexpr uint32_t         TRIANGLE_VERTICES   = 3;
 
 	struct ComputeConstants
 	{
@@ -59,6 +61,11 @@ namespace
 	uint32_t GroupCount(uint32_t count)
 	{
 		return (count + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
+	}
+
+	ImageDesc DepthImage()
+	{
+		return { .extent = IMAGE_EXTENT, .format = Format::eD32Float, .usage = ImageUsageFlags(ImageUsageFlagBits::eDepthAttachment) };
 	}
 }
 
@@ -344,6 +351,81 @@ TEST_F(RenderDeviceTest, ComputeWritesAreVisibleAfterBarrier)
 	device->destroyPipeline(add);
 }
 
+TEST_F(RenderDeviceTest, DepthImageReportsItsExtent)
+{
+	const ImageHandle image = device->createImage(DepthImage());
+
+	EXPECT_NE(image, ImageHandle {});
+	EXPECT_EQ(device->getImageExtent(image),      IMAGE_EXTENT);
+	EXPECT_EQ(device->getStats().imageCount,      baseline.imageCount + 1);
+	EXPECT_EQ(device->getStats().allocationCount, baseline.allocationCount + 1);
+
+	device->destroyImage(image);
+}
+
+TEST_F(RenderDeviceTest, InvalidImageDescReturnsNullImage)
+{
+	EXPECT_EQ(device->createImage({}), ImageHandle {});
+	EXPECT_EQ(device->createImage({ .extent = IMAGE_EXTENT }), ImageHandle {});
+	EXPECT_EQ(device->createImage({ .extent = IMAGE_EXTENT, .format = Format::eRGBA8Unorm, .mipLevels = 0 }), ImageHandle {});
+	EXPECT_EQ(device->getStats().imageCount, baseline.imageCount);
+}
+
+TEST_F(RenderDeviceTest, DestroyedImageHandleBecomesStale)
+{
+	const ImageHandle image = device->createImage(DepthImage());
+	device->destroyImage(image);
+
+	EXPECT_EQ(device->getImageExtent(image), Extent2D {});
+
+	device->destroyImage(image);
+	EXPECT_EQ(device->getStats().imageCount, baseline.imageCount);
+}
+
+TEST_F(RenderDeviceTest, RenderingToColorAndDepthAcrossFrames)
+{
+	const std::vector<char> vertex_shader   = LoadShader("triangle.vert");
+	const std::vector<char> fragment_shader = LoadShader("white.frag");
+	const Format            color_format    = Format::eRGBA8Unorm;
+
+	const ImageHandle color = device->createImage({
+		.extent = IMAGE_EXTENT,
+		.format = color_format,
+		.usage  = ImageUsageFlags(ImageUsageFlagBits::eColorAttachment)
+	});
+	const ImageHandle    depth    = device->createImage(DepthImage());
+	const PipelineHandle pipeline = device->createGraphicsPipeline({
+		.vertexShader   = std::as_bytes(std::span(vertex_shader)),
+		.fragmentShader = std::as_bytes(std::span(fragment_shader)),
+		.colorFormats   = std::span(&color_format, 1),
+		.depthFormat    = Format::eD32Float,
+		.depthTest      = true,
+		.depthWrite     = true,
+		.depthCompare   = CompareOp::eGreaterOrEqual
+	});
+	ASSERT_NE(pipeline, PipelineHandle {});
+
+	const ColorAttachment color_attachment = { .image = color };
+	const DepthAttachment depth_attachment = { .image = depth };
+
+	for (int frame_index = 0; frame_index < FRAME_COUNT; frame_index++)
+	{
+		Frame&       frame    = device->beginFrame();
+		CommandList& commands = frame.commandList();
+
+		commands.beginRendering({ .colorAttachments = std::span(&color_attachment, 1), .depthAttachment = depth_attachment });
+		commands.bindPipeline(pipeline);
+		commands.draw(TRIANGLE_VERTICES);
+		commands.endRendering();
+
+		device->endFrame(frame);
+	}
+
+	device->destroyPipeline(pipeline);
+	device->destroyImage(depth);
+	device->destroyImage(color);
+}
+
 TEST(RenderDeviceLifetime, DestroyingDeviceReleasesLiveResources)
 {
 	std::unique_ptr<RenderDevice> owned_device = CreateRenderDevice({ .appName = "lunar_render_tests_lifetime" });
@@ -353,6 +435,7 @@ TEST(RenderDeviceLifetime, DestroyingDeviceReleasesLiveResources)
 	const BufferHandle          staged  = owned_device->createBuffer(ValuesBuffer(MemoryLocation::eGpuOnly), std::as_bytes(std::span(values)));
 	const BufferHandle          mapped  = owned_device->createBuffer(ValuesBuffer(MemoryLocation::eReadback), {});
 	const PipelineHandle        compute = owned_device->createComputePipeline({ std::as_bytes(std::span(shader)) });
+	const ImageHandle           depth   = owned_device->createImage(DepthImage());
 
 	owned_device->destroyBuffer(owned_device->createBuffer(ValuesBuffer(MemoryLocation::eGpuOnly), std::as_bytes(std::span(values))));
 	owned_device->endFrame(owned_device->beginFrame());
@@ -360,6 +443,7 @@ TEST(RenderDeviceLifetime, DestroyingDeviceReleasesLiveResources)
 	EXPECT_NE(staged,  BufferHandle {});
 	EXPECT_NE(mapped,  BufferHandle {});
 	EXPECT_NE(compute, PipelineHandle {});
+	EXPECT_NE(depth,   ImageHandle {});
 
 	owned_device.reset();
 }
