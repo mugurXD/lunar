@@ -86,13 +86,13 @@ namespace lunar::Render
 			GpuBuffer                    materialsBuffer,
 			GpuTexture                   materialsAtlas
 		);
-		GpuCubemap           createCubemap
-		(
-			int   width,
-			int   height,
-			void* data,
-			bool  isSourceHdr
-		);
+		//GpuCubemap           createCubemap
+		//(
+		//	int   width,
+		//	int   height,
+		//	void* data,
+		//	bool  isSourceHdr
+		//);
 
 #ifdef LUNAR_OPENGL
 		GLuint glGetFramebuffer();

@@ -125,16 +125,20 @@ namespace lunar::Render::imp
 				VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
 				VkDebugUtilsMessageTypeFlagsEXT       messageType,
 				const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
-				void*) -> VkBool32 
+				void*                                       pUserData) -> VkBool32
 			{
 				if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
 				{
 					const char* severity = vkb::to_string_message_severity(messageSeverity);
 						const char* type     = vkb::to_string_message_type(messageType);
 					DEBUG_ERROR("[{}: {}] {}", severity, type, pCallbackData->pMessage);
+
+					if (messageType & VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT)
+						static_cast<std::atomic<uint64_t>*>(pUserData)->fetch_add(1);
 				}
 				return VK_FALSE;
 			})
+			.set_debug_callback_user_data_pointer(&validationErrorCount)
 			.request_validation_layers(true)
 			.require_api_version(1, 3)
 			.build();
@@ -361,5 +365,30 @@ namespace lunar::Render::imp
 	const vkb::Device& VkRenderDevice::getDevice() const
 	{
 		return device;
+	}
+
+	void VkRenderDevice::waitIdle()
+	{
+		flushUploads();
+		vkDeviceWaitIdle(device);
+		releaseCompletedBatches();
+		releaseDestroyedResources();
+	}
+
+	RenderDeviceStats VkRenderDevice::getStats() const
+	{
+		VmaTotalStatistics memory = {};
+		vmaCalculateStatistics(allocator, &memory);
+
+		return RenderDeviceStats
+		{
+			.bufferCount             = buffers.size(),
+			.imageCount              = images.size(),
+			.pipelineCount           = pipelines.size(),
+			.pendingDestructionCount = deferredDestructions.size(),
+			.allocationCount         = memory.total.statistics.allocationCount,
+			.allocationBytes         = memory.total.statistics.allocationBytes,
+			.validationErrorCount    = validationErrorCount.load()
+		};
 	}
 }

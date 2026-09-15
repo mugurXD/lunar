@@ -110,16 +110,16 @@ namespace lunar::Render
 		return meshes.create(this, vertexBuffer, indexBuffer, topology, materialsBuffer, materialsAtlas);
 	}
 
-	GpuCubemap RenderContext_T::createCubemap
-	(
-		int   width,
-		int   height,
-		void* data,
-		bool  isSourceHdr
-	)
-	{
-		return cubemaps.create(this, width, height, data, isSourceHdr);
-	}
+	//GpuCubemap RenderContext_T::createCubemap
+	//(
+	//	int   width,
+	//	int   height,
+	//	void* data,
+	//	bool  isSourceHdr
+	//)
+	//{
+	//	return cubemaps.create(this, width, height, data, isSourceHdr);
+	//}
 
 	void RenderContext_T::loadDefaultMeshes()
 	{

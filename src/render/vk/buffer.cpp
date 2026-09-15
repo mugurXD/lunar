@@ -169,6 +169,19 @@ namespace lunar::Render::imp
 		return record == nullptr ? 0 : record->address;
 	}
 
+	std::span<const std::byte> VkRenderDevice::readBuffer(BufferHandle buffer)
+	{
+		const VkBufferRecord* record = resolve(buffer);
+		if (record == nullptr || record->mapped == nullptr)
+		{
+			DEBUG_ERROR("Only live upload or readback buffers can be read");
+			return {};
+		}
+
+		vmaInvalidateAllocation(allocator, record->allocation, 0, VK_WHOLE_SIZE);
+		return { static_cast<const std::byte*>(record->mapped), record->size };
+	}
+
 	VkBufferRecord* VkRenderDevice::resolve(BufferHandle buffer)
 	{
 		return buffers.get(FromGpuHandle(buffers, buffer));

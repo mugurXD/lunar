@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <iterator>
@@ -117,12 +118,15 @@ namespace lunar::Render::imp
 		std::unique_ptr<Swapchain> createSwapchain(Window_T& window)                                                  override;
 		Frame&                     beginFrame()                                                                       override;
 		void                       endFrame(Frame& frame)                                                             override;
+		void                       waitIdle()                                                                         override;
+		RenderDeviceStats          getStats()                                                                   const override;
 		BufferHandle               createBuffer(const BufferDesc& desc, std::span<const std::byte> initial_data)      override;
 		void                       destroyBuffer(BufferHandle buffer)                                                 override;
 		UploadTicket               uploadBuffer(BufferHandle buffer, size_t offset, std::span<const std::byte> data) override;
 		UploadTicket               flushUploads()                                                                     override;
 		bool                       isComplete(UploadTicket ticket)                                              const override;
 		uint64_t                   getBufferAddress(BufferHandle buffer)                                              override;
+		std::span<const std::byte> readBuffer(BufferHandle buffer)                                                    override;
 		PipelineHandle             createGraphicsPipeline(const GraphicsPipelineDesc& desc)                           override;
 		PipelineHandle             createComputePipeline(const ComputePipelineDesc& desc)                             override;
 		void                       destroyPipeline(PipelineHandle pipeline)                                           override;
@@ -159,6 +163,7 @@ namespace lunar::Render::imp
 		void            releaseCompletedBatches();
 		uint64_t        getCompletedUploadValue() const;
 
+		std::atomic<uint64_t>                                  validationErrorCount     = 0;
 		Window_T*                                              presentWindow            = nullptr;
 		vkb::Instance                                          instance                 = {};
 		VkSurfaceKHR                                           surface                  = VK_NULL_HANDLE;

@@ -18,6 +18,31 @@ namespace lunar::Render::imp
 			{ IndexType::eUint32, VK_INDEX_TYPE_UINT32 }
 		};
 
+		void RecordMemoryBarrier(VkCommandBuffer       command_buffer,
+		                         VkPipelineStageFlags2 src_stage_mask,
+		                         VkAccessFlags2        src_access_mask,
+		                         VkPipelineStageFlags2 dst_stage_mask,
+		                         VkAccessFlags2        dst_access_mask)
+		{
+			const VkMemoryBarrier2 barrier =
+			{
+				.sType         = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+				.srcStageMask  = src_stage_mask,
+				.srcAccessMask = src_access_mask,
+				.dstStageMask  = dst_stage_mask,
+				.dstAccessMask = dst_access_mask
+			};
+
+			const VkDependencyInfo dependency =
+			{
+				.sType              = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+				.memoryBarrierCount = 1,
+				.pMemoryBarriers    = &barrier
+			};
+
+			vkCmdPipelineBarrier2(command_buffer, &dependency);
+		}
+
 		void SetFullViewport(VkCommandBuffer command_buffer, VkExtent2D extent)
 		{
 			const VkViewport viewport =
@@ -145,23 +170,11 @@ namespace lunar::Render::imp
 
 	void VkCommandList::memoryBarrier()
 	{
-		const VkMemoryBarrier2 barrier =
-		{
-			.sType         = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
-			.srcStageMask  = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-			.srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT,
-			.dstStageMask  = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-			.dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT
-		};
-
-		const VkDependencyInfo dependency =
-		{
-			.sType              = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-			.memoryBarrierCount = 1,
-			.pMemoryBarriers    = &barrier
-		};
-
-		vkCmdPipelineBarrier2(commandBuffer, &dependency);
+		RecordMemoryBarrier(commandBuffer,
+		                    VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+		                    VK_ACCESS_2_MEMORY_WRITE_BIT,
+		                    VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+		                    VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT);
 	}
 
 	void VkCommandList::draw(uint32_t vertex_count, uint32_t instance_count, uint32_t first_vertex, uint32_t first_instance)
@@ -343,6 +356,12 @@ namespace lunar::Render::imp
 			wait_semaphores.push_back(MakeSemaphoreSubmitInfo(frame.acquireSemaphore, 0, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT));
 			signal_semaphores.push_back(MakeSemaphoreSubmitInfo(swapchain->getPresentSemaphore(), 0, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT));
 		}
+
+		RecordMemoryBarrier(frame.commands.getHandle(),
+		                    VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+		                    VK_ACCESS_2_MEMORY_WRITE_BIT,
+		                    VK_PIPELINE_STAGE_2_HOST_BIT,
+		                    VK_ACCESS_2_HOST_READ_BIT);
 
 		frame.commands.end();
 

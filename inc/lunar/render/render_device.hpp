@@ -29,6 +29,17 @@ namespace lunar::Render
 		bool memoryBudget       = false;
 	};
 
+	struct LUNAR_API RenderDeviceStats
+	{
+		size_t   bufferCount             = 0;
+		size_t   imageCount              = 0;
+		size_t   pipelineCount           = 0;
+		size_t   pendingDestructionCount = 0;
+		size_t   allocationCount         = 0;
+		uint64_t allocationBytes         = 0;
+		uint64_t validationErrorCount    = 0;
+	};
+
 	class LUNAR_API Swapchain
 	{
 	public:
@@ -66,12 +77,15 @@ namespace lunar::Render
 		virtual std::unique_ptr<Swapchain> createSwapchain(Window_T& window)                                                     = 0;
 		virtual Frame&                     beginFrame()                                                                          = 0;
 		virtual void                       endFrame(Frame& frame)                                                                = 0;
+		virtual void                       waitIdle()                                                                            = 0;
+		virtual RenderDeviceStats          getStats()                                                                      const = 0;
 		virtual BufferHandle               createBuffer(const BufferDesc& desc, std::span<const std::byte> initial_data)         = 0;
 		virtual void                       destroyBuffer(BufferHandle buffer)                                                    = 0;
 		virtual UploadTicket               uploadBuffer(BufferHandle buffer, size_t offset, std::span<const std::byte> data)    = 0;
 		virtual UploadTicket               flushUploads()                                                                        = 0;
 		virtual bool                       isComplete(UploadTicket ticket)                                                 const = 0;
 		virtual uint64_t                   getBufferAddress(BufferHandle buffer)                                                 = 0;
+		virtual std::span<const std::byte> readBuffer(BufferHandle buffer)                                                       = 0;
 		virtual PipelineHandle             createGraphicsPipeline(const GraphicsPipelineDesc& desc)                              = 0;
 		virtual PipelineHandle             createComputePipeline(const ComputePipelineDesc& desc)                                = 0;
 		virtual void                       destroyPipeline(PipelineHandle pipeline)                                              = 0;
