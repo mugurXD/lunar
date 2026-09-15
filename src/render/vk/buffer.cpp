@@ -32,10 +32,7 @@ namespace lunar::Render::imp
 
 		VkBufferUsageFlags ToVkBufferUsage(BufferUsageFlags usage, MemoryLocation location)
 		{
-			VkBufferUsageFlags vk_usage = 0;
-			for (const auto& [bit, vk_bit] : USAGE_TRANSLATIONS)
-				if (usage & bit)
-					vk_usage |= vk_bit;
+			VkBufferUsageFlags vk_usage = TranslateFlags(USAGE_TRANSLATIONS, usage);
 
 			if (IsAddressable(usage))
 				vk_usage |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;

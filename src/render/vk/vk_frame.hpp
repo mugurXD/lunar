@@ -38,6 +38,8 @@ namespace lunar::Render::imp
 		VkCommandBuffer getHandle() const;
 
 	private:
+		VkImageRecord& prepareAttachment(ImageHandle image, VkImageLayout layout);
+
 		VkRenderDevice& device;
 		VkCommandPool   commandPool   = VK_NULL_HANDLE;
 		VkCommandBuffer commandBuffer = VK_NULL_HANDLE;

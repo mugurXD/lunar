@@ -54,11 +54,13 @@ namespace lunar::Render::imp
 
 	struct VkImageRecord
 	{
-		VkImage       image  = VK_NULL_HANDLE;
-		VkImageView   view   = VK_NULL_HANDLE;
-		VkFormat      format = VK_FORMAT_UNDEFINED;
-		VkExtent2D    extent = {};
-		VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
+		VkImage            image      = VK_NULL_HANDLE;
+		VkImageView        view       = VK_NULL_HANDLE;
+		VmaAllocation      allocation = VK_NULL_HANDLE;
+		VkFormat           format     = VK_FORMAT_UNDEFINED;
+		VkExtent2D         extent     = {};
+		VkImageAspectFlags aspect     = VK_IMAGE_ASPECT_COLOR_BIT;
+		VkImageLayout      layout     = VK_IMAGE_LAYOUT_UNDEFINED;
 	};
 
 	struct VkUploadBatch
@@ -95,6 +97,17 @@ namespace lunar::Render::imp
 		return found != std::end(table) ? found->first : From {};
 	}
 
+	template<typename BitType, typename VkBitType, size_t Count>
+	VkFlags TranslateFlags(const std::pair<BitType, VkBitType> (&table)[Count], Flags<BitType> flags)
+	{
+		VkFlags vk_flags = 0;
+		for (const auto& [bit, vk_bit] : table)
+			if (flags & bit)
+				vk_flags |= vk_bit;
+
+		return vk_flags;
+	}
+
 	VkFormat ToVkFormat(Format format);
 	Format   FromVkFormat(VkFormat format);
 
@@ -127,6 +140,9 @@ namespace lunar::Render::imp
 		bool                       isComplete(UploadTicket ticket)                                              const override;
 		uint64_t                   getBufferAddress(BufferHandle buffer)                                              override;
 		std::span<const std::byte> readBuffer(BufferHandle buffer)                                                    override;
+		ImageHandle                createImage(const ImageDesc& desc)                                                 override;
+		void                       destroyImage(ImageHandle image)                                                    override;
+		Extent2D                   getImageExtent(ImageHandle image)                                                  override;
 		PipelineHandle             createGraphicsPipeline(const GraphicsPipelineDesc& desc)                           override;
 		PipelineHandle             createComputePipeline(const ComputePipelineDesc& desc)                             override;
 		void                       destroyPipeline(PipelineHandle pipeline)                                           override;

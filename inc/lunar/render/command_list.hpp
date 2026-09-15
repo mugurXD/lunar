@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <type_traits>
 
@@ -32,9 +33,17 @@ namespace lunar::Render
 		glm::vec4   clearColor = {};
 	};
 
+	struct LUNAR_API DepthAttachment
+	{
+		ImageHandle image      = {};
+		LoadOp      loadOp     = LoadOp::eClear;
+		float       clearDepth = 0.f;
+	};
+
 	struct LUNAR_API RenderingDesc
 	{
 		std::span<const ColorAttachment> colorAttachments = {};
+		std::optional<DepthAttachment>   depthAttachment  = std::nullopt;
 	};
 
 	class LUNAR_API CommandList

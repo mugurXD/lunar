@@ -21,6 +21,14 @@ namespace lunar::Render
 	using ImageHandle    = GpuHandle<ImageTag>;
 	using PipelineHandle = GpuHandle<PipelineTag>;
 
+	struct LUNAR_API Extent2D
+	{
+		uint32_t width  = 0;
+		uint32_t height = 0;
+
+		bool operator==(const Extent2D&) const = default;
+	};
+
 	enum class LUNAR_API Format
 	{
 		eUndefined,

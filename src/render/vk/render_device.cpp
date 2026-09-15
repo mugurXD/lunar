@@ -327,6 +327,15 @@ namespace lunar::Render::imp
 			});
 			buffers.clear();
 
+			images.forEach([&](PoolHandle<VkImageRecord>, VkImageRecord& record) {
+				if (record.allocation == VK_NULL_HANDLE)
+					return;
+
+				vkDestroyImageView(device, record.view, nullptr);
+				vmaDestroyImage(allocator, record.image, record.allocation);
+			});
+			images.clear();
+
 			pipelines.forEach([&](PoolHandle<VkPipelineRecord>, VkPipelineRecord& record) {
 				vkDestroyPipeline(device, record.pipeline, nullptr);
 			});

@@ -61,19 +61,27 @@ namespace lunar::Render::imp
 			vkCmdSetScissor(command_buffer, 0, 1, &scissor);
 		}
 
-		VkRenderingAttachmentInfo ToVkAttachment(const ColorAttachment& attachment, const VkImageRecord& image)
+		VkRenderingAttachmentInfo ToVkAttachment(const VkImageRecord& image, LoadOp load_op, const VkClearValue& clear_value)
 		{
-			const glm::vec4& color = attachment.clearColor;
-
 			return VkRenderingAttachmentInfo
 			{
 				.sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
 				.imageView   = image.view,
 				.imageLayout = image.layout,
-				.loadOp      = attachment.loadOp == LoadOp::eClear ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD,
+				.loadOp      = load_op == LoadOp::eClear ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD,
 				.storeOp     = VK_ATTACHMENT_STORE_OP_STORE,
-				.clearValue  = { .color = { .float32 = { color.r, color.g, color.b, color.a } } }
+				.clearValue  = clear_value
 			};
+		}
+
+		VkClearValue ToClearColor(const glm::vec4& color)
+		{
+			return VkClearValue { .color = { .float32 = { color.r, color.g, color.b, color.a } } };
+		}
+
+		VkClearValue ToClearDepth(float depth)
+		{
+			return VkClearValue { .depthStencil = { .depth = depth } };
 		}
 	}
 
@@ -120,12 +128,17 @@ namespace lunar::Render::imp
 
 		for (const ColorAttachment& attachment : desc.colorAttachments)
 		{
-			VkImageRecord* image = device.resolve(attachment.image);
-			DEBUG_ASSERT(image != nullptr, "Rendering to a null or destroyed image");
+			const VkImageRecord& image = prepareAttachment(attachment.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+			color_attachments.push_back(ToVkAttachment(image, attachment.loadOp, ToClearColor(attachment.clearColor)));
+			render_extent = image.extent;
+		}
 
-			transitionImage(*image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-			color_attachments.push_back(ToVkAttachment(attachment, *image));
-			render_extent = image->extent;
+		std::optional<VkRenderingAttachmentInfo> depth_attachment;
+		if (desc.depthAttachment.has_value())
+		{
+			const VkImageRecord& image = prepareAttachment(desc.depthAttachment->image, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+			depth_attachment = ToVkAttachment(image, desc.depthAttachment->loadOp, ToClearDepth(desc.depthAttachment->clearDepth));
+			render_extent    = image.extent;
 		}
 
 		const VkRenderingInfo rendering_info =
@@ -134,7 +147,8 @@ namespace lunar::Render::imp
 			.renderArea           = { .extent = render_extent },
 			.layerCount           = 1,
 			.colorAttachmentCount = static_cast<uint32_t>(color_attachments.size()),
-			.pColorAttachments    = color_attachments.data()
+			.pColorAttachments    = color_attachments.data(),
+			.pDepthAttachment     = depth_attachment.has_value() ? &depth_attachment.value() : nullptr
 		};
 
 		vkCmdBeginRendering(commandBuffer, &rendering_info);
@@ -206,11 +220,17 @@ namespace lunar::Render::imp
 		vkEndCommandBuffer(commandBuffer);
 	}
 
+	VkImageRecord& VkCommandList::prepareAttachment(ImageHandle image, VkImageLayout layout)
+	{
+		VkImageRecord* record = device.resolve(image);
+		DEBUG_ASSERT(record != nullptr, "Rendering to a null or destroyed image");
+
+		transitionImage(*record, layout);
+		return *record;
+	}
+
 	void VkCommandList::transitionImage(VkImageRecord& image, VkImageLayout layout)
 	{
-		if (image.layout == layout)
-			return;
-
 		const VkImageMemoryBarrier2 barrier =
 		{
 			.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
@@ -225,7 +245,7 @@ namespace lunar::Render::imp
 			.image               = image.image,
 			.subresourceRange    =
 			{
-				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+				.aspectMask = image.aspect,
 				.levelCount = VK_REMAINING_MIP_LEVELS,
 				.layerCount = VK_REMAINING_ARRAY_LAYERS
 			}

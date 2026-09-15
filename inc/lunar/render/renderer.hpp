@@ -16,10 +16,12 @@ namespace lunar::Render
 		void render();
 
 	private:
+		void resizeDepthImage(Extent2D extent);
 		void recordFrame(CommandList& commands, ImageHandle target) const;
 
 		RenderDevice&  device;
 		Swapchain*     swapchain        = nullptr;
 		PipelineHandle trianglePipeline = {};
+		ImageHandle    depthImage       = {};
 	};
 }

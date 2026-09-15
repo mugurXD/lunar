@@ -8,6 +8,7 @@
 #include <lunar/render/common.hpp>
 #include <lunar/render/gpu_types.hpp>
 #include <lunar/render/buffer_types.hpp>
+#include <lunar/render/image_types.hpp>
 #include <lunar/render/command_list.hpp>
 #include <lunar/render/pipeline_types.hpp>
 
@@ -86,6 +87,9 @@ namespace lunar::Render
 		virtual bool                       isComplete(UploadTicket ticket)                                                 const = 0;
 		virtual uint64_t                   getBufferAddress(BufferHandle buffer)                                                 = 0;
 		virtual std::span<const std::byte> readBuffer(BufferHandle buffer)                                                       = 0;
+		virtual ImageHandle                createImage(const ImageDesc& desc)                                                    = 0;
+		virtual void                       destroyImage(ImageHandle image)                                                       = 0;
+		virtual Extent2D                   getImageExtent(ImageHandle image)                                                     = 0;
 		virtual PipelineHandle             createGraphicsPipeline(const GraphicsPipelineDesc& desc)                              = 0;
 		virtual PipelineHandle             createComputePipeline(const ComputePipelineDesc& desc)                                = 0;
 		virtual void                       destroyPipeline(PipelineHandle pipeline)                                              = 0;
