@@ -7,6 +7,7 @@ add_executable(lunar_tests
     "test_time.cpp"
     "test_camera.cpp"
     "test_mesh_data.cpp"
+    "test_jobs.cpp"
 )
 
 target_link_libraries(lunar_tests PRIVATE lunar GTest::gtest_main)

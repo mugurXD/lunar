@@ -30,6 +30,10 @@ namespace
 	constexpr uint32_t         UPLOAD_BATCH_ROUNDS = 10;
 	constexpr Extent2D         IMAGE_EXTENT        = { 64, 32 };
 	constexpr uint32_t         TRIANGLE_VERTICES   = 3;
+	constexpr size_t           TRANSIENT_ODD_SIZE  = 13;
+	constexpr size_t           TRANSIENT_OVERSIZED = size_t(1) << 30;
+
+	constexpr uint32_t TRANSIENT_ALLOCATIONS_PER_FRAME = 10000;
 
 	struct ComputeConstants
 	{
@@ -460,6 +464,75 @@ TEST_F(RenderDeviceTest, EmptyMeshDataReturnsNullMesh)
 	EXPECT_EQ(registry.create({}), MeshHandle {});
 	EXPECT_EQ(registry.size(), 0u);
 	EXPECT_EQ(device->getStats().bufferCount, baseline.bufferCount);
+}
+
+TEST_F(RenderDeviceTest, TransientAllocationsAreAlignedAndDistinct)
+{
+	Frame& frame = device->beginFrame();
+
+	const TransientAllocation first  = frame.allocateTransient(TRANSIENT_ODD_SIZE);
+	const TransientAllocation second = frame.allocateTransient(TRANSIENT_ODD_SIZE);
+
+	EXPECT_EQ(first.data.size(), TRANSIENT_ODD_SIZE);
+	EXPECT_NE(first.address, 0u);
+	EXPECT_EQ(first.address  % TRANSIENT_ALIGNMENT, 0u);
+	EXPECT_EQ(second.address % TRANSIENT_ALIGNMENT, 0u);
+	EXPECT_GE(second.address, first.address + TRANSIENT_ODD_SIZE);
+	EXPECT_GE(second.data.data(), first.data.data() + TRANSIENT_ODD_SIZE);
+
+	device->endFrame(frame);
+}
+
+TEST_F(RenderDeviceTest, OversizedTransientAllocationFails)
+{
+	Frame& frame = device->beginFrame();
+
+	const TransientAllocation allocation = frame.allocateTransient(TRANSIENT_OVERSIZED);
+
+	EXPECT_TRUE(allocation.data.empty());
+	EXPECT_EQ(allocation.address, 0u);
+
+	device->endFrame(frame);
+}
+
+TEST_F(RenderDeviceTest, TransientDataIsReadableByGpu)
+{
+	const std::vector<uint32_t> values   = Sequence(FILL_MULTIPLIER, FILL_OFFSET);
+	const PipelineHandle        copy     = createCompute("copy.comp");
+	const BufferHandle          readback = device->createBuffer(ValuesBuffer(MemoryLocation::eReadback), {});
+	ASSERT_NE(copy, PipelineHandle {});
+
+	Frame&                    frame      = device->beginFrame();
+	const TransientAllocation allocation = frame.allocateTransient(VALUES_SIZE);
+	ASSERT_EQ(allocation.data.size(), VALUES_SIZE);
+	std::memcpy(allocation.data.data(), values.data(), VALUES_SIZE);
+
+	CommandList& commands = frame.commandList();
+	commands.bindPipeline(copy);
+	commands.pushConstants(ComputeConstants { .source = allocation.address, .destination = device->getBufferAddress(readback), .count = VALUE_COUNT });
+	commands.dispatch(GroupCount(VALUE_COUNT));
+	device->endFrame(frame);
+
+	EXPECT_EQ(readValues(readback), values);
+
+	device->destroyBuffer(readback);
+	device->destroyPipeline(copy);
+}
+
+TEST_F(RenderDeviceTest, TransientMemoryDoesNotGrowAcrossFrames)
+{
+	for (int frame_index = 0; frame_index < FRAME_COUNT; frame_index++)
+	{
+		Frame& frame = device->beginFrame();
+		for (uint32_t allocation_index = 0; allocation_index < TRANSIENT_ALLOCATIONS_PER_FRAME; allocation_index++)
+			EXPECT_NE(frame.writeTransient(allocation_index), 0u);
+
+		device->endFrame(frame);
+	}
+
+	device->waitIdle();
+	EXPECT_EQ(device->getStats().allocationCount, baseline.allocationCount);
+	EXPECT_EQ(device->getStats().allocationBytes, baseline.allocationBytes);
 }
 
 TEST(RenderDeviceLifetime, DestroyingDeviceReleasesLiveResources)
