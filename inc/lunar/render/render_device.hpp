@@ -8,6 +8,7 @@
 #include <lunar/render/common.hpp>
 #include <lunar/render/gpu_types.hpp>
 #include <lunar/render/buffer_types.hpp>
+#include <lunar/render/command_list.hpp>
 
 namespace lunar::Render
 {
@@ -37,6 +38,19 @@ namespace lunar::Render
 		Swapchain& operator=(const Swapchain&) = delete;
 	};
 
+	class LUNAR_API Frame
+	{
+	public:
+		Frame()          noexcept = default;
+		virtual ~Frame() noexcept = default;
+
+		Frame(const Frame&)            = delete;
+		Frame& operator=(const Frame&) = delete;
+
+		virtual ImageHandle  acquire(Swapchain& swapchain) = 0;
+		virtual CommandList& commandList()                 = 0;
+	};
+
 	class LUNAR_API RenderDevice
 	{
 	public:
@@ -47,6 +61,8 @@ namespace lunar::Render
 		RenderDevice& operator=(const RenderDevice&) = delete;
 
 		virtual std::unique_ptr<Swapchain> createSwapchain(Window_T& window)                                                     = 0;
+		virtual Frame&                     beginFrame()                                                                          = 0;
+		virtual void                       endFrame(Frame& frame)                                                                = 0;
 		virtual BufferHandle               createBuffer(const BufferDesc& desc, std::span<const std::byte> initial_data)         = 0;
 		virtual void                       destroyBuffer(BufferHandle buffer)                                                    = 0;
 		virtual UploadTicket               uploadBuffer(BufferHandle buffer, size_t offset, std::span<const std::byte> data)    = 0;

@@ -1,4 +1,5 @@
 #include "vk_render_device.hpp"
+#include "vk_frame.hpp"
 #include "vk_swapchain.hpp"
 
 #include <vulkan/vk_enum_string_helper.h>
@@ -299,7 +300,7 @@ namespace lunar::Render::imp
 			return;
 		}
 
-		if (!createUploadResources())
+		if (!createUploadResources() || !createFrameResources())
 			return;
 
 		DEBUG_LOG("Vulkan rendering interface initialized.");
@@ -311,6 +312,10 @@ namespace lunar::Render::imp
 		if (device.device != VK_NULL_HANDLE)
 		{
 			vkDeviceWaitIdle(device);
+			destroyFrameResources();
+
+			for (const VkDestroyedBuffer& destroyed : destroyedBuffers)
+				vmaDestroyBuffer(allocator, destroyed.buffer.buffer, destroyed.buffer.allocation);
 
 			buffers.forEach([&](PoolHandle<VkBufferRecord>, VkBufferRecord& record) {
 				vmaDestroyBuffer(allocator, record.buffer, record.allocation);
@@ -341,6 +346,11 @@ namespace lunar::Render::imp
 	std::unique_ptr<Swapchain> VkRenderDevice::createSwapchain(Window_T& window)
 	{
 		DEBUG_ASSERT(&window == presentWindow, "Swapchains can currently only be created for the window the device was created with");
-		return std::make_unique<VkSwapchain>(device, window);
+		return std::make_unique<VkSwapchain>(*this, window);
+	}
+
+	const vkb::Device& VkRenderDevice::getDevice() const
+	{
+		return device;
 	}
 }

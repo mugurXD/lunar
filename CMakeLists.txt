@@ -50,6 +50,7 @@ target_sources(lunar PRIVATE
     "src/render/components.cpp"
     "src/render/window.cpp"
     "src/render/render_device.cpp"
+    "src/render/renderer.cpp"
     "src/stb_image.cpp"
 )
 

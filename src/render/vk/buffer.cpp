@@ -127,8 +127,7 @@ namespace lunar::Render::imp
 			record.address = vkGetBufferDeviceAddress(device, &address_info);
 		}
 
-		const PoolHandle<VkBufferRecord> stored = buffers.create(record);
-		const BufferHandle               handle = { stored.getIndex(), stored.getGeneration() };
+		const BufferHandle handle = ToGpuHandle<BufferTag>(buffers.create(record));
 
 		if (!initial_data.empty())
 			uploadBuffer(handle, 0, initial_data);
@@ -138,14 +137,33 @@ namespace lunar::Render::imp
 
 	void VkRenderDevice::destroyBuffer(BufferHandle buffer)
 	{
-		const PoolHandle<VkBufferRecord> stored = buffers.getHandleFor(buffer.index, buffer.generation);
+		const PoolHandle<VkBufferRecord> stored = FromGpuHandle(buffers, buffer);
 		const VkBufferRecord*            record = buffers.get(stored);
 		if (record == nullptr)
 			return;
 
-		waitForUpload(record->lastUploadValue);
-		vmaDestroyBuffer(allocator, record->buffer, record->allocation);
+		destroyedBuffers.push_back({
+			.buffer      = { record->buffer, record->allocation },
+			.frameValue  = frameValue,
+			.uploadValue = record->lastUploadValue
+		});
+
 		buffers.destroy(stored);
+		releaseDestroyedBuffers();
+	}
+
+	void VkRenderDevice::releaseDestroyedBuffers()
+	{
+		const uint64_t completed_frame  = GetTimelineValue(device, frameTimeline);
+		const uint64_t completed_upload = getCompletedUploadValue();
+
+		std::erase_if(destroyedBuffers, [&](const VkDestroyedBuffer& destroyed) {
+			const bool released = destroyed.frameValue <= completed_frame && destroyed.uploadValue <= completed_upload;
+			if (released)
+				vmaDestroyBuffer(allocator, destroyed.buffer.buffer, destroyed.buffer.allocation);
+
+			return released;
+		});
 	}
 
 	UploadTicket VkRenderDevice::uploadBuffer(BufferHandle buffer, size_t offset, std::span<const std::byte> data)
@@ -170,7 +188,7 @@ namespace lunar::Render::imp
 
 	VkBufferRecord* VkRenderDevice::resolve(BufferHandle buffer)
 	{
-		return buffers.get(buffers.getHandleFor(buffer.index, buffer.generation));
+		return buffers.get(FromGpuHandle(buffers, buffer));
 	}
 
 	UploadTicket VkRenderDevice::uploadThroughStaging(VkBufferRecord& record, size_t offset, std::span<const std::byte> data)
@@ -188,8 +206,8 @@ namespace lunar::Render::imp
 			.usage = VMA_MEMORY_USAGE_AUTO
 		};
 
-		VkStagingBuffer   staging        = {};
-		VmaAllocationInfo staging_result = {};
+		VkBufferAllocation staging        = {};
+		VmaAllocationInfo  staging_result = {};
 
 		const VkResult result = vmaCreateBuffer(allocator, &staging_info, &staging_allocation_info, &staging.buffer, &staging.allocation, &staging_result);
 		if (result != VK_SUCCESS)

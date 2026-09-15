@@ -4,8 +4,6 @@
 
 namespace lunar
 {
-	const glm::vec4 CLEAR_COLOR = { 0.1f, 0.1f, 0.12f, 1.f };
-
 	Scene& Engine::getActiveScene()
 	{
 		return activeScene;
@@ -38,8 +36,7 @@ namespace lunar
 			window.pollEvents();
 			timeContext.update();
 			systemScheduler.runFrame(activeScene, timeContext.getFrameTime());
-			renderDevice->flushUploads();
-			//renderFrame();
+			renderFrame();
 			activeScene.flushDestroyedEntities();
 			window.update();
 		}
@@ -47,6 +44,8 @@ namespace lunar
 
 	void Engine::renderFrame()
 	{
+		renderer.render(swapchain.get());
+
 		//renderContext.begin(&window);
 		//renderContext.clear(CLEAR_COLOR.r, CLEAR_COLOR.g, CLEAR_COLOR.b, CLEAR_COLOR.a);
 
@@ -83,6 +82,7 @@ namespace lunar
 			}
 		)),
 		swapchain(builder.useWindow ? renderDevice->createSwapchain(window) : nullptr),
+		renderer(*renderDevice),
 		activeScene(),
 		appName(builder.appName),
 		systemScheduler(builder.fixedTimestepSeconds)

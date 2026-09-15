@@ -4,50 +4,8 @@
 
 #include <lunar/debug.hpp>
 
-#include <cstdint>
-
 namespace lunar::Render::imp
 {
-	namespace
-	{
-		constexpr uint64_t WAIT_FOREVER = UINT64_MAX;
-
-		VkResult SubmitCommandBuffer(VkQueue                                queue,
-		                             VkCommandBuffer                        command_buffer,
-		                             std::span<const VkSemaphoreSubmitInfo> signal_semaphores,
-		                             VkFence                                fence)
-		{
-			const VkCommandBufferSubmitInfo command_buffer_info =
-			{
-				.sType         = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
-				.commandBuffer = command_buffer
-			};
-
-			const VkSubmitInfo2 submit_info =
-			{
-				.sType                    = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
-				.commandBufferInfoCount   = 1,
-				.pCommandBufferInfos      = &command_buffer_info,
-				.signalSemaphoreInfoCount = static_cast<uint32_t>(signal_semaphores.size()),
-				.pSignalSemaphoreInfos    = signal_semaphores.data()
-			};
-
-			return vkQueueSubmit2(queue, 1, &submit_info, fence);
-		}
-
-		void BeginOneTimeCommands(VkCommandBuffer command_buffer)
-		{
-			const VkCommandBufferBeginInfo begin_info =
-			{
-				.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-				.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
-			};
-
-			vkResetCommandBuffer(command_buffer, 0);
-			vkBeginCommandBuffer(command_buffer, &begin_info);
-		}
-	}
-
 	bool VkRenderDevice::createUploadResources()
 	{
 		const VkCommandPoolCreateInfo command_pool_info =
@@ -82,20 +40,7 @@ namespace lunar::Render::imp
 			}
 		}
 
-		const VkSemaphoreTypeCreateInfo timeline_info =
-		{
-			.sType         = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO,
-			.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE,
-			.initialValue  = 0
-		};
-
-		const VkSemaphoreCreateInfo semaphore_info =
-		{
-			.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
-			.pNext = &timeline_info
-		};
-
-		result = vkCreateSemaphore(device, &semaphore_info, nullptr, &uploadTimeline);
+		result = CreateVkSemaphore(device, VK_SEMAPHORE_TYPE_TIMELINE, uploadTimeline);
 		if (result != VK_SUCCESS)
 		{
 			DEBUG_ERROR("Failed to create upload timeline semaphore: {}", string_VkResult(result));
@@ -127,15 +72,9 @@ namespace lunar::Render::imp
 
 		vkEndCommandBuffer(batch.commandBuffer);
 
-		const VkSemaphoreSubmitInfo signal_info =
-		{
-			.sType     = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
-			.semaphore = uploadTimeline,
-			.value     = nextUploadValue,
-			.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT
-		};
+		const VkSemaphoreSubmitInfo signal_info = MakeSemaphoreSubmitInfo(uploadTimeline, nextUploadValue, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT);
 
-		const VkResult result = SubmitCommandBuffer(transferQueue, batch.commandBuffer, { &signal_info, 1 }, VK_NULL_HANDLE);
+		const VkResult result = SubmitCommandBuffer(transferQueue, batch.commandBuffer, {}, { &signal_info, 1 }, VK_NULL_HANDLE);
 		if (result != VK_SUCCESS)
 			DEBUG_ERROR("Failed to submit upload batch {}: {}", nextUploadValue, string_VkResult(result));
 
@@ -173,20 +112,12 @@ namespace lunar::Render::imp
 		if (value >= nextUploadValue)
 			flushUploads();
 
-		const VkSemaphoreWaitInfo wait_info =
-		{
-			.sType          = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO,
-			.semaphoreCount = 1,
-			.pSemaphores    = &uploadTimeline,
-			.pValues        = &value
-		};
-
-		vkWaitSemaphores(device, &wait_info, WAIT_FOREVER);
+		WaitForTimeline(device, uploadTimeline, value);
 	}
 
 	void VkRenderDevice::releaseStagingBuffers(VkUploadBatch& batch)
 	{
-		for (const VkStagingBuffer& staging : batch.stagingBuffers)
+		for (const VkBufferAllocation& staging : batch.stagingBuffers)
 			vmaDestroyBuffer(allocator, staging.buffer, staging.allocation);
 
 		batch.stagingBuffers.clear();
@@ -202,9 +133,7 @@ namespace lunar::Render::imp
 
 	uint64_t VkRenderDevice::getCompletedUploadValue() const
 	{
-		uint64_t value = 0;
-		vkGetSemaphoreCounterValue(device.device, uploadTimeline, &value);
-		return value;
+		return GetTimelineValue(device, uploadTimeline);
 	}
 
 	void VkRenderDevice::submitImmediately(const std::function<void(VkCommandBuffer)>& record_commands)
@@ -215,7 +144,7 @@ namespace lunar::Render::imp
 
 		vkResetFences(device, 1, &immediateFence);
 
-		const VkResult result = SubmitCommandBuffer(graphicsQueue, mainCommandBuffer, {}, immediateFence);
+		const VkResult result = SubmitCommandBuffer(graphicsQueue, mainCommandBuffer, {}, {}, immediateFence);
 		if (result != VK_SUCCESS)
 		{
 			DEBUG_ERROR("Failed to submit immediate commands: {}", string_VkResult(result));
