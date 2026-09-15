@@ -8,5 +8,6 @@ shader-bin/
 CMakeSettings.json
 build/
 stb_image.h
+FastNoiseLite.h
 deps/*/build
 deps/*/install

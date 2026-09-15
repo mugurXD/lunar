@@ -184,7 +184,18 @@ else()
     message("-- lunar: Found 'stb_image' header")
 endif()
 
-target_sources(lunar PRIVATE "stb_image.h")
+if(NOT EXISTS "${CMAKE_CURRENT_LIST_DIR}/FastNoiseLite.h")
+    message("-- lunar: Downloading 'FastNoiseLite.h' file")
+    file(
+        DOWNLOAD 
+        https://raw.githubusercontent.com/Auburn/FastNoiseLite/refs/heads/master/Cpp/FastNoiseLite.h
+        "${CMAKE_CURRENT_LIST_DIR}/FastNoiseLite.h"
+    )
+else()
+    message("-- lunar: Found 'FastNoiseLite' header")
+endif() 
+
+target_sources(lunar PRIVATE "stb_image.h" "FastNoiseLite.h")
 
 target_include_directories(lunar PUBLIC inc)
 target_link_libraries(lunar PUBLIC 
