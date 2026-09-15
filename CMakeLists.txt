@@ -124,11 +124,46 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(fetch_vk_bootstrap)
 
-find_package(Vulkan REQUIRED)
+find_package(Vulkan REQUIRED COMPONENTS glslc)
 target_link_libraries(lunar PRIVATE vk-bootstrap::vk-bootstrap Vulkan::Vulkan)
 
 file(GLOB_RECURSE LUNAR_VK_SRC "src/render/vk/*.cpp")
 target_sources(lunar PRIVATE ${LUNAR_VK_SRC})
+
+set(LUNAR_SHADER_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}/resources/data/shaders")
+set(LUNAR_SHADER_BINARY_DIR "${CMAKE_CURRENT_LIST_DIR}/resources/data/shader-bin")
+
+file(GLOB_RECURSE LUNAR_SHADER_SOURCES CONFIGURE_DEPENDS
+    "${LUNAR_SHADER_SOURCE_DIR}/*.vert"
+    "${LUNAR_SHADER_SOURCE_DIR}/*.frag"
+    "${LUNAR_SHADER_SOURCE_DIR}/*.comp"
+)
+
+foreach(SHADER_SOURCE IN LISTS LUNAR_SHADER_SOURCES)
+    file(RELATIVE_PATH SHADER_NAME "${LUNAR_SHADER_SOURCE_DIR}" "${SHADER_SOURCE}")
+    set(SHADER_BINARY "${LUNAR_SHADER_BINARY_DIR}/${SHADER_NAME}.spv")
+    cmake_path(GET SHADER_BINARY PARENT_PATH SHADER_BINARY_DIR)
+
+    add_custom_command(
+        OUTPUT  "${SHADER_BINARY}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${SHADER_BINARY_DIR}"
+        COMMAND Vulkan::glslc
+            --target-env=vulkan1.3
+            $<IF:$<CONFIG:Debug>,-g,-O>
+            -MD -MF "${SHADER_BINARY}.d"
+            -o "${SHADER_BINARY}"
+            "${SHADER_SOURCE}"
+        DEPENDS "${SHADER_SOURCE}"
+        DEPFILE "${SHADER_BINARY}.d"
+        COMMENT "-- lunar: Compiling shader '${SHADER_NAME}'"
+        VERBATIM
+    )
+
+    list(APPEND LUNAR_SHADER_BINARIES "${SHADER_BINARY}")
+endforeach()
+
+add_custom_target(lunar_shaders ALL DEPENDS ${LUNAR_SHADER_BINARIES})
+add_dependencies(lunar lunar_shaders)
 
 # ----------------------------
 
