@@ -226,6 +226,16 @@ namespace lunar::Render::imp
 			this->presentQueueFamilyIndex = device.get_queue_index(vkb::QueueType::present).value();
 		}
 
+		const auto transfer_queue_res = device.get_queue(vkb::QueueType::transfer);
+		if (!transfer_queue_res)
+		{
+			DEBUG_ERROR("Failed to get transfer queue: {}", transfer_queue_res.error().message());
+			return;
+		}
+
+		this->transferQueue            = transfer_queue_res.value();
+		this->transferQueueFamilyIndex = device.get_queue_index(vkb::QueueType::transfer).value();
+
 		VkCommandPoolCreateInfo command_pool_info =
 		{
 			.sType            = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
@@ -287,6 +297,7 @@ namespace lunar::Render::imp
 		}
 
 		DEBUG_LOG("Vulkan rendering interface initialized.");
+		DEBUG_LOG("Graphics queue: {}, Present queue: {}, Transfer queue: {}", graphicsQueueFamilyIndex, presentQueueFamilyIndex, transferQueueFamilyIndex);
 	}
 
 	VkRenderDevice::~VkRenderDevice() noexcept

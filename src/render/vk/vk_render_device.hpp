@@ -43,8 +43,10 @@ namespace lunar::Render::imp
 		vkb::Device          device                   = {};
 		VkQueue              graphicsQueue            = VK_NULL_HANDLE;
 		VkQueue              presentQueue             = VK_NULL_HANDLE;
+		VkQueue              transferQueue            = VK_NULL_HANDLE;
 		uint32_t             graphicsQueueFamilyIndex = 0;
 		uint32_t             presentQueueFamilyIndex  = 0;
+		uint32_t             transferQueueFamilyIndex = 0;
 		VkCommandPool        commandPool              = VK_NULL_HANDLE;
 		VkCommandBuffer      mainCommandBuffer        = VK_NULL_HANDLE;
 		VkFence              immediateFence           = VK_NULL_HANDLE;
