@@ -9,6 +9,33 @@ namespace lunar::Render::imp
 {
 	namespace
 	{
+		constexpr float VIEWPORT_MIN_DEPTH = 0.f;
+		constexpr float VIEWPORT_MAX_DEPTH = 1.f;
+
+		constexpr std::pair<IndexType, VkIndexType> INDEX_TYPE_TRANSLATIONS[] =
+		{
+			{ IndexType::eUint16, VK_INDEX_TYPE_UINT16 },
+			{ IndexType::eUint32, VK_INDEX_TYPE_UINT32 }
+		};
+
+		void SetFullViewport(VkCommandBuffer command_buffer, VkExtent2D extent)
+		{
+			const VkViewport viewport =
+			{
+				.x        = 0.f,
+				.y        = static_cast<float>(extent.height),
+				.width    = static_cast<float>(extent.width),
+				.height   = -static_cast<float>(extent.height),
+				.minDepth = VIEWPORT_MIN_DEPTH,
+				.maxDepth = VIEWPORT_MAX_DEPTH
+			};
+
+			const VkRect2D scissor = { .extent = extent };
+
+			vkCmdSetViewport(command_buffer, 0, 1, &viewport);
+			vkCmdSetScissor(command_buffer, 0, 1, &scissor);
+		}
+
 		VkRenderingAttachmentInfo ToVkAttachment(const ColorAttachment& attachment, const VkImageRecord& image)
 		{
 			const glm::vec4& color = attachment.clearColor;
@@ -86,11 +113,74 @@ namespace lunar::Render::imp
 		};
 
 		vkCmdBeginRendering(commandBuffer, &rendering_info);
+		SetFullViewport(commandBuffer, render_extent);
 	}
 
 	void VkCommandList::endRendering()
 	{
 		vkCmdEndRendering(commandBuffer);
+	}
+
+	void VkCommandList::bindPipeline(PipelineHandle pipeline)
+	{
+		const VkPipelineRecord* record = device.resolve(pipeline);
+		DEBUG_ASSERT(record != nullptr, "Binding a null or destroyed pipeline");
+
+		vkCmdBindPipeline(commandBuffer, record->bindPoint, record->pipeline);
+	}
+
+	void VkCommandList::pushConstants(std::span<const std::byte> data)
+	{
+		DEBUG_ASSERT(data.size() <= MAX_PUSH_CONSTANTS_SIZE, "Push constants exceed the guaranteed size");
+		vkCmdPushConstants(commandBuffer, device.getPipelineLayout(), VK_SHADER_STAGE_ALL, 0, static_cast<uint32_t>(data.size()), data.data());
+	}
+
+	void VkCommandList::bindIndexBuffer(BufferHandle buffer, size_t offset, IndexType index_type)
+	{
+		const VkBufferRecord* record = device.resolve(buffer);
+		DEBUG_ASSERT(record != nullptr, "Binding a null or destroyed index buffer");
+
+		vkCmdBindIndexBuffer(commandBuffer, record->buffer, offset, Translate(INDEX_TYPE_TRANSLATIONS, index_type));
+	}
+
+	void VkCommandList::memoryBarrier()
+	{
+		const VkMemoryBarrier2 barrier =
+		{
+			.sType         = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+			.srcStageMask  = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+			.srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT,
+			.dstStageMask  = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+			.dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT
+		};
+
+		const VkDependencyInfo dependency =
+		{
+			.sType              = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+			.memoryBarrierCount = 1,
+			.pMemoryBarriers    = &barrier
+		};
+
+		vkCmdPipelineBarrier2(commandBuffer, &dependency);
+	}
+
+	void VkCommandList::draw(uint32_t vertex_count, uint32_t instance_count, uint32_t first_vertex, uint32_t first_instance)
+	{
+		vkCmdDraw(commandBuffer, vertex_count, instance_count, first_vertex, first_instance);
+	}
+
+	void VkCommandList::drawIndexed(uint32_t index_count,
+	                                uint32_t instance_count,
+	                                uint32_t first_index,
+	                                int32_t  vertex_offset,
+	                                uint32_t first_instance)
+	{
+		vkCmdDrawIndexed(commandBuffer, index_count, instance_count, first_index, vertex_offset, first_instance);
+	}
+
+	void VkCommandList::dispatch(uint32_t group_count_x, uint32_t group_count_y, uint32_t group_count_z)
+	{
+		vkCmdDispatch(commandBuffer, group_count_x, group_count_y, group_count_z);
 	}
 
 	void VkCommandList::begin()
@@ -201,13 +291,38 @@ namespace lunar::Render::imp
 			vkDestroySemaphore(device, frameTimeline, nullptr);
 	}
 
+	void VkRenderDevice::destroyLater(UploadTicket pending_upload, std::function<void()> destroy)
+	{
+		deferredDestructions.push_back({
+			.destroy     = std::move(destroy),
+			.frameValue  = frameValue,
+			.uploadValue = pending_upload.value
+		});
+
+		releaseDestroyedResources();
+	}
+
+	void VkRenderDevice::releaseDestroyedResources()
+	{
+		const uint64_t completed_frame  = GetTimelineValue(device, frameTimeline);
+		const uint64_t completed_upload = getCompletedUploadValue();
+
+		std::erase_if(deferredDestructions, [&](const VkDeferredDestruction& destruction) {
+			const bool released = destruction.frameValue <= completed_frame && destruction.uploadValue <= completed_upload;
+			if (released)
+				destruction.destroy();
+
+			return released;
+		});
+	}
+
 	Frame& VkRenderDevice::beginFrame()
 	{
 		VkFrame& frame = *frames[(frameValue + 1) % FRAMES_IN_FLIGHT];
 		WaitForTimeline(device, frameTimeline, frame.signalValue);
 
 		frame.signalValue = ++frameValue;
-		releaseDestroyedBuffers();
+		releaseDestroyedResources();
 		frame.commands.begin();
 
 		return frame;

@@ -300,7 +300,7 @@ namespace lunar::Render::imp
 			return;
 		}
 
-		if (!createUploadResources() || !createFrameResources())
+		if (!createUploadResources() || !createFrameResources() || !createPipelineLayout())
 			return;
 
 		DEBUG_LOG("Vulkan rendering interface initialized.");
@@ -314,13 +314,22 @@ namespace lunar::Render::imp
 			vkDeviceWaitIdle(device);
 			destroyFrameResources();
 
-			for (const VkDestroyedBuffer& destroyed : destroyedBuffers)
-				vmaDestroyBuffer(allocator, destroyed.buffer.buffer, destroyed.buffer.allocation);
+			for (const VkDeferredDestruction& destruction : deferredDestructions)
+				destruction.destroy();
+			deferredDestructions.clear();
 
 			buffers.forEach([&](PoolHandle<VkBufferRecord>, VkBufferRecord& record) {
 				vmaDestroyBuffer(allocator, record.buffer, record.allocation);
 			});
 			buffers.clear();
+
+			pipelines.forEach([&](PoolHandle<VkPipelineRecord>, VkPipelineRecord& record) {
+				vkDestroyPipeline(device, record.pipeline, nullptr);
+			});
+			pipelines.clear();
+
+			if (pipelineLayout != VK_NULL_HANDLE)
+				vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
 
 			destroyUploadResources();
 

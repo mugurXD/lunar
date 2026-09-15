@@ -44,7 +44,7 @@ namespace lunar
 
 	void Engine::renderFrame()
 	{
-		renderer.render(swapchain.get());
+		renderer.render();
 
 		//renderContext.begin(&window);
 		//renderContext.clear(CLEAR_COLOR.r, CLEAR_COLOR.g, CLEAR_COLOR.b, CLEAR_COLOR.a);
@@ -82,7 +82,7 @@ namespace lunar
 			}
 		)),
 		swapchain(builder.useWindow ? renderDevice->createSwapchain(window) : nullptr),
-		renderer(*renderDevice),
+		renderer(*renderDevice, swapchain.get()),
 		activeScene(),
 		appName(builder.appName),
 		systemScheduler(builder.fixedTimestepSeconds)

@@ -7,11 +7,19 @@ namespace lunar::Render
 	class LUNAR_API Renderer
 	{
 	public:
-		Renderer(RenderDevice& device) noexcept;
+		Renderer(RenderDevice& device, Swapchain* swapchain) noexcept;
+		~Renderer() noexcept;
 
-		void render(Swapchain* swapchain);
+		Renderer(const Renderer&)            = delete;
+		Renderer& operator=(const Renderer&) = delete;
+
+		void render();
 
 	private:
-		RenderDevice& device;
+		void recordFrame(CommandList& commands, ImageHandle target) const;
+
+		RenderDevice&  device;
+		Swapchain*     swapchain        = nullptr;
+		PipelineHandle trianglePipeline = {};
 	};
 }

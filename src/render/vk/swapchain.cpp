@@ -32,6 +32,11 @@ namespace lunar::Render::imp
 		vkb::destroy_swapchain(swapchain);
 	}
 
+	Format VkSwapchain::getFormat() const
+	{
+		return FromVkFormat(swapchain.image_format);
+	}
+
 	ImageHandle VkSwapchain::acquire(VkSemaphore acquire_semaphore)
 	{
 		if (window.isMinimized())

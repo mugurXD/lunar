@@ -6,11 +6,14 @@
 #include <vma/vk_mem_alloc.h>
 #include <VkBootstrap.h>
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <functional>
+#include <iterator>
 #include <memory>
 #include <span>
+#include <utility>
 #include <vector>
 
 namespace lunar::Render::imp
@@ -35,11 +38,17 @@ namespace lunar::Render::imp
 		uint64_t        lastUploadValue = 0;
 	};
 
-	struct VkDestroyedBuffer
+	struct VkDeferredDestruction
 	{
-		VkBufferAllocation buffer      = {};
-		uint64_t           frameValue  = 0;
-		uint64_t           uploadValue = 0;
+		std::function<void()> destroy     = {};
+		uint64_t              frameValue  = 0;
+		uint64_t              uploadValue = 0;
+	};
+
+	struct VkPipelineRecord
+	{
+		VkPipeline          pipeline  = VK_NULL_HANDLE;
+		VkPipelineBindPoint bindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
 	};
 
 	struct VkImageRecord
@@ -71,6 +80,23 @@ namespace lunar::Render::imp
 		return pool.getHandleFor(handle.index, handle.generation);
 	}
 
+	template<typename From, typename To, size_t Count>
+	constexpr To Translate(const std::pair<From, To> (&table)[Count], From value)
+	{
+		const auto found = std::ranges::find(table, value, &std::pair<From, To>::first);
+		return found != std::end(table) ? found->second : To {};
+	}
+
+	template<typename From, typename To, size_t Count>
+	constexpr From TranslateBack(const std::pair<From, To> (&table)[Count], To value)
+	{
+		const auto found = std::ranges::find(table, value, &std::pair<From, To>::second);
+		return found != std::end(table) ? found->first : From {};
+	}
+
+	VkFormat ToVkFormat(Format format);
+	Format   FromVkFormat(VkFormat format);
+
 	VkResult              SubmitCommandBuffer(VkQueue                                queue,
 	                                          VkCommandBuffer                        command_buffer,
 	                                          std::span<const VkSemaphoreSubmitInfo> wait_semaphores,
@@ -97,10 +123,15 @@ namespace lunar::Render::imp
 		UploadTicket               flushUploads()                                                                     override;
 		bool                       isComplete(UploadTicket ticket)                                              const override;
 		uint64_t                   getBufferAddress(BufferHandle buffer)                                              override;
+		PipelineHandle             createGraphicsPipeline(const GraphicsPipelineDesc& desc)                           override;
+		PipelineHandle             createComputePipeline(const ComputePipelineDesc& desc)                             override;
+		void                       destroyPipeline(PipelineHandle pipeline)                                           override;
 
-		const vkb::Device& getDevice() const;
+		const vkb::Device& getDevice()         const;
+		VkPipelineLayout   getPipelineLayout() const;
 		VkBufferRecord*    resolve(BufferHandle buffer);
 		VkImageRecord*     resolve(ImageHandle image);
+		VkPipelineRecord*  resolve(PipelineHandle pipeline);
 		ImageHandle        registerImage(const VkImageRecord& record);
 		void               unregisterImage(ImageHandle image);
 
@@ -110,10 +141,14 @@ namespace lunar::Render::imp
 
 		UploadTicket    uploadThroughStaging(VkBufferRecord& record, size_t offset, std::span<const std::byte> data);
 		void            submitImmediately(const std::function<void(VkCommandBuffer)>& record_commands);
-		void            releaseDestroyedBuffers();
+
+		bool            createPipelineLayout();
+		PipelineHandle  registerPipeline(VkResult result, VkPipeline pipeline, VkPipelineBindPoint bind_point);
 
 		bool            createFrameResources();
 		void            destroyFrameResources();
+		void            destroyLater(UploadTicket pending_upload, std::function<void()> destroy);
+		void            releaseDestroyedResources();
 
 		bool            createUploadResources();
 		void            destroyUploadResources();
@@ -138,6 +173,7 @@ namespace lunar::Render::imp
 		VkCommandBuffer                                        mainCommandBuffer        = VK_NULL_HANDLE;
 		VkFence                                                immediateFence           = VK_NULL_HANDLE;
 		VmaAllocator                                           allocator                = VK_NULL_HANDLE;
+		VkPipelineLayout                                       pipelineLayout           = VK_NULL_HANDLE;
 		VkSemaphore                                            frameTimeline            = VK_NULL_HANDLE;
 		uint64_t                                               frameValue               = 0;
 		std::array<std::unique_ptr<VkFrame>, FRAMES_IN_FLIGHT> frames;
@@ -145,8 +181,9 @@ namespace lunar::Render::imp
 		VkSemaphore                                            uploadTimeline           = VK_NULL_HANDLE;
 		uint64_t                                               nextUploadValue          = 1;
 		std::array<VkUploadBatch, UPLOAD_BATCH_COUNT>          uploadBatches            = {};
-		std::vector<VkDestroyedBuffer>                         destroyedBuffers         = {};
+		std::vector<VkDeferredDestruction>                     deferredDestructions     = {};
 		Pool<VkBufferRecord>                                   buffers;
 		Pool<VkImageRecord>                                    images;
+		Pool<VkPipelineRecord>                                 pipelines;
 	};
 }

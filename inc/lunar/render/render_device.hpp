@@ -9,6 +9,7 @@
 #include <lunar/render/gpu_types.hpp>
 #include <lunar/render/buffer_types.hpp>
 #include <lunar/render/command_list.hpp>
+#include <lunar/render/pipeline_types.hpp>
 
 namespace lunar::Render
 {
@@ -36,6 +37,8 @@ namespace lunar::Render
 
 		Swapchain(const Swapchain&)            = delete;
 		Swapchain& operator=(const Swapchain&) = delete;
+
+		virtual Format getFormat() const = 0;
 	};
 
 	class LUNAR_API Frame
@@ -69,6 +72,9 @@ namespace lunar::Render
 		virtual UploadTicket               flushUploads()                                                                        = 0;
 		virtual bool                       isComplete(UploadTicket ticket)                                                 const = 0;
 		virtual uint64_t                   getBufferAddress(BufferHandle buffer)                                                 = 0;
+		virtual PipelineHandle             createGraphicsPipeline(const GraphicsPipelineDesc& desc)                              = 0;
+		virtual PipelineHandle             createComputePipeline(const ComputePipelineDesc& desc)                                = 0;
+		virtual void                       destroyPipeline(PipelineHandle pipeline)                                              = 0;
 
 		const RenderDeviceCapabilities& getCapabilities() const { return capabilities; }
 

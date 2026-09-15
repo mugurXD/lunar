@@ -11,6 +11,7 @@ namespace lunar::Render::imp
 		VkSwapchain(VkRenderDevice& device, const Window_T& window) noexcept;
 		~VkSwapchain() noexcept override;
 
+		Format      getFormat() const override;
 		ImageHandle acquire(VkSemaphore acquire_semaphore);
 		void        present(VkQueue present_queue);
 		ImageHandle getAcquiredImage()    const;

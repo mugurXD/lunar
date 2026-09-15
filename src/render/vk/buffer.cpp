@@ -142,28 +142,11 @@ namespace lunar::Render::imp
 		if (record == nullptr)
 			return;
 
-		destroyedBuffers.push_back({
-			.buffer      = { record->buffer, record->allocation },
-			.frameValue  = frameValue,
-			.uploadValue = record->lastUploadValue
+		destroyLater(UploadTicket { record->lastUploadValue }, [this, vk_buffer = record->buffer, allocation = record->allocation] {
+			vmaDestroyBuffer(allocator, vk_buffer, allocation);
 		});
 
 		buffers.destroy(stored);
-		releaseDestroyedBuffers();
-	}
-
-	void VkRenderDevice::releaseDestroyedBuffers()
-	{
-		const uint64_t completed_frame  = GetTimelineValue(device, frameTimeline);
-		const uint64_t completed_upload = getCompletedUploadValue();
-
-		std::erase_if(destroyedBuffers, [&](const VkDestroyedBuffer& destroyed) {
-			const bool released = destroyed.frameValue <= completed_frame && destroyed.uploadValue <= completed_upload;
-			if (released)
-				vmaDestroyBuffer(allocator, destroyed.buffer.buffer, destroyed.buffer.allocation);
-
-			return released;
-		});
 	}
 
 	UploadTicket VkRenderDevice::uploadBuffer(BufferHandle buffer, size_t offset, std::span<const std::byte> data)
