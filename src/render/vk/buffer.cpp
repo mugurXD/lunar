@@ -12,8 +12,6 @@ namespace lunar::Render::imp
 {
 	namespace
 	{
-		constexpr uint64_t WAIT_FOREVER = UINT64_MAX;
-
 		constexpr std::pair<BufferUsageFlagBits, VkBufferUsageFlagBits> USAGE_TRANSLATIONS[] =
 		{
 			{ BufferUsageFlagBits::eVertex,      VK_BUFFER_USAGE_VERTEX_BUFFER_BIT   },
@@ -60,17 +58,44 @@ namespace lunar::Render::imp
 				return 0;
 			}
 		}
+
+		void SerializeCopies(VkCommandBuffer command_buffer)
+		{
+			const VkMemoryBarrier2 barrier =
+			{
+				.sType         = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+				.srcStageMask  = VK_PIPELINE_STAGE_2_COPY_BIT,
+				.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
+				.dstStageMask  = VK_PIPELINE_STAGE_2_COPY_BIT,
+				.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT
+			};
+
+			const VkDependencyInfo dependency =
+			{
+				.sType              = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+				.memoryBarrierCount = 1,
+				.pMemoryBarriers    = &barrier
+			};
+
+			vkCmdPipelineBarrier2(command_buffer, &dependency);
+		}
 	}
 
 	BufferHandle VkRenderDevice::createBuffer(const BufferDesc& desc, std::span<const std::byte> initial_data)
 	{
-		const VkBufferUsageFlags usage = ToVkBufferUsage(desc.usage, desc.location);
+		const VkBufferUsageFlags      usage                 = ToVkBufferUsage(desc.usage, desc.location);
+		const std::array<uint32_t, 2> upload_queue_families = { graphicsQueueFamilyIndex, transferQueueFamilyIndex };
+		const bool                    shared_with_transfer  = desc.location == MemoryLocation::eGpuOnly
+			&& graphicsQueueFamilyIndex != transferQueueFamilyIndex;
 
 		const VkBufferCreateInfo buffer_info =
 		{
-			.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-			.size  = desc.size,
-			.usage = usage
+			.sType                 = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+			.size                  = desc.size,
+			.usage                 = usage,
+			.sharingMode           = shared_with_transfer ? VK_SHARING_MODE_CONCURRENT : VK_SHARING_MODE_EXCLUSIVE,
+			.queueFamilyIndexCount = shared_with_transfer ? static_cast<uint32_t>(upload_queue_families.size()) : 0,
+			.pQueueFamilyIndices   = upload_queue_families.data()
 		};
 
 		const VmaAllocationCreateInfo allocation_info =
@@ -118,30 +143,23 @@ namespace lunar::Render::imp
 		if (record == nullptr)
 			return;
 
+		waitForUpload(record->lastUploadValue);
 		vmaDestroyBuffer(allocator, record->buffer, record->allocation);
 		buffers.destroy(stored);
 	}
 
 	UploadTicket VkRenderDevice::uploadBuffer(BufferHandle buffer, size_t offset, std::span<const std::byte> data)
 	{
-		const VkBufferRecord* record = resolve(buffer);
+		VkBufferRecord* record = resolve(buffer);
 		DEBUG_ASSERT(record != nullptr, "Uploading to a null or destroyed buffer");
 		DEBUG_ASSERT(offset + data.size() <= record->size, "Upload does not fit inside the buffer");
 
-		if (record->mapped != nullptr)
-		{
-			std::memcpy(static_cast<std::byte*>(record->mapped) + offset, data.data(), data.size());
-			vmaFlushAllocation(allocator, record->allocation, offset, data.size());
-		}
-		else
-			uploadThroughStaging(*record, offset, data);
+		if (record->mapped == nullptr)
+			return uploadThroughStaging(*record, offset, data);
 
+		std::memcpy(static_cast<std::byte*>(record->mapped) + offset, data.data(), data.size());
+		vmaFlushAllocation(allocator, record->allocation, offset, data.size());
 		return UploadTicket {};
-	}
-
-	bool VkRenderDevice::isComplete(UploadTicket) const
-	{
-		return true;
 	}
 
 	uint64_t VkRenderDevice::getBufferAddress(BufferHandle buffer)
@@ -155,7 +173,7 @@ namespace lunar::Render::imp
 		return buffers.get(buffers.getHandleFor(buffer.index, buffer.generation));
 	}
 
-	void VkRenderDevice::uploadThroughStaging(const VkBufferRecord& record, size_t offset, std::span<const std::byte> data)
+	UploadTicket VkRenderDevice::uploadThroughStaging(VkBufferRecord& record, size_t offset, std::span<const std::byte> data)
 	{
 		const VkBufferCreateInfo staging_info =
 		{
@@ -170,87 +188,35 @@ namespace lunar::Render::imp
 			.usage = VMA_MEMORY_USAGE_AUTO
 		};
 
-		VkBuffer          staging_buffer     = VK_NULL_HANDLE;
-		VmaAllocation     staging_allocation = VK_NULL_HANDLE;
-		VmaAllocationInfo staging_result     = {};
+		VkStagingBuffer   staging        = {};
+		VmaAllocationInfo staging_result = {};
 
-		const VkResult result = vmaCreateBuffer(allocator, &staging_info, &staging_allocation_info, &staging_buffer, &staging_allocation, &staging_result);
+		const VkResult result = vmaCreateBuffer(allocator, &staging_info, &staging_allocation_info, &staging.buffer, &staging.allocation, &staging_result);
 		if (result != VK_SUCCESS)
 		{
 			DEBUG_ERROR("Failed to create staging buffer of {} bytes: {}", data.size(), string_VkResult(result));
-			return;
+			return UploadTicket {};
 		}
 
 		std::memcpy(staging_result.pMappedData, data.data(), data.size());
-		vmaFlushAllocation(allocator, staging_allocation, 0, data.size());
+		vmaFlushAllocation(allocator, staging.allocation, 0, data.size());
 
-		submitImmediately([&](VkCommandBuffer command_buffer) {
-			const VkBufferCopy region =
-			{
-				.srcOffset = 0,
-				.dstOffset = offset,
-				.size      = data.size()
-			};
+		VkUploadBatch& batch = beginUploadBatch();
 
-			vkCmdCopyBuffer(command_buffer, staging_buffer, record.buffer, 1, &region);
+		if (record.lastUploadValue == nextUploadValue)
+			SerializeCopies(batch.commandBuffer);
 
-			const VkMemoryBarrier2 barrier =
-			{
-				.sType         = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
-				.srcStageMask  = VK_PIPELINE_STAGE_2_COPY_BIT,
-				.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
-				.dstStageMask  = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-				.dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT
-			};
-
-			const VkDependencyInfo dependency =
-			{
-				.sType              = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-				.memoryBarrierCount = 1,
-				.pMemoryBarriers    = &barrier
-			};
-
-			vkCmdPipelineBarrier2(command_buffer, &dependency);
-		});
-
-		vmaDestroyBuffer(allocator, staging_buffer, staging_allocation);
-	}
-
-	void VkRenderDevice::submitImmediately(const std::function<void(VkCommandBuffer)>& record_commands)
-	{
-		const VkCommandBufferBeginInfo begin_info =
+		const VkBufferCopy region =
 		{
-			.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-			.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
+			.srcOffset = 0,
+			.dstOffset = offset,
+			.size      = data.size()
 		};
 
-		vkResetCommandBuffer(mainCommandBuffer, 0);
-		vkBeginCommandBuffer(mainCommandBuffer, &begin_info);
-		record_commands(mainCommandBuffer);
-		vkEndCommandBuffer(mainCommandBuffer);
+		vkCmdCopyBuffer(batch.commandBuffer, staging.buffer, record.buffer, 1, &region);
+		batch.stagingBuffers.push_back(staging);
 
-		const VkCommandBufferSubmitInfo command_buffer_info =
-		{
-			.sType         = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
-			.commandBuffer = mainCommandBuffer
-		};
-
-		const VkSubmitInfo2 submit_info =
-		{
-			.sType                  = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
-			.commandBufferInfoCount = 1,
-			.pCommandBufferInfos    = &command_buffer_info
-		};
-
-		vkResetFences(device, 1, &immediateFence);
-
-		const VkResult result = vkQueueSubmit2(graphicsQueue, 1, &submit_info, immediateFence);
-		if (result != VK_SUCCESS)
-		{
-			DEBUG_ERROR("Failed to submit immediate commands: {}", string_VkResult(result));
-			return;
-		}
-
-		vkWaitForFences(device, 1, &immediateFence, VK_TRUE, WAIT_FOREVER);
+		record.lastUploadValue = nextUploadValue;
+		return UploadTicket { nextUploadValue };
 	}
 }

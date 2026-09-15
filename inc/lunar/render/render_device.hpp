@@ -50,6 +50,7 @@ namespace lunar::Render
 		virtual BufferHandle               createBuffer(const BufferDesc& desc, std::span<const std::byte> initial_data)         = 0;
 		virtual void                       destroyBuffer(BufferHandle buffer)                                                    = 0;
 		virtual UploadTicket               uploadBuffer(BufferHandle buffer, size_t offset, std::span<const std::byte> data)    = 0;
+		virtual UploadTicket               flushUploads()                                                                        = 0;
 		virtual bool                       isComplete(UploadTicket ticket)                                                 const = 0;
 		virtual uint64_t                   getBufferAddress(BufferHandle buffer)                                                 = 0;
 

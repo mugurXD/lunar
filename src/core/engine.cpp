@@ -38,6 +38,7 @@ namespace lunar
 			window.pollEvents();
 			timeContext.update();
 			systemScheduler.runFrame(activeScene, timeContext.getFrameTime());
+			renderDevice->flushUploads();
 			//renderFrame();
 			activeScene.flushDestroyedEntities();
 			window.update();

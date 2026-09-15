@@ -227,14 +227,17 @@ namespace lunar::Render::imp
 		}
 
 		const auto transfer_queue_res = device.get_queue(vkb::QueueType::transfer);
-		if (!transfer_queue_res)
+		if (transfer_queue_res)
 		{
-			DEBUG_ERROR("Failed to get transfer queue: {}", transfer_queue_res.error().message());
-			return;
+			this->transferQueue            = transfer_queue_res.value();
+			this->transferQueueFamilyIndex = device.get_queue_index(vkb::QueueType::transfer).value();
 		}
-
-		this->transferQueue            = transfer_queue_res.value();
-		this->transferQueueFamilyIndex = device.get_queue_index(vkb::QueueType::transfer).value();
+		else
+		{
+			DEBUG_WARN("No separate transfer queue ({}), uploads will use the graphics queue", transfer_queue_res.error().message());
+			this->transferQueue            = graphicsQueue;
+			this->transferQueueFamilyIndex = graphicsQueueFamilyIndex;
+		}
 
 		VkCommandPoolCreateInfo command_pool_info =
 		{
@@ -296,6 +299,9 @@ namespace lunar::Render::imp
 			return;
 		}
 
+		if (!createUploadResources())
+			return;
+
 		DEBUG_LOG("Vulkan rendering interface initialized.");
 		DEBUG_LOG("Graphics queue: {}, Present queue: {}, Transfer queue: {}", graphicsQueueFamilyIndex, presentQueueFamilyIndex, transferQueueFamilyIndex);
 	}
@@ -310,6 +316,8 @@ namespace lunar::Render::imp
 				vmaDestroyBuffer(allocator, record.buffer, record.allocation);
 			});
 			buffers.clear();
+
+			destroyUploadResources();
 
 			if (allocator != VK_NULL_HANDLE)
 				vmaDestroyAllocator(allocator);
