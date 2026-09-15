@@ -1,0 +1,365 @@
+#include <lunar/render/render_device.hpp>
+#include <lunar/file/binary_file.hpp>
+#include <gtest/gtest.h>
+
+#include <algorithm>
+#include <array>
+#include <cstring>
+#include <memory>
+#include <string>
+#include <string_view>
+#include <vector>
+
+using namespace lunar::Render;
+
+namespace
+{
+	constexpr std::string_view SHADER_EXTENSION    = ".spv";
+	constexpr uint32_t         VALUE_COUNT         = 1000;
+	constexpr size_t           VALUES_SIZE         = VALUE_COUNT * sizeof(uint32_t);
+	constexpr uint32_t         WORKGROUP_SIZE      = 64;
+	constexpr uint32_t         FILL_MULTIPLIER     = 3;
+	constexpr uint32_t         FILL_OFFSET         = 7;
+	constexpr uint32_t         ADD_OFFSET          = 1;
+	constexpr uint32_t         PATCH_INDEX         = 256;
+	constexpr uint32_t         PATCH_COUNT         = 16;
+	constexpr uint32_t         PATCH_VALUE         = 0xABCD;
+	constexpr size_t           SMALL_BUFFER_SIZE   = 64;
+	constexpr int              FRAME_COUNT         = 10;
+	constexpr uint32_t         UPLOAD_BATCH_ROUNDS = 10;
+
+	struct ComputeConstants
+	{
+		uint64_t source      = 0;
+		uint64_t destination = 0;
+		uint32_t count       = 0;
+		uint32_t multiplier  = 0;
+		uint32_t offset      = 0;
+	};
+
+	std::vector<char> LoadShader(std::string_view name)
+	{
+		return Fs::BinaryFile(Fs::Path(LUNAR_TEST_SHADER_DIR) / (std::string(name) + std::string(SHADER_EXTENSION))).content;
+	}
+
+	std::vector<uint32_t> Sequence(uint32_t multiplier, uint32_t offset)
+	{
+		std::vector<uint32_t> values(VALUE_COUNT);
+		for (uint32_t index = 0; index < VALUE_COUNT; index++)
+			values[index] = index * multiplier + offset;
+
+		return values;
+	}
+
+	BufferDesc ValuesBuffer(MemoryLocation location)
+	{
+		return { VALUES_SIZE, BufferUsageFlags(BufferUsageFlagBits::eStorage), location };
+	}
+
+	uint32_t GroupCount(uint32_t count)
+	{
+		return (count + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
+	}
+}
+
+class RenderDeviceTest : public ::testing::Test
+{
+protected:
+	static void SetUpTestSuite()
+	{
+		device = CreateRenderDevice({ .appName = "lunar_render_tests" });
+	}
+
+	static void TearDownTestSuite()
+	{
+		device.reset();
+	}
+
+	void SetUp() override
+	{
+		device->waitIdle();
+		baseline = device->getStats();
+	}
+
+	void TearDown() override
+	{
+		device->waitIdle();
+		const RenderDeviceStats stats = device->getStats();
+
+		EXPECT_EQ(stats.bufferCount,             baseline.bufferCount)          << "Leaked buffer handles";
+		EXPECT_EQ(stats.imageCount,              baseline.imageCount)           << "Leaked image handles";
+		EXPECT_EQ(stats.pipelineCount,           baseline.pipelineCount)        << "Leaked pipeline handles";
+		EXPECT_EQ(stats.pendingDestructionCount, 0u)                            << "Destructions still pending after waitIdle";
+		EXPECT_EQ(stats.allocationCount,         baseline.allocationCount)      << "Leaked GPU allocations";
+		EXPECT_EQ(stats.allocationBytes,         baseline.allocationBytes)      << "Leaked GPU memory";
+		EXPECT_EQ(stats.validationErrorCount,    baseline.validationErrorCount) << "Vulkan validation errors were reported";
+	}
+
+	PipelineHandle createCompute(std::string_view shader_name)
+	{
+		const std::vector<char> shader = LoadShader(shader_name);
+		return device->createComputePipeline({ std::as_bytes(std::span(shader)) });
+	}
+
+	void runCompute(PipelineHandle pipeline, const ComputeConstants& constants)
+	{
+		Frame&       frame    = device->beginFrame();
+		CommandList& commands = frame.commandList();
+
+		commands.bindPipeline(pipeline);
+		commands.pushConstants(constants);
+		commands.dispatch(GroupCount(constants.count));
+
+		device->endFrame(frame);
+	}
+
+	std::vector<uint32_t> readValues(BufferHandle buffer)
+	{
+		device->waitIdle();
+
+		const std::span<const std::byte> bytes = device->readBuffer(buffer);
+		std::vector<uint32_t>            values(bytes.size() / sizeof(uint32_t));
+		std::memcpy(values.data(), bytes.data(), values.size() * sizeof(uint32_t));
+
+		return values;
+	}
+
+	std::vector<uint32_t> downloadValues(BufferHandle gpu_buffer)
+	{
+		const PipelineHandle copy     = createCompute("copy.comp");
+		const BufferHandle   readback = device->createBuffer(ValuesBuffer(MemoryLocation::eReadback), {});
+
+		runCompute(copy, {
+			.source      = device->getBufferAddress(gpu_buffer),
+			.destination = device->getBufferAddress(readback),
+			.count       = VALUE_COUNT
+		});
+
+		const std::vector<uint32_t> values = readValues(readback);
+
+		device->destroyBuffer(readback);
+		device->destroyPipeline(copy);
+		return values;
+	}
+
+	static inline std::unique_ptr<RenderDevice> device;
+	RenderDeviceStats                            baseline = {};
+};
+
+TEST_F(RenderDeviceTest, GpuOnlyStorageBufferHasDeviceAddress)
+{
+	const BufferHandle buffer = device->createBuffer(ValuesBuffer(MemoryLocation::eGpuOnly), {});
+
+	EXPECT_NE(buffer, BufferHandle {});
+	EXPECT_NE(device->getBufferAddress(buffer), 0u);
+	EXPECT_EQ(device->getStats().bufferCount,     baseline.bufferCount + 1);
+	EXPECT_EQ(device->getStats().allocationCount, baseline.allocationCount + 1);
+
+	device->destroyBuffer(buffer);
+}
+
+TEST_F(RenderDeviceTest, UniformOnlyBufferHasNoDeviceAddress)
+{
+	const BufferHandle buffer = device->createBuffer({ SMALL_BUFFER_SIZE, BufferUsageFlags(BufferUsageFlagBits::eUniform), MemoryLocation::eUpload }, {});
+
+	EXPECT_EQ(device->getBufferAddress(buffer), 0u);
+
+	device->destroyBuffer(buffer);
+}
+
+TEST_F(RenderDeviceTest, DestroyedBufferHandleBecomesStale)
+{
+	const BufferHandle buffer = device->createBuffer(ValuesBuffer(MemoryLocation::eReadback), {});
+	device->destroyBuffer(buffer);
+
+	EXPECT_EQ(device->getBufferAddress(buffer), 0u);
+	EXPECT_TRUE(device->readBuffer(buffer).empty());
+
+	device->destroyBuffer(buffer);
+	EXPECT_EQ(device->getStats().bufferCount, baseline.bufferCount);
+}
+
+TEST_F(RenderDeviceTest, ReusedSlotDoesNotMatchStaleHandle)
+{
+	const BufferHandle stale = device->createBuffer(ValuesBuffer(MemoryLocation::eGpuOnly), {});
+	device->destroyBuffer(stale);
+
+	const BufferHandle reused = device->createBuffer(ValuesBuffer(MemoryLocation::eGpuOnly), {});
+
+	EXPECT_NE(reused, stale);
+	EXPECT_EQ(device->getBufferAddress(stale), 0u);
+	EXPECT_NE(device->getBufferAddress(reused), 0u);
+
+	device->destroyBuffer(reused);
+}
+
+TEST_F(RenderDeviceTest, MappedUploadIsCompleteImmediately)
+{
+	const std::vector<uint32_t> values = Sequence(FILL_MULTIPLIER, FILL_OFFSET);
+	const BufferHandle          buffer = device->createBuffer(ValuesBuffer(MemoryLocation::eUpload), {});
+	const UploadTicket          ticket = device->uploadBuffer(buffer, 0, std::as_bytes(std::span(values)));
+
+	EXPECT_TRUE(device->isComplete(ticket));
+	EXPECT_EQ(readValues(buffer), values);
+
+	device->destroyBuffer(buffer);
+}
+
+TEST_F(RenderDeviceTest, StagedUploadCompletesOnlyAfterFlush)
+{
+	const std::vector<uint32_t> values = Sequence(FILL_MULTIPLIER, FILL_OFFSET);
+	const BufferHandle          buffer = device->createBuffer(ValuesBuffer(MemoryLocation::eGpuOnly), {});
+	const UploadTicket          ticket = device->uploadBuffer(buffer, 0, std::as_bytes(std::span(values)));
+
+	EXPECT_FALSE(device->isComplete(ticket));
+
+	device->flushUploads();
+	device->waitIdle();
+	EXPECT_TRUE(device->isComplete(ticket));
+
+	device->destroyBuffer(buffer);
+}
+
+TEST_F(RenderDeviceTest, StagedUploadsReachGpuInOrder)
+{
+	const std::vector<uint32_t> values = Sequence(FILL_MULTIPLIER, FILL_OFFSET);
+	const std::vector<uint32_t> patch(PATCH_COUNT, PATCH_VALUE);
+
+	const BufferHandle buffer = device->createBuffer(ValuesBuffer(MemoryLocation::eGpuOnly), std::as_bytes(std::span(values)));
+	device->uploadBuffer(buffer, PATCH_INDEX * sizeof(uint32_t), std::as_bytes(std::span(patch)));
+
+	std::vector<uint32_t> expected = values;
+	std::ranges::copy(patch, expected.begin() + PATCH_INDEX);
+
+	EXPECT_EQ(downloadValues(buffer), expected);
+
+	device->destroyBuffer(buffer);
+}
+
+TEST_F(RenderDeviceTest, UploadsAcrossManyBatchesAllComplete)
+{
+	const BufferHandle buffer = device->createBuffer(ValuesBuffer(MemoryLocation::eGpuOnly), {});
+	UploadTicket       last   = {};
+
+	for (uint32_t round = 0; round < UPLOAD_BATCH_ROUNDS; round++)
+	{
+		const std::vector<uint32_t> values = Sequence(round, FILL_OFFSET);
+		device->uploadBuffer(buffer, 0, std::as_bytes(std::span(values)));
+		last = device->flushUploads();
+	}
+
+	device->waitIdle();
+	EXPECT_TRUE(device->isComplete(last));
+	EXPECT_EQ(downloadValues(buffer), Sequence(UPLOAD_BATCH_ROUNDS - 1, FILL_OFFSET));
+
+	device->destroyBuffer(buffer);
+}
+
+TEST_F(RenderDeviceTest, BufferDestroyedWithPendingUploadIsDeferred)
+{
+	const std::vector<uint32_t> values = Sequence(FILL_MULTIPLIER, FILL_OFFSET);
+	const BufferHandle          buffer = device->createBuffer(ValuesBuffer(MemoryLocation::eGpuOnly), std::as_bytes(std::span(values)));
+
+	device->destroyBuffer(buffer);
+
+	EXPECT_EQ(device->getStats().bufferCount,             baseline.bufferCount);
+	EXPECT_EQ(device->getStats().pendingDestructionCount, 1u);
+}
+
+TEST_F(RenderDeviceTest, HeadlessFramesSubmitWithoutSwapchain)
+{
+	for (int frame_index = 0; frame_index < FRAME_COUNT; frame_index++)
+		device->endFrame(device->beginFrame());
+}
+
+TEST_F(RenderDeviceTest, BufferDestroyedDuringFrameIsReleasedAfterIt)
+{
+	const BufferHandle buffer = device->createBuffer(ValuesBuffer(MemoryLocation::eGpuOnly), {});
+
+	Frame& frame = device->beginFrame();
+	device->destroyBuffer(buffer);
+	EXPECT_EQ(device->getStats().pendingDestructionCount, 1u);
+
+	device->endFrame(frame);
+	device->waitIdle();
+	EXPECT_EQ(device->getStats().pendingDestructionCount, 0u);
+}
+
+TEST_F(RenderDeviceTest, InvalidShaderBytecodeReturnsNullPipeline)
+{
+	EXPECT_EQ(device->createComputePipeline({}),  PipelineHandle {});
+	EXPECT_EQ(device->createGraphicsPipeline({}), PipelineHandle {});
+	EXPECT_EQ(device->getStats().pipelineCount,   baseline.pipelineCount);
+}
+
+TEST_F(RenderDeviceTest, GraphicsPipelineSupportsCommonFormats)
+{
+	const std::vector<char> vertex_shader   = LoadShader("triangle.vert");
+	const std::vector<char> fragment_shader = LoadShader("white.frag");
+
+	for (const Format color_format : { Format::eRGBA8Unorm, Format::eBGRA8Srgb, Format::eRGBA16Float })
+	{
+		const PipelineHandle pipeline = device->createGraphicsPipeline({
+			.vertexShader   = std::as_bytes(std::span(vertex_shader)),
+			.fragmentShader = std::as_bytes(std::span(fragment_shader)),
+			.colorFormats   = std::span(&color_format, 1),
+			.depthFormat    = Format::eD32Float,
+			.depthTest      = true,
+			.depthWrite     = true,
+			.blendMode      = BlendMode::eAlpha
+		});
+
+		EXPECT_NE(pipeline, PipelineHandle {});
+		device->destroyPipeline(pipeline);
+	}
+}
+
+TEST_F(RenderDeviceTest, ComputeWritesAreVisibleAfterBarrier)
+{
+	const PipelineHandle fill = createCompute("fill.comp");
+	const PipelineHandle add  = createCompute("add.comp");
+	ASSERT_NE(fill, PipelineHandle {});
+	ASSERT_NE(add,  PipelineHandle {});
+
+	const BufferHandle buffer  = device->createBuffer(ValuesBuffer(MemoryLocation::eReadback), {});
+	const uint64_t     address = device->getBufferAddress(buffer);
+
+	Frame&       frame    = device->beginFrame();
+	CommandList& commands = frame.commandList();
+
+	commands.bindPipeline(fill);
+	commands.pushConstants(ComputeConstants { .destination = address, .count = VALUE_COUNT, .multiplier = FILL_MULTIPLIER, .offset = FILL_OFFSET });
+	commands.dispatch(GroupCount(VALUE_COUNT));
+	commands.memoryBarrier();
+	commands.bindPipeline(add);
+	commands.pushConstants(ComputeConstants { .destination = address, .count = VALUE_COUNT, .offset = ADD_OFFSET });
+	commands.dispatch(GroupCount(VALUE_COUNT));
+
+	device->endFrame(frame);
+
+	EXPECT_EQ(readValues(buffer), Sequence(FILL_MULTIPLIER, FILL_OFFSET + ADD_OFFSET));
+
+	device->destroyBuffer(buffer);
+	device->destroyPipeline(fill);
+	device->destroyPipeline(add);
+}
+
+TEST(RenderDeviceLifetime, DestroyingDeviceReleasesLiveResources)
+{
+	std::unique_ptr<RenderDevice> owned_device = CreateRenderDevice({ .appName = "lunar_render_tests_lifetime" });
+
+	const std::vector<uint32_t> values  = Sequence(FILL_MULTIPLIER, FILL_OFFSET);
+	const std::vector<char>     shader  = LoadShader("fill.comp");
+	const BufferHandle          staged  = owned_device->createBuffer(ValuesBuffer(MemoryLocation::eGpuOnly), std::as_bytes(std::span(values)));
+	const BufferHandle          mapped  = owned_device->createBuffer(ValuesBuffer(MemoryLocation::eReadback), {});
+	const PipelineHandle        compute = owned_device->createComputePipeline({ std::as_bytes(std::span(shader)) });
+
+	owned_device->destroyBuffer(owned_device->createBuffer(ValuesBuffer(MemoryLocation::eGpuOnly), std::as_bytes(std::span(values))));
+	owned_device->endFrame(owned_device->beginFrame());
+
+	EXPECT_NE(staged,  BufferHandle {});
+	EXPECT_NE(mapped,  BufferHandle {});
+	EXPECT_NE(compute, PipelineHandle {});
+
+	owned_device.reset();
+}

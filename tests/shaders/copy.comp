@@ -1,0 +1,9 @@
+#version 460
+#include "common/compute_constants.glsl"
+
+void main()
+{
+	const uint index = gl_GlobalInvocationID.x;
+	if (index < constants.count)
+		constants.destination.data[index] = constants.source.data[index];
+}
