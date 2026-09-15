@@ -27,8 +27,8 @@ namespace lunar::Render
 
 	private:
 		void resizeDepthImage(Extent2D extent);
-		void recordFrame(CommandList& commands, Scene& scene, ImageHandle target, Extent2D extent);
-		void drawMeshes(CommandList& commands, Scene& scene, const glm::mat4& view_projection);
+		void recordFrame(Frame& frame, Scene& scene, ImageHandle target, Extent2D extent);
+		void drawMeshes(Frame& frame, Scene& scene, uint64_t scene_address);
 
 		RenderDevice&  device;
 		Swapchain*     swapchain    = nullptr;

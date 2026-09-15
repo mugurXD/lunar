@@ -5,6 +5,8 @@
 
 #include <lunar/debug.hpp>
 
+#include <bit>
+
 namespace lunar::Render::imp
 {
 	namespace
@@ -274,10 +276,21 @@ namespace lunar::Render::imp
 		const VkResult result = CreateVkSemaphore(device.getDevice(), VK_SEMAPHORE_TYPE_BINARY, acquireSemaphore);
 		if (result != VK_SUCCESS)
 			DEBUG_ERROR("Failed to create frame acquire semaphore: {}", string_VkResult(result));
+
+		transientBuffer = device.createBuffer({ TRANSIENT_BUFFER_SIZE, BufferUsageFlags(BufferUsageFlagBits::eStorage), MemoryLocation::eUpload }, {});
+
+		const VkBufferRecord* transient_record = device.resolve(transientBuffer);
+		if (transient_record == nullptr)
+			return;
+
+		transientData    = static_cast<std::byte*>(transient_record->mapped);
+		transientAddress = transient_record->address;
 	}
 
 	VkFrame::~VkFrame() noexcept
 	{
+		device.destroyBuffer(transientBuffer);
+
 		if (acquireSemaphore != VK_NULL_HANDLE)
 			vkDestroySemaphore(device.getDevice(), acquireSemaphore, nullptr);
 	}
@@ -298,6 +311,21 @@ namespace lunar::Render::imp
 	CommandList& VkFrame::commandList()
 	{
 		return commands;
+	}
+
+	TransientAllocation VkFrame::allocateTransient(size_t size, size_t alignment)
+	{
+		DEBUG_ASSERT(std::has_single_bit(alignment), "Transient alignment must be a power of two");
+
+		const size_t offset = (transientOffset + alignment - 1) & ~(alignment - 1);
+		if (transientData == nullptr || size > TRANSIENT_BUFFER_SIZE || offset > TRANSIENT_BUFFER_SIZE - size)
+		{
+			DEBUG_ERROR("Frame transient memory exhausted: {} bytes requested, {} of {} bytes used", size, transientOffset, TRANSIENT_BUFFER_SIZE);
+			return {};
+		}
+
+		transientOffset = offset + size;
+		return { { transientData + offset, size }, transientAddress + offset };
 	}
 
 	bool VkRenderDevice::createFrameResources()
@@ -354,7 +382,8 @@ namespace lunar::Render::imp
 		VkFrame& frame = *frames[(frameValue + 1) % FRAMES_IN_FLIGHT];
 		WaitForTimeline(device, frameTimeline, frame.signalValue);
 
-		frame.signalValue = ++frameValue;
+		frame.signalValue     = ++frameValue;
+		frame.transientOffset = 0;
 		releaseDestroyedResources();
 		frame.commands.begin();
 
@@ -384,6 +413,7 @@ namespace lunar::Render::imp
 		                    VK_ACCESS_2_HOST_READ_BIT);
 
 		frame.commands.end();
+		flushBuffer(frame.transientBuffer, 0, frame.transientOffset);
 
 		const VkResult result = SubmitCommandBuffer(graphicsQueue, frame.commands.getHandle(), wait_semaphores, signal_semaphores, VK_NULL_HANDLE);
 		if (result != VK_SUCCESS)

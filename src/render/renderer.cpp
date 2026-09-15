@@ -12,18 +12,60 @@ namespace lunar::Render
 {
 	namespace
 	{
-		const glm::vec4 CLEAR_COLOR = { 1.f, 0.f, 0.f, 1.f };
+		const glm::vec4 CLEAR_COLOR = { 0.6f, 0.745f, 0.76f, 1.f };
 
 		constexpr std::string_view SHADER_BINARY_PATH      = "shader-bin/{}.spv";
 		constexpr Format           DEPTH_FORMAT            = Format::eD32Float;
 		constexpr float            REVERSE_Z_CLEAR_DEPTH   = 0.f;
 		constexpr CompareOp        REVERSE_Z_DEPTH_COMPARE = CompareOp::eGreater;
 
+		const glm::vec4 AMBIENT_COLOR = { 0.08f, 0.08f, 0.1f, 0.f };
+
+		struct SceneData
+		{
+			glm::mat4 viewProjection = glm::mat4(1.f);
+			glm::vec4 lightDirection = {};
+			glm::vec4 lightColor     = {};
+			glm::vec4 ambientColor   = {};
+		};
+
+		struct DrawData
+		{
+			glm::mat4 model        = glm::mat4(1.f);
+			glm::mat4 normalMatrix = glm::mat4(1.f);
+		};
+
 		struct MeshConstants
 		{
-			glm::mat4 modelViewProjection = glm::mat4(1.f);
-			uint64_t  vertexAddress       = 0;
+			uint64_t sceneAddress  = 0;
+			uint64_t drawAddress   = 0;
+			uint64_t vertexAddress = 0;
 		};
+
+		SceneData BuildSceneData(Scene& scene, const Camera& camera, Extent2D extent)
+		{
+			const glm::mat4 projection = camera.getProjectionMatrix(static_cast<int>(extent.width), static_cast<int>(extent.height));
+
+			SceneData scene_data =
+			{
+				.viewProjection = projection * camera.getViewMatrix(),
+				.ambientColor   = AMBIENT_COLOR
+			};
+
+			const DirectionalLight* light = nullptr;
+			scene.forEach<DirectionalLight>([&](Entity, const DirectionalLight& candidate) {
+				if (light == nullptr)
+					light = &candidate;
+			});
+
+			if (light != nullptr)
+			{
+				scene_data.lightDirection = glm::vec4(glm::normalize(light->direction), 0.f);
+				scene_data.lightColor     = glm::vec4(light->color * light->intensity, 0.f);
+			}
+
+			return scene_data;
+		}
 
 		std::vector<char> LoadShader(std::string_view name)
 		{
@@ -79,7 +121,7 @@ namespace lunar::Render
 		{
 			const Extent2D extent = device.getImageExtent(backbuffer);
 			resizeDepthImage(extent);
-			recordFrame(frame.commandList(), scene, backbuffer, extent);
+			recordFrame(frame, scene, backbuffer, extent);
 		}
 
 		device.endFrame(frame);
@@ -108,8 +150,10 @@ namespace lunar::Render
 		});
 	}
 
-	void Renderer::recordFrame(CommandList& commands, Scene& scene, ImageHandle target, Extent2D extent)
+	void Renderer::recordFrame(Frame& frame, Scene& scene, ImageHandle target, Extent2D extent)
 	{
+		CommandList& commands = frame.commandList();
+
 		const ColorAttachment color_attachment =
 		{
 			.image      = target,
@@ -129,18 +173,18 @@ namespace lunar::Render
 			.depthAttachment  = depth_attachment
 		});
 
-		const Camera* camera = scene.getMainCamera();
-		if (camera != nullptr && meshPipeline != PipelineHandle {})
-		{
-			const glm::mat4 projection = camera->getProjectionMatrix(static_cast<int>(extent.width), static_cast<int>(extent.height));
-			drawMeshes(commands, scene, projection * camera->getViewMatrix());
-		}
+		const Camera*  camera        = scene.getMainCamera();
+		const uint64_t scene_address = camera != nullptr ? frame.writeTransient(BuildSceneData(scene, *camera, extent)) : 0;
+
+		if (scene_address != 0 && meshPipeline != PipelineHandle {})
+			drawMeshes(frame, scene, scene_address);
 
 		commands.endRendering();
 	}
 
-	void Renderer::drawMeshes(CommandList& commands, Scene& scene, const glm::mat4& view_projection)
+	void Renderer::drawMeshes(Frame& frame, Scene& scene, uint64_t scene_address)
 	{
+		CommandList& commands = frame.commandList();
 		commands.bindPipeline(meshPipeline);
 
 		scene.forEach<MeshRenderer>([&](Entity entity, const MeshRenderer& mesh_renderer) {
@@ -148,10 +192,12 @@ namespace lunar::Render
 			if (mesh == nullptr)
 				return;
 
-			commands.pushConstants(MeshConstants {
-				.modelViewProjection = view_projection * scene.resolveWorldTransform(entity).matrix,
-				.vertexAddress       = mesh->vertexAddress
-			});
+			const glm::mat4 model        = scene.resolveWorldTransform(entity).matrix;
+			const uint64_t  draw_address = frame.writeTransient(DrawData { model, glm::transpose(glm::inverse(model)) });
+			if (draw_address == 0)
+				return;
+
+			commands.pushConstants(MeshConstants { scene_address, draw_address, mesh->vertexAddress });
 			commands.bindIndexBuffer(mesh->indexBuffer, 0, IndexType::eUint32);
 			commands.drawIndexed(mesh->indexCount);
 		});

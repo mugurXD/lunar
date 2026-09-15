@@ -184,6 +184,13 @@ namespace lunar::Render::imp
 		return buffers.get(FromGpuHandle(buffers, buffer));
 	}
 
+	void VkRenderDevice::flushBuffer(BufferHandle buffer, size_t offset, size_t size)
+	{
+		const VkBufferRecord* record = resolve(buffer);
+		if (record != nullptr && size > 0)
+			vmaFlushAllocation(allocator, record->allocation, offset, size);
+	}
+
 	UploadTicket VkRenderDevice::uploadThroughStaging(VkBufferRecord& record, size_t offset, std::span<const std::byte> data)
 	{
 		const VkBufferCreateInfo staging_info =

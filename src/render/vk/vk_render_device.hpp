@@ -138,6 +138,7 @@ namespace lunar::Render::imp
 		const vkb::Device& getDevice()         const;
 		VkPipelineLayout   getPipelineLayout() const;
 		VkBufferRecord*    resolve(BufferHandle buffer);
+		void               flushBuffer(BufferHandle buffer, size_t offset, size_t size);
 		VkImageRecord*     resolve(ImageHandle image);
 		VkPipelineRecord*  resolve(PipelineHandle pipeline);
 		ImageHandle        registerImage(const VkImageRecord& record);

@@ -1,8 +1,10 @@
 #pragma once
 #include <cstddef>
+#include <cstring>
 #include <memory>
 #include <span>
 #include <string_view>
+#include <type_traits>
 
 #include <lunar/api.hpp>
 #include <lunar/render/common.hpp>
@@ -53,6 +55,14 @@ namespace lunar::Render
 		virtual Format getFormat() const = 0;
 	};
 
+	constexpr size_t TRANSIENT_ALIGNMENT = 16;
+
+	struct LUNAR_API TransientAllocation
+	{
+		std::span<std::byte> data    = {};
+		uint64_t             address = 0;
+	};
+
 	class LUNAR_API Frame
 	{
 	public:
@@ -62,8 +72,22 @@ namespace lunar::Render
 		Frame(const Frame&)            = delete;
 		Frame& operator=(const Frame&) = delete;
 
-		virtual ImageHandle  acquire(Swapchain& swapchain) = 0;
-		virtual CommandList& commandList()                 = 0;
+		virtual ImageHandle         acquire(Swapchain& swapchain)                                          = 0;
+		virtual CommandList&        commandList()                                                          = 0;
+		virtual TransientAllocation allocateTransient(size_t size, size_t alignment = TRANSIENT_ALIGNMENT) = 0;
+
+		template<typename T>
+		uint64_t writeTransient(const T& value)
+		{
+			static_assert(std::is_trivially_copyable_v<T>, "Transient data must be trivially copyable");
+
+			const TransientAllocation allocation = allocateTransient(sizeof(T));
+			if (allocation.data.empty())
+				return 0;
+
+			std::memcpy(allocation.data.data(), &value, sizeof(T));
+			return allocation.address;
+		}
 	};
 
 	class LUNAR_API RenderDevice
