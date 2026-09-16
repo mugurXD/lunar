@@ -11,3 +11,4 @@ stb_image.h
 FastNoiseLite.h
 deps/*/build
 deps/*/install
+saves/
