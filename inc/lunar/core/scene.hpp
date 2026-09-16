@@ -230,45 +230,45 @@ namespace lunar
 		return &component;
 	}
 
-	struct LUNAR_API SceneLoader
-	{
-		using ComponentJsonParser = std::function<void(GameObject, const nlohmann::json&)>;
-		using VisitorDict         = std::unordered_map<std::string, ComponentJsonParser>;
+//	struct LUNAR_API SceneLoader
+//	{
+//		using ComponentJsonParser = std::function<void(GameObject, const nlohmann::json&)>;
+//		using VisitorDict         = std::unordered_map<std::string, ComponentJsonParser>;
 
 
-		SceneLoader()  noexcept = default;
-		~SceneLoader() noexcept  = default;
+//		SceneLoader()  noexcept = default;
+//		~SceneLoader() noexcept  = default;
 	
-		SceneLoader& destination(Scene& scene);
-		SceneLoader& useRenderContext(Render::RenderContext context);
-		SceneLoader& loadJsonFile(const Fs::Path& path);
+//		SceneLoader& destination(Scene& scene);
+//		SceneLoader& useRenderContext(Render::RenderContext context);
+//		SceneLoader& loadJsonFile(const Fs::Path& path);
 
-		SceneLoader& useCoreSerializers();
-		SceneLoader& useCustomClassSerializer(
-			const std::string& componentName,
-			const ComponentJsonParser& parser
-		);
+//		SceneLoader& useCoreSerializers();
+//		SceneLoader& useCustomClassSerializer(
+//			const std::string& componentName,
+//			const ComponentJsonParser& parser
+//		);
 
-		template<typename T> requires IsComponentType<T> && IsJsonSerializable<T>
-		SceneLoader& useClassSerializer(const std::string& componentName)
-		{
-			return useCustomClassSerializer(componentName, [](GameObject object, const nlohmann::json& json) {
-				object.addComponent<T>(T::Deserialize(json));
-			});
-		}
+//		template<typename T> requires IsComponentType<T> && IsJsonSerializable<T>
+//		SceneLoader& useClassSerializer(const std::string& componentName)
+//		{
+//			return useCustomClassSerializer(componentName, [](GameObject object, const nlohmann::json& json) {
+//				object.addComponent<T>(T::Deserialize(json));
+//			});
+//		}
 
-	private:
-		void parseComponents(GameObject object, const nlohmann::json& json);
-		void parseTransform(GameObject object, const nlohmann::json& json);
-		void parseGameObject(
-			const nlohmann::json& json, 
-			GameObject            parent = nullptr
-		);
+//	private:
+//		void parseComponents(GameObject object, const nlohmann::json& json);
+//		void parseTransform(GameObject object, const nlohmann::json& json);
+//		void parseGameObject(
+//			const nlohmann::json& json, 
+//			GameObject            parent = nullptr
+//		);
 
-		VisitorDict           visitors      = {};
-		Scene*                result        = nullptr;
-		Render::RenderContext renderContext = nullptr;
-	};
+//		VisitorDict           visitors      = {};
+//		Scene*                result        = nullptr;
+//		Render::RenderContext renderContext = nullptr;
+//	};
 }
 
 namespace Core
