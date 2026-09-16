@@ -1,4 +1,6 @@
 #include <lunar/file/json_file.hpp>
+#include <lunar/debug.hpp>
+
 #include <fstream>
 
 namespace Fs
@@ -10,51 +12,47 @@ namespace Fs
 
 	bool JsonFile::fromFile(const Path& path)
 	{
+		content = nullptr;
+
 		if (!fileExists(path))
 			return false;
 
-		auto res_file = std::ifstream(path);
-		content = nlohmann::json::parse(res_file);
-		res_file.close();
+		std::ifstream  file(path);
+		nlohmann::json parsed = nlohmann::json::parse(file, nullptr, false);
+		if (parsed.is_discarded())
+		{
+			DEBUG_ERROR("'{}' does not contain valid JSON", path.string());
+			return false;
+		}
+
+		content = std::move(parsed);
 		return true;
 	}
 
-	void JsonFile::toFile(const Path& path)
+	bool JsonFile::toFile(const Path& path)
 	{
-		auto res_file = std::ofstream(path);
-		res_file << content.dump();
-		res_file.close();
+		return WriteFileAtomically(path, content.dump(indentation));
 	}
 
 	bool JsonObject::fromFile(const Path& path)
 	{
-		if (!fileExists(path))
+		const JsonFile file(path);
+		if (file.content.is_null())
 			return false;
 
-		auto res_file = std::ifstream(path);
-		auto res_data = nlohmann::json::parse(res_file);
-		fromJson(res_data);
-		res_file.close();
-		return true;
-
+		fromJson(file.content);
 		return true;
 	}
 
-	void JsonObject::toFile(const Path& path)
+	bool JsonObject::toFile(const Path& path)
 	{
-		auto res_file = std::ofstream(path);
-		res_file << toJson().dump();
-		res_file.close();
+		JsonFile file;
+		file.content = toJson();
+		return file.toFile(path);
 	}
 
-	void JsonObject::fromJson(nlohmann::json& json)
+	void ReportMalformedJson(std::string_view reason)
 	{
-		throw;
-	}
-
-	nlohmann::json Fs::JsonObject::toJson()
-	{
-		throw;
-		return {};
+		DEBUG_ERROR("Malformed JSON data: {}", reason);
 	}
 }

@@ -12,7 +12,7 @@ namespace Fs
 		BinaryFile(const Path& path) { fromFile(path); }
 		BinaryFile() = default;
 
-		void toFile(const Path& path) override;
+		bool toFile(const Path& path) override;
 		bool fromFile(const Path& path) override;
 
 		std::vector<char> content;

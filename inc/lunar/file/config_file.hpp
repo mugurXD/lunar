@@ -14,7 +14,7 @@ namespace Fs
 		ConfigFile() = default;
 
 		bool fromFile(const Path& path) override;
-		void toFile(const Path& path) override;
+		bool toFile(const Path& path) override;
 
 		std::string& operator[](const std::string& key)
 		{

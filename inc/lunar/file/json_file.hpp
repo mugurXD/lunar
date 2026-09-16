@@ -3,9 +3,19 @@
 #include <lunar/api.hpp>
 #include <nlohmann/json.hpp>
 #include <concepts>
+#include <optional>
+#include <string_view>
+
+template<typename T>
+concept IsJsonSerializable = requires (const T& memoryForm, const nlohmann::json& serializedForm) {
+	{ T::Deserialize(serializedForm) } -> std::same_as<std::optional<T>>;
+	{ T::Serialize(memoryForm) }       -> std::same_as<nlohmann::json>;
+};
 
 namespace Fs
 {
+	constexpr int COMPACT_JSON = -1;
+
 	class LUNAR_API JsonFile : public Resource
 	{
 	public:
@@ -13,26 +23,35 @@ namespace Fs
 		JsonFile() = default;
 
 		bool fromFile(const Path& path) override;
-		void toFile(const Path& path) override;
+		bool toFile(const Path& path) override;
 
-		nlohmann::json content;
+		nlohmann::json content     = nullptr;
+		int            indentation = COMPACT_JSON;
 	};
 
 	class LUNAR_API JsonObject : public Resource
 	{
 	public:
 		bool fromFile(const Path& path) override;
-		void toFile(const Path& path) override;
+		bool toFile(const Path& path) override;
 
-		virtual void fromJson(nlohmann::json& json);
-		virtual nlohmann::json toJson();
+		virtual void           fromJson(const nlohmann::json& json) = 0;
+		virtual nlohmann::json toJson()                             = 0;
 	};
 
+	LUNAR_API void ReportMalformedJson(std::string_view reason);
+
+	template<IsJsonSerializable T>
+	std::optional<T> DeserializeJson(const nlohmann::json& json)
+	{
+		try
+		{
+			return T::Deserialize(json);
+		}
+		catch (const nlohmann::json::exception& exception)
+		{
+			ReportMalformedJson(exception.what());
+			return std::nullopt;
+		}
+	}
 }
-
-template<typename T>
-concept IsJsonSerializable = requires (T, const T & memoryForm, const nlohmann::json & serializedForm) {
-
-	{ T::Deserialize(serializedForm) } -> std::same_as<T>;
-	{ T::Serialize(memoryForm) } -> std::same_as<nlohmann::json>;
-};

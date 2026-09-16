@@ -1,4 +1,5 @@
 #include <lunar/file/image_file.hpp>
+#include <lunar/debug.hpp>
 #include <fstream>
 #include <sstream>
 
@@ -20,8 +21,9 @@ namespace Fs
 		return true;
 	}
 
-	void ImageFile::toFile(const Path& path)
+	bool ImageFile::toFile(const Path& path)
 	{
-		throw;
+		DEBUG_ERROR("Writing images is not supported ('{}')", path.string());
+		return false;
 	}
 }

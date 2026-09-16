@@ -17,10 +17,8 @@ namespace Fs
 		return true;
 	}
 
-	void TextFile::toFile(const Path& path)
+	bool TextFile::toFile(const Path& path)
 	{
-		auto res_file = std::ofstream(path);
-		res_file << content;
-		res_file.close();
+		return WriteFileAtomically(path, content);
 	}
 }

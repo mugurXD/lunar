@@ -72,11 +72,12 @@ namespace Fs
 		return true;
 	}
 
-	void ConfigFile::toFile(const Path& path)
+	bool ConfigFile::toFile(const Path& path)
 	{
-		auto res_file = std::ofstream(path);
-		for (auto& [key, value] : content) {
-			res_file << std::format("{} = {}\n", key, value);
-		}
+		std::string serialized;
+		for (const auto& [key, value] : content)
+			serialized += std::format("{} = {}\n", key, value);
+
+		return WriteFileAtomically(path, serialized);
 	}
 }

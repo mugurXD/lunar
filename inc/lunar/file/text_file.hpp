@@ -11,7 +11,7 @@ namespace Fs
 		TextFile(const Path& path) { fromFile(path); }
 		TextFile() = default;
 
-		void toFile(const Path& path) override;
+		bool toFile(const Path& path) override;
 		bool fromFile(const Path& path) override;
 
 		std::string content;

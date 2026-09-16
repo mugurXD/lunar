@@ -21,9 +21,8 @@ namespace Fs
 		return true;
 	}
 
-	void BinaryFile::toFile(const Path& path)
+	bool BinaryFile::toFile(const Path& path)
 	{
-		// TOOD: implement
-		DEBUG_NOT_IMPLEMENTED();
+		return WriteFileAtomically(path, std::string_view(content.data(), content.size()));
 	}
 }
