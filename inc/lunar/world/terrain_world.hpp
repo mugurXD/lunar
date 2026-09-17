@@ -3,12 +3,13 @@
 #include <lunar/core/jobs.hpp>
 #include <lunar/core/scene.hpp>
 #include <lunar/render/mesh_registry.hpp>
+#include <lunar/world/grid.hpp>
 #include <lunar/world/terrain.hpp>
+#include <lunar/world/world_settings.hpp>
 
 #include <glm/glm.hpp>
 
 #include <cstddef>
-#include <memory>
 #include <unordered_map>
 
 namespace lunar::World
@@ -16,11 +17,11 @@ namespace lunar::World
 	class LUNAR_API TerrainWorld
 	{
 	public:
-		TerrainWorld(Scene&                                  scene,
-		             JobSystem&                              jobs,
-		             Render::MeshRegistry&                   meshes,
-		             std::shared_ptr<const TerrainGenerator> generator,
-		             const TerrainSettings&                  settings) noexcept;
+		TerrainWorld(Scene&                scene,
+		             JobSystem&            jobs,
+		             Render::MeshRegistry& meshes,
+		             ChunkSource&          source,
+		             const WorldSettings&  settings) noexcept;
 		~TerrainWorld() noexcept;
 
 		TerrainWorld(const TerrainWorld&)            = delete;
@@ -41,16 +42,16 @@ namespace lunar::World
 
 		void unloadDistantChunks(ChunkCoord center);
 		void requestMissingChunks(ChunkCoord center);
-		void requestChunk(ChunkCoord coord);
+		void requestChunk(ChunkCoord coord, ChunkWork work);
 		void onChunkGenerated(ChunkCoord coord, ChunkData data);
 		void unloadChunk(const LoadedChunk& chunk);
 
-		Scene&                                                      scene;
-		JobSystem&                                                  jobs;
-		Render::MeshRegistry&                                       meshes;
-		std::shared_ptr<const TerrainGenerator>                     generator;
-		TerrainSettings                                             settings;
-		std::unordered_map<ChunkCoord, LoadedChunk, ChunkCoordHash> chunks;
-		size_t                                                      pendingCount = 0;
+		Scene&                                                     scene;
+		JobSystem&                                                 jobs;
+		Render::MeshRegistry&                                      meshes;
+		ChunkSource&                                               source;
+		WorldSettings                                              settings;
+		std::unordered_map<ChunkCoord, LoadedChunk, GridCoordHash> chunks;
+		size_t                                                     pendingCount = 0;
 	};
 }

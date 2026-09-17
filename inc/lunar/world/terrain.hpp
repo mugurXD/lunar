@@ -1,55 +1,24 @@
 #pragma once
 #include <lunar/api.hpp>
 #include <lunar/render/mesh_registry.hpp>
+#include <lunar/world/grid.hpp>
+#include <lunar/world/world_settings.hpp>
 
 #include <glm/glm.hpp>
 
-#include <cstddef>
 #include <cstdint>
+#include <functional>
+#include <optional>
 #include <vector>
 
 namespace lunar::World
 {
-	struct LUNAR_API ChunkCoord
-	{
-		int32_t x = 0;
-		int32_t z = 0;
-
-		bool operator==(const ChunkCoord&) const = default;
-	};
-
-	struct LUNAR_API ChunkCoordHash
-	{
-		size_t operator()(const ChunkCoord& coord) const;
-	};
-
-	struct LUNAR_API TerrainSettings
-	{
-		uint32_t chunkQuads      = 32;
-		float    vertexSpacing   = 2.f;
-		int32_t  viewRadius      = 12;
-		int32_t  unloadMargin    = 1;
-		size_t   maxJobsInFlight = 16;
-
-		float getChunkSize() const;
-	};
+	constexpr int32_t HEIGHTMAP_BORDER     = 1;
+	constexpr float   TERRAIN_VERTEX_ALPHA = 1.f;
 
 	struct LUNAR_API TerrainChunk
 	{
 		ChunkCoord coord = {};
-	};
-
-	class LUNAR_API TerrainGenerator
-	{
-	public:
-		TerrainGenerator()          noexcept = default;
-		virtual ~TerrainGenerator() noexcept = default;
-
-		TerrainGenerator(const TerrainGenerator&)            = delete;
-		TerrainGenerator& operator=(const TerrainGenerator&) = delete;
-
-		virtual float     sampleHeight(double x, double z)                                         const = 0;
-		virtual glm::vec3 sampleColor(double x, double z, float height, const glm::vec3& normal) const = 0;
 	};
 
 	struct LUNAR_API Heightmap
@@ -58,6 +27,8 @@ namespace lunar::World
 		std::vector<float> heights        = {};
 
 		float sample(int32_t x, int32_t z) const;
+
+		bool operator==(const Heightmap&) const = default;
 	};
 
 	struct LUNAR_API ChunkData
@@ -66,7 +37,67 @@ namespace lunar::World
 		Render::MeshData mesh      = {};
 	};
 
-	LUNAR_API ChunkCoord ChunkAt(const glm::vec3& position, const TerrainSettings& settings);
-	LUNAR_API glm::vec3  ChunkOrigin(ChunkCoord coord, const TerrainSettings& settings);
-	LUNAR_API ChunkData  GenerateChunk(const TerrainGenerator& generator, ChunkCoord coord, const TerrainSettings& settings);
+	using ChunkWork = std::move_only_function<ChunkData()>;
+
+	class LUNAR_API ChunkSource
+	{
+	public:
+		ChunkSource()          noexcept = default;
+		virtual ~ChunkSource() noexcept = default;
+
+		ChunkSource(const ChunkSource&)            = delete;
+		ChunkSource& operator=(const ChunkSource&) = delete;
+
+		virtual std::optional<ChunkWork> prepareChunk(ChunkCoord coord) = 0;
+	};
+
+	LUNAR_API uint32_t  HeightmapSamplesPerSide(const WorldSettings& settings);
+	LUNAR_API glm::vec3 HeightmapNormal(const Heightmap& heightmap, int32_t x, int32_t z, const WorldSettings& settings);
+	LUNAR_API void      AppendChunkIndices(Render::MeshData& mesh, const WorldSettings& settings);
+
+	template<typename HeightFunction>
+	Heightmap SampleHeightmap(HeightFunction&& height_at, ChunkCoord coord, const WorldSettings& settings)
+	{
+		const int32_t last_sample = static_cast<int32_t>(settings.chunkQuads) + HEIGHTMAP_BORDER;
+
+		Heightmap heightmap = { .samplesPerSide = HeightmapSamplesPerSide(settings) };
+		heightmap.heights.reserve(static_cast<size_t>(heightmap.samplesPerSide) * heightmap.samplesPerSide);
+
+		for (int32_t z = -HEIGHTMAP_BORDER; z <= last_sample; z++)
+			for (int32_t x = -HEIGHTMAP_BORDER; x <= last_sample; x++)
+				heightmap.heights.push_back(height_at(SampleCoordinate(coord.x, x, settings), SampleCoordinate(coord.z, z, settings)));
+
+		return heightmap;
+	}
+
+	template<typename ColorFunction>
+	Render::MeshData BuildChunkMesh(const Heightmap& heightmap, ColorFunction&& color_at, ChunkCoord coord, const WorldSettings& settings)
+	{
+		const int32_t quads             = static_cast<int32_t>(settings.chunkQuads);
+		const size_t  vertices_per_side = static_cast<size_t>(settings.chunkQuads) + 1;
+
+		Render::MeshData mesh;
+		mesh.vertices.reserve(vertices_per_side * vertices_per_side);
+
+		for (int32_t z = 0; z <= quads; z++)
+		{
+			for (int32_t x = 0; x <= quads; x++)
+			{
+				const float     height = heightmap.sample(x, z);
+				const glm::vec3 normal = HeightmapNormal(heightmap, x, z, settings);
+				const glm::vec3 color  = color_at(SampleCoordinate(coord.x, x, settings), SampleCoordinate(coord.z, z, settings), height, normal);
+
+				mesh.vertices.push_back(Render::Vertex {
+					.position = { x * settings.vertexSpacing, height, z * settings.vertexSpacing },
+					.uv_x     = static_cast<float>(x) / quads,
+					.normal   = normal,
+					.uv_y     = static_cast<float>(z) / quads,
+					.color    = glm::vec4(color, TERRAIN_VERTEX_ALPHA)
+				});
+			}
+		}
+
+		AppendChunkIndices(mesh, settings);
+		return mesh;
+	}
 }

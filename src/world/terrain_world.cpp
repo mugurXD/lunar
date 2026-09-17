@@ -3,7 +3,7 @@
 
 #include <algorithm>
 #include <format>
-#include <ranges>
+#include <optional>
 #include <string_view>
 #include <vector>
 
@@ -12,29 +12,17 @@ namespace lunar::World
 	namespace
 	{
 		constexpr std::string_view CHUNK_NAME_FORMAT = "TerrainChunk {},{}";
-
-		int64_t DistanceSquared(ChunkCoord a, ChunkCoord b)
-		{
-			const int64_t delta_x = static_cast<int64_t>(a.x) - b.x;
-			const int64_t delta_z = static_cast<int64_t>(a.z) - b.z;
-			return delta_x * delta_x + delta_z * delta_z;
-		}
-
-		bool IsWithin(ChunkCoord coord, ChunkCoord center, int32_t radius)
-		{
-			return DistanceSquared(coord, center) <= static_cast<int64_t>(radius) * radius;
-		}
 	}
 
-	TerrainWorld::TerrainWorld(Scene&                                  scene,
-	                           JobSystem&                              jobs,
-	                           Render::MeshRegistry&                   meshes,
-	                           std::shared_ptr<const TerrainGenerator> generator,
-	                           const TerrainSettings&                  settings) noexcept
+	TerrainWorld::TerrainWorld(Scene&                scene,
+	                           JobSystem&            jobs,
+	                           Render::MeshRegistry& meshes,
+	                           ChunkSource&          source,
+	                           const WorldSettings&  settings) noexcept
 		: scene(scene),
 		jobs(jobs),
 		meshes(meshes),
-		generator(std::move(generator)),
+		source(source),
 		settings(settings)
 	{
 	}
@@ -78,9 +66,6 @@ namespace lunar::World
 
 	void TerrainWorld::requestMissingChunks(ChunkCoord center)
 	{
-		if (pendingCount >= settings.maxJobsInFlight)
-			return;
-
 		std::vector<ChunkCoord> missing;
 		for (int32_t offset_z = -settings.viewRadius; offset_z <= settings.viewRadius; offset_z++)
 		{
@@ -94,17 +79,17 @@ namespace lunar::World
 
 		std::ranges::sort(missing, {}, [&](ChunkCoord coord) { return DistanceSquared(coord, center); });
 
-		const auto request_budget = static_cast<std::ptrdiff_t>(settings.maxJobsInFlight - pendingCount);
-		for (const ChunkCoord coord : missing | std::views::take(request_budget))
-			requestChunk(coord);
+		for (auto next = missing.begin(); next != missing.end() && pendingCount < settings.maxJobsInFlight; ++next)
+		{
+			std::optional<ChunkWork> work = source.prepareChunk(*next);
+			if (work.has_value())
+				requestChunk(*next, std::move(*work));
+		}
 	}
 
-	void TerrainWorld::requestChunk(ChunkCoord coord)
+	void TerrainWorld::requestChunk(ChunkCoord coord, ChunkWork work)
 	{
-		const JobHandle job = jobs.submit(
-			[generator = generator, settings = settings, coord] { return GenerateChunk(*generator, coord, settings); },
-			[this, coord](ChunkData data) { onChunkGenerated(coord, std::move(data)); }
-		);
+		const JobHandle job = jobs.submit(std::move(work), [this, coord](ChunkData data) { onChunkGenerated(coord, std::move(data)); });
 
 		chunks.emplace(coord, LoadedChunk { .job = job });
 		pendingCount++;
