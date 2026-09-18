@@ -4,37 +4,39 @@
 
 #include <glm/glm.hpp>
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <vector>
 
 class FastNoiseLite;
 
 namespace trok
 {
-	struct TerrainSettings
-	{
-		int32_t   seed           = 1337;
-		float     frequency      = 0.0025f;
-		int32_t   octaves        = 5;
-		float     amplitude      = 60.f;
-		glm::vec3 lowGrassColor  = { 0.10f, 0.22f, 0.06f };
-		glm::vec3 highGrassColor = { 0.22f, 0.36f, 0.10f };
-		glm::vec3 rockColor      = { 0.32f, 0.30f, 0.28f };
-		float     rockSlopeStart = 0.25f;
-		float     rockSlopeEnd   = 0.45f;
-	};
+	constexpr size_t BIOME_BLEND_CELLS = 4;
 
 	class TerrainGenerator final : public lunar::World::TerrainGenerator<RegionPlan>
 	{
 	public:
-		TerrainGenerator(const TerrainSettings& settings) noexcept;
+		TerrainGenerator(std::shared_ptr<const BiomeLibrary> biomes, int32_t seed) noexcept;
 		~TerrainGenerator() noexcept override;
 
-		float     sampleHeight(const RegionContext& context, double x, double z)                                         const override;
+		float     sampleHeight(const RegionContext& context, double x, double z)                                       const override;
 		glm::vec3 sampleColor(const RegionContext& context, double x, double z, float height, const glm::vec3& normal) const override;
 
 	private:
-		TerrainSettings                settings;
-		std::unique_ptr<FastNoiseLite> noise;
+		struct Blend
+		{
+			std::array<BiomeIndex, BIOME_BLEND_CELLS> indices = {};
+			std::array<float,      BIOME_BLEND_CELLS> weights = {};
+		};
+
+		Blend     gatherBlend(const RegionContext& context, double x, double z)       const;
+		float     biomeHeight(BiomeIndex biome, double x, double z)                   const;
+		glm::vec3 biomeColor(BiomeIndex biome, float height, const glm::vec3& normal) const;
+
+		std::shared_ptr<const BiomeLibrary>         biomes;
+		std::vector<std::unique_ptr<FastNoiseLite>> noises;
 	};
 }

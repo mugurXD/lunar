@@ -1,3 +1,5 @@
+#include <trok/world/biome.hpp>
+#include <trok/world/climate.hpp>
 #include <trok/world/region_plan.hpp>
 #include <trok/world/terrain_generator.hpp>
 
@@ -28,11 +30,12 @@ namespace
 	constexpr int                     WINDOW_WIDTH         = 1280;
 	constexpr int                     WINDOW_HEIGHT        = 720;
 	constexpr int                     WINDOW_SAMPLES       = 4;
-	constexpr int32_t                 VIEW_RADIUS          = 64;
+	constexpr int32_t                 VIEW_RADIUS          = 32;
 	constexpr std::string_view        WINDOW_TITLE         = "trok";
 	constexpr std::string_view        FPS_TITLE_FORMAT     = "trok | FPS: {}";
 	constexpr std::string_view        WORLD_SAVE_DIRECTORY = "saves/trok";
 	constexpr std::string_view        CHUNK_DIRECTORY      = "chunks";
+	constexpr std::string_view        BIOME_FILE_NAME      = "biomes.json";
 	constexpr World::WorldInfo        NEW_WORLD_INFO       = { .seed = 1337, .generatorVersion = 1 };
 
 	const glm::vec3 CAMERA_START_POSITION = { 0.f, 0.f, 30.f };
@@ -74,6 +77,13 @@ int main()
 	Scene&    scene  = engine.getActiveScene();
 	Window_T& window = engine.getWindow();
 
+	const std::optional<trok::BiomeLibrary> loaded_biomes = Fs::LoadJson<trok::BiomeLibrary>(Fs::fromData(BIOME_FILE_NAME));
+	if (!loaded_biomes.has_value())
+	{
+		DEBUG_ERROR("Could not load the biomes from '{}'", BIOME_FILE_NAME);
+		return 1;
+	}
+
 	std::optional<World::WorldStorage> opened_storage = World::WorldStorage::openOrCreate(Fs::fromBase(WORLD_SAVE_DIRECTORY), NEW_WORLD_INFO);
 	if (!opened_storage.has_value())
 	{
@@ -82,10 +92,12 @@ int main()
 	}
 
 	const auto                 world_storage     = std::make_shared<const World::WorldStorage>(std::move(*opened_storage));
-	const World::WorldSettings world_settings    = { .viewRadius = VIEW_RADIUS };
+	const World::WorldSettings world_settings    = { .sampleReachChunks = trok::BIOME_SAMPLE_REACH_CHUNKS, .viewRadius = VIEW_RADIUS };
 	const auto                 chunk_storage     = std::make_shared<const World::ChunkStorage>(world_storage->getDirectory() / CHUNK_DIRECTORY, world_settings);
-	const auto                 terrain_generator = std::make_shared<const trok::TerrainGenerator>(trok::TerrainSettings { .seed = world_storage->getInfo().seed });
-	const auto                 region_planner    = std::make_shared<const trok::RegionPlanner>(world_storage->getInfo().generatorVersion);
+	const auto                 biomes            = std::make_shared<const trok::BiomeLibrary>(*loaded_biomes);
+	const auto                 climate           = std::make_shared<const trok::ClimateSampler>(world_storage->getInfo().seed);
+	const auto                 terrain_generator = std::make_shared<const trok::TerrainGenerator>(biomes, world_storage->getInfo().seed);
+	const auto                 region_planner    = std::make_shared<const trok::RegionPlanner>(world_storage->getInfo().generatorVersion, world_storage->getInfo().seed, biomes, climate);
 
 	World::RegionStore<trok::RegionPlan>       regions(engine.getJobSystem(), world_storage, region_planner, world_settings);
 	World::RegionChunkSource<trok::RegionPlan> chunk_source(regions, terrain_generator, chunk_storage, world_settings);

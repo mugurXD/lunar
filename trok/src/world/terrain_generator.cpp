@@ -1,32 +1,98 @@
 #include <trok/world/terrain_generator.hpp>
+#include <trok/world/stable_hash.hpp>
 
 #include "../../FastNoiseLite.h"
 
+#include <cmath>
+
 namespace trok
 {
-	TerrainGenerator::TerrainGenerator(const TerrainSettings& settings) noexcept
-		: settings(settings),
-		noise(std::make_unique<FastNoiseLite>(settings.seed))
+	namespace
 	{
-		noise->SetNoiseType(FastNoiseLite::NoiseType_OpenSimplex2);
-		noise->SetFractalType(FastNoiseLite::FractalType_FBm);
-		noise->SetFractalOctaves(settings.octaves);
-		noise->SetFrequency(settings.frequency);
+		constexpr double CELL_CENTER = 0.5;
+
+		std::unique_ptr<FastNoiseLite> MakeNoise(int32_t seed, const BiomeTerrain& terrain)
+		{
+			auto noise = std::make_unique<FastNoiseLite>(seed);
+			noise->SetNoiseType(FastNoiseLite::NoiseType_OpenSimplex2);
+			noise->SetFractalType(terrain.ridged ? FastNoiseLite::FractalType_Ridged : FastNoiseLite::FractalType_FBm);
+			noise->SetFractalOctaves(terrain.octaves);
+			noise->SetFrequency(terrain.frequency);
+			return noise;
+		}
+	}
+
+	TerrainGenerator::TerrainGenerator(std::shared_ptr<const BiomeLibrary> biomes, int32_t seed) noexcept
+		: biomes(std::move(biomes))
+	{
+		for (const Biome& biome : this->biomes->getBiomes())
+			noises.push_back(MakeNoise(SeedFromHash(MixHash(static_cast<uint64_t>(seed), lunar::imp::fnv1a_hash(biome.name))), biome.terrain));
 	}
 
 	TerrainGenerator::~TerrainGenerator() noexcept = default;
 
-	float TerrainGenerator::sampleHeight(const RegionContext&, double x, double z) const
+	float TerrainGenerator::sampleHeight(const RegionContext& context, double x, double z) const
 	{
-		return noise->GetNoise(x, z) * settings.amplitude;
+		const Blend blend = gatherBlend(context, x, z);
+
+		float height = 0.f;
+		for (size_t corner = 0; corner < BIOME_BLEND_CELLS; corner++)
+			height += blend.weights[corner] * biomeHeight(blend.indices[corner], x, z);
+
+		return height;
 	}
 
-	glm::vec3 TerrainGenerator::sampleColor(const RegionContext&, double, double, float height, const glm::vec3& normal) const
+	glm::vec3 TerrainGenerator::sampleColor(const RegionContext& context, double x, double z, float height, const glm::vec3& normal) const
 	{
-		const float     height_factor = glm::smoothstep(-settings.amplitude, settings.amplitude, height);
-		const glm::vec3 grass         = glm::mix(settings.lowGrassColor, settings.highGrassColor, height_factor);
-		const float     rock_factor   = glm::smoothstep(settings.rockSlopeStart, settings.rockSlopeEnd, 1.f - normal.y);
+		const Blend blend = gatherBlend(context, x, z);
 
-		return glm::mix(grass, settings.rockColor, rock_factor);
+		glm::vec3 color = {};
+		for (size_t corner = 0; corner < BIOME_BLEND_CELLS; corner++)
+			color += blend.weights[corner] * biomeColor(blend.indices[corner], height, normal);
+
+		return color;
+	}
+
+	TerrainGenerator::Blend TerrainGenerator::gatherBlend(const RegionContext& context, double x, double z) const
+	{
+		const double cell_size  = BiomeCellSize(context.getSettings());
+		const double grid_x     = x / cell_size - CELL_CENTER;
+		const double grid_z     = z / cell_size - CELL_CENTER;
+		const double base_x     = std::floor(grid_x);
+		const double base_z     = std::floor(grid_z);
+		const float  fraction_x = static_cast<float>(grid_x - base_x);
+		const float  fraction_z = static_cast<float>(grid_z - base_z);
+
+		Blend blend = {};
+		for (size_t corner = 0; corner < BIOME_BLEND_CELLS; corner++)
+		{
+			const size_t                    offset_x = corner % 2;
+			const size_t                    offset_z = corner / 2;
+			const std::optional<BiomeIndex> biome    = BiomeAt(context, (base_x + offset_x + CELL_CENTER) * cell_size,
+			                                                            (base_z + offset_z + CELL_CENTER) * cell_size);
+
+			blend.indices[corner] = biome.value_or(biomes->getDefault());
+			blend.weights[corner] = (offset_x == 0 ? 1.f - fraction_x : fraction_x) * (offset_z == 0 ? 1.f - fraction_z : fraction_z);
+		}
+
+		return blend;
+	}
+
+	float TerrainGenerator::biomeHeight(BiomeIndex biome, double x, double z) const
+	{
+		const BiomeTerrain& terrain = biomes->get(biome).terrain;
+		return terrain.baseHeight + noises[biome]->GetNoise(x, z) * terrain.amplitude;
+	}
+
+	glm::vec3 TerrainGenerator::biomeColor(BiomeIndex biome, float height, const glm::vec3& normal) const
+	{
+		const Biome&        definition    = biomes->get(biome);
+		const BiomeColors&  colors        = definition.colors;
+		const BiomeTerrain& terrain       = definition.terrain;
+		const float         height_factor = glm::smoothstep(terrain.baseHeight - terrain.amplitude, terrain.baseHeight + terrain.amplitude, height);
+		const glm::vec3     ground        = glm::mix(colors.lowColor, colors.highColor, height_factor);
+		const float         rock_factor   = glm::smoothstep(colors.rockSlopeStart, colors.rockSlopeEnd, 1.f - normal.y);
+
+		return glm::mix(ground, colors.rockColor, rock_factor);
 	}
 }
