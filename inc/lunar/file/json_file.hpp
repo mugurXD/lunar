@@ -54,4 +54,14 @@ namespace Fs
 			return std::nullopt;
 		}
 	}
+
+	template<IsJsonSerializable T>
+	std::optional<T> LoadJson(const Path& path)
+	{
+		const JsonFile file(path);
+		if (file.content.is_null())
+			return std::nullopt;
+
+		return DeserializeJson<T>(file.content);
+	}
 }

@@ -12,13 +12,14 @@ namespace lunar::World
 {
 	struct LUNAR_API WorldSettings
 	{
-		uint32_t chunkQuads       = 32;
-		float    vertexSpacing    = 2.f;
-		uint32_t regionChunks     = 128;
-		int32_t  viewRadius       = 12;
-		int32_t  regionLoadRadius = 1;
-		int32_t  unloadMargin     = 1;
-		size_t   maxJobsInFlight  = 16;
+		uint32_t chunkQuads        = 32;
+		float    vertexSpacing     = 2.f;
+		uint32_t regionChunks      = 128;
+		int32_t  sampleReachChunks = 1;
+		int32_t  viewRadius        = 12;
+		int32_t  regionLoadRadius  = 1;
+		int32_t  unloadMargin      = 1;
+		size_t   maxJobsInFlight   = 16;
 
 		float getChunkSize() const;
 	};

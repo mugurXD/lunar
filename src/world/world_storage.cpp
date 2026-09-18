@@ -47,15 +47,6 @@ namespace lunar::World
 			}
 		};
 
-		std::optional<nlohmann::json> LoadJson(const Fs::Path& path)
-		{
-			const Fs::JsonFile file(path);
-			if (file.content.is_null())
-				return std::nullopt;
-
-			return file.content;
-		}
-
 		bool SaveJson(const Fs::Path& path, nlohmann::json content, int indentation)
 		{
 			Fs::JsonFile file;
@@ -112,11 +103,7 @@ namespace lunar::World
 
 	std::optional<WorldStorage> WorldStorage::open(const Fs::Path& directory)
 	{
-		const std::optional<nlohmann::json> world_json = LoadJson(directory / WORLD_FILE_NAME);
-		if (!world_json.has_value())
-			return std::nullopt;
-
-		const std::optional<WorldInfo> info = Fs::DeserializeJson<WorldInfo>(*world_json);
+		const std::optional<WorldInfo> info = Fs::LoadJson<WorldInfo>(directory / WORLD_FILE_NAME);
 		if (!info.has_value())
 			return std::nullopt;
 
@@ -140,11 +127,7 @@ namespace lunar::World
 
 	std::optional<nlohmann::json> WorldStorage::loadRegionJson(RegionCoord coord) const
 	{
-		const std::optional<nlohmann::json> json = LoadJson(getRegionPath(coord));
-		if (!json.has_value())
-			return std::nullopt;
-
-		const std::optional<RegionEnvelope> envelope = Fs::DeserializeJson<RegionEnvelope>(*json);
+		const std::optional<RegionEnvelope> envelope = Fs::LoadJson<RegionEnvelope>(getRegionPath(coord));
 		if (!envelope.has_value())
 			return std::nullopt;
 

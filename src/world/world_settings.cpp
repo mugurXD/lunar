@@ -8,8 +8,7 @@ namespace lunar::World
 {
 	namespace
 	{
-		constexpr int     COORD_HALF_BITS         = 32;
-		constexpr int32_t SAMPLE_NEIGHBOUR_CHUNKS = 1;
+		constexpr int COORD_HALF_BITS = 32;
 	}
 
 	size_t HashGridCoord(int32_t x, int32_t z)
@@ -82,9 +81,9 @@ namespace lunar::World
 	{
 		std::vector<RegionCoord> needed;
 
-		for (int32_t offset_z = -SAMPLE_NEIGHBOUR_CHUNKS; offset_z <= SAMPLE_NEIGHBOUR_CHUNKS; offset_z++)
+		for (int32_t offset_z = -settings.sampleReachChunks; offset_z <= settings.sampleReachChunks; offset_z++)
 		{
-			for (int32_t offset_x = -SAMPLE_NEIGHBOUR_CHUNKS; offset_x <= SAMPLE_NEIGHBOUR_CHUNKS; offset_x++)
+			for (int32_t offset_x = -settings.sampleReachChunks; offset_x <= settings.sampleReachChunks; offset_x++)
 			{
 				const RegionCoord region = RegionAt(ChunkCoord { chunk.x + offset_x, chunk.z + offset_z }, settings);
 				if (std::ranges::find(needed, region) == needed.end())
