@@ -14,6 +14,7 @@ namespace trok
 		constexpr std::string_view TEMPERATURE_KEY     = "temperature";
 		constexpr std::string_view MOISTURE_KEY        = "moisture";
 		constexpr std::string_view CONTINENTALNESS_KEY = "continentalness";
+		constexpr std::string_view EROSION_KEY         = "erosion";
 
 		nlohmann::json SerializeRange(const ClimateRange& range)
 		{
@@ -35,7 +36,8 @@ namespace trok
 			{
 				{ TEMPERATURE_KEY,     SerializeRange(climate.temperature) },
 				{ MOISTURE_KEY,        SerializeRange(climate.moisture) },
-				{ CONTINENTALNESS_KEY, SerializeRange(climate.continentalness) }
+				{ CONTINENTALNESS_KEY, SerializeRange(climate.continentalness) },
+				{ EROSION_KEY,         SerializeRange(climate.erosion) }
 			};
 		}
 
@@ -45,7 +47,8 @@ namespace trok
 			{
 				.temperature     = DeserializeRange(json, TEMPERATURE_KEY),
 				.moisture        = DeserializeRange(json, MOISTURE_KEY),
-				.continentalness = DeserializeRange(json, CONTINENTALNESS_KEY)
+				.continentalness = DeserializeRange(json, CONTINENTALNESS_KEY),
+				.erosion         = DeserializeRange(json, EROSION_KEY)
 			};
 		}
 
@@ -53,7 +56,8 @@ namespace trok
 		{
 			return climate.temperature.min     <= climate.temperature.max
 			    && climate.moisture.min        <= climate.moisture.max
-			    && climate.continentalness.min <= climate.continentalness.max;
+			    && climate.continentalness.min <= climate.continentalness.max
+			    && climate.erosion.min         <= climate.erosion.max;
 		}
 
 		nlohmann::json SerializeColor(const glm::vec3& color)
@@ -122,9 +126,10 @@ namespace trok
 
 	float Biome::distanceTo(const Climate& other) const
 	{
-		const glm::vec3 offset = glm::vec3(climate.temperature.distanceTo(other.temperature),
+		const glm::vec4 offset = glm::vec4(climate.temperature.distanceTo(other.temperature),
 		                                   climate.moisture.distanceTo(other.moisture),
-		                                   climate.continentalness.distanceTo(other.continentalness));
+		                                   climate.continentalness.distanceTo(other.continentalness),
+		                                   climate.erosion.distanceTo(other.erosion));
 
 		return glm::dot(offset, offset);
 	}

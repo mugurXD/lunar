@@ -54,6 +54,7 @@ namespace trok
 		ClimateRange temperature     = {};
 		ClimateRange moisture        = {};
 		ClimateRange continentalness = {};
+		ClimateRange erosion         = {};
 
 		bool operator==(const BiomeClimate&) const = default;
 	};

@@ -37,6 +37,8 @@ TEST(Climate, ValuesStayNormalised)
 		EXPECT_LE(climate.moisture,         1.f);
 		EXPECT_GE(climate.continentalness, -1.f);
 		EXPECT_LE(climate.continentalness,  1.f);
+		EXPECT_GE(climate.erosion,         -1.f);
+		EXPECT_LE(climate.erosion,          1.f);
 	}
 }
 

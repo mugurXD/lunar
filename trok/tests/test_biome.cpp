@@ -15,6 +15,8 @@ namespace
 	const trok::Climate NEARER_FLAT  = { .temperature = 0.5f,  .moisture = 0.f,   .continentalness = 0.2f };
 	const trok::Climate NEARER_TALL  = { .temperature = 0.5f,  .moisture = 0.f,   .continentalness = 0.3f };
 	const trok::Climate COLD_LOWLAND = { .temperature = -0.5f, .moisture = 0.f,   .continentalness = -0.5f };
+	const trok::Climate RUGGED       = { .continentalness = -0.5f, .erosion = -0.5f };
+	const trok::Climate WORN         = { .continentalness = -0.5f, .erosion = 0.5f };
 
 	trok::BiomeLibrary OverlappingBiomes()
 	{
@@ -130,4 +132,19 @@ TEST(Biomes, OverlappingRangesAreSharedByTheTieBreaker)
 
 	EXPECT_EQ(selected, (std::set<trok::BiomeIndex> { FLAT_BIOME, TALL_BIOME }));
 	EXPECT_EQ(library.select(INSIDE_FLAT, TIE_BREAKER), library.select(INSIDE_FLAT, TIE_BREAKER));
+}
+
+TEST(Biomes, ErosionSeparatesOtherwiseEqualClimates)
+{
+	trok::Biome rugged = FLAT;
+	trok::Biome worn   = TALL;
+	rugged.climate.erosion = { -1.f, 0.f };
+	worn.climate           = FLAT.climate;
+	worn.climate.erosion   = { 0.f, 1.f };
+
+	const std::optional<trok::BiomeLibrary> library = trok::BiomeLibrary::Create({ rugged, worn }, rugged.name);
+	ASSERT_TRUE(library.has_value());
+
+	EXPECT_EQ(library->select(RUGGED, TIE_BREAKER), FLAT_BIOME);
+	EXPECT_EQ(library->select(WORN,   TIE_BREAKER), TALL_BIOME);
 }
