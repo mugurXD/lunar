@@ -30,7 +30,8 @@ namespace trok
 		ClimateSampler(int32_t seed, const ClimateSettings& settings = {}) noexcept;
 		~ClimateSampler() noexcept;
 
-		Climate sample(double x, double z) const;
+		Climate sample(double x, double z)                const;
+		float   sampleContinentalness(double x, double z) const;
 
 	private:
 		std::unique_ptr<FastNoiseLite> temperature;

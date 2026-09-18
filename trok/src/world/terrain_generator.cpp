@@ -3,6 +3,7 @@
 
 #include "../../FastNoiseLite.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace trok
@@ -42,7 +43,8 @@ namespace trok
 
 		float height = elevationAt(x, z);
 		for (size_t corner = 0; corner < BIOME_BLEND_CELLS; corner++)
-			height += blend.weights[corner] * biomeHeight(blend.indices[corner], x, z);
+			if (blend.weights[corner] > 0.f)
+				height += blend.weights[corner] * biomeHeight(blend.indices[corner], x, z);
 
 		return height;
 	}
@@ -54,7 +56,8 @@ namespace trok
 
 		glm::vec3 color = {};
 		for (size_t corner = 0; corner < BIOME_BLEND_CELLS; corner++)
-			color += blend.weights[corner] * biomeColor(blend.indices[corner], local_height, normal);
+			if (blend.weights[corner] > 0.f)
+				color += blend.weights[corner] * biomeColor(blend.indices[corner], local_height, normal);
 
 		return color;
 	}
@@ -77,8 +80,12 @@ namespace trok
 			const std::optional<BiomeIndex> biome    = BiomeAt(context, (base_x + offset_x + CELL_CENTER) * cell_size,
 			                                                            (base_z + offset_z + CELL_CENTER) * cell_size);
 
-			blend.indices[corner] = biome.value_or(biomes->getDefault());
-			blend.weights[corner] = (offset_x == 0 ? 1.f - fraction_x : fraction_x) * (offset_z == 0 ? 1.f - fraction_z : fraction_z);
+			const BiomeIndex index  = biome.value_or(biomes->getDefault());
+			const float      weight = (offset_x == 0 ? 1.f - fraction_x : fraction_x) * (offset_z == 0 ? 1.f - fraction_z : fraction_z);
+			const auto       first  = std::ranges::find(blend.indices.begin(), blend.indices.begin() + corner, index);
+
+			blend.indices[corner] = index;
+			blend.weights[static_cast<size_t>(first - blend.indices.begin())] += weight;
 		}
 
 		return blend;
@@ -86,7 +93,7 @@ namespace trok
 
 	float TerrainGenerator::elevationAt(double x, double z) const
 	{
-		return elevation.heightAt(climate->sample(x, z).continentalness);
+		return elevation.heightAt(climate->sampleContinentalness(x, z));
 	}
 
 	float TerrainGenerator::biomeHeight(BiomeIndex biome, double x, double z) const

@@ -36,8 +36,13 @@ namespace trok
 		{
 			.temperature     = temperature->GetNoise(x, z),
 			.moisture        = moisture->GetNoise(x, z),
-			.continentalness = continentalness->GetNoise(x, z),
+			.continentalness = sampleContinentalness(x, z),
 			.erosion         = erosion->GetNoise(x, z)
 		};
+	}
+
+	float ClimateSampler::sampleContinentalness(double x, double z) const
+	{
+		return continentalness->GetNoise(x, z);
 	}
 }
