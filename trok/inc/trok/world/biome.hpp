@@ -19,11 +19,11 @@ namespace trok
 
 	struct BiomeTerrain
 	{
-		float   baseHeight = 0.f;
-		float   amplitude  = 30.f;
-		float   frequency  = 0.002f;
-		int32_t octaves    = 4;
-		bool    ridged     = false;
+		float   heightOffset = 0.f;
+		float   amplitude    = 30.f;
+		float   frequency    = 0.002f;
+		int32_t octaves      = 4;
+		bool    ridged       = false;
 
 		bool operator==(const BiomeTerrain&) const = default;
 	};

@@ -13,11 +13,13 @@ add_library(trok_core STATIC
     "FastNoiseLite.h"
     "inc/trok/world/biome.hpp"
     "inc/trok/world/climate.hpp"
+    "inc/trok/world/elevation.hpp"
     "inc/trok/world/region_plan.hpp"
     "inc/trok/world/stable_hash.hpp"
     "inc/trok/world/terrain_generator.hpp"
     "src/world/biome.cpp"
     "src/world/climate.cpp"
+    "src/world/elevation.cpp"
     "src/world/region_plan.cpp"
     "src/world/terrain_generator.cpp"
 )
@@ -32,6 +34,7 @@ if(${LUNAR_UNIT_TESTS})
     add_executable(trok_tests
         "tests/test_biome.cpp"
         "tests/test_climate.cpp"
+        "tests/test_elevation.cpp"
         "tests/test_region_plan.cpp"
         "tests/test_terrain_generator.cpp"
     )

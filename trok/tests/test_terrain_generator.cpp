@@ -18,15 +18,19 @@ namespace
 	constexpr float   MAX_STEP_DELTA   = 8.f;
 	constexpr double  BLEND_DISTANCE   = 512.0;
 	constexpr double  CENTRE_CELL      = 4.0;
+	constexpr float   RAISED_ELEVATION = 100.f;
 
-	const lunar::World::WorldSettings SETTINGS = { .sampleReachChunks = trok::BIOME_SAMPLE_REACH_CHUNKS };
-	const auto                        BIOMES   = std::make_shared<const trok::BiomeLibrary>(TestBiomes());
-	const glm::vec3                   UP       = { 0.f, 1.f, 0.f };
-	const glm::vec3                   CLIFF    = { 1.f, 0.f, 0.f };
+	const lunar::World::WorldSettings SETTINGS  = { .sampleReachChunks = trok::BIOME_SAMPLE_REACH_CHUNKS };
+	const auto                        BIOMES    = std::make_shared<const trok::BiomeLibrary>(TestBiomes());
+	const auto                        CLIMATE   = std::make_shared<const trok::ClimateSampler>(WORLD_SEED);
+	const trok::ElevationCurve        FLAT_LAND = {};
+	const trok::ElevationCurve        HIGHLAND  = { .points = { { -1.f, RAISED_ELEVATION }, { 1.f, RAISED_ELEVATION } } };
+	const glm::vec3                   UP        = { 0.f, 1.f, 0.f };
+	const glm::vec3                   CLIFF     = { 1.f, 0.f, 0.f };
 
-	trok::TerrainGenerator MakeGenerator(int32_t seed)
+	trok::TerrainGenerator MakeGenerator(int32_t seed, const trok::ElevationCurve& elevation = FLAT_LAND)
 	{
-		return trok::TerrainGenerator(BIOMES, seed);
+		return trok::TerrainGenerator(BIOMES, CLIMATE, elevation, seed);
 	}
 
 	std::shared_ptr<const trok::RegionPlan> PlanOf(trok::BiomeIndex west, trok::BiomeIndex east)
@@ -94,8 +98,8 @@ TEST(TrokTerrain, HeightsStayWithinTheBiomeOfTheirCell)
 	const float flat_height = generator.sampleHeight(context, centre, centre);
 	const float tall_height = generator.sampleHeight(tall, centre, centre);
 
-	EXPECT_NEAR(flat_height, FLAT.terrain.baseHeight, FLAT.terrain.amplitude + HEIGHT_TOLERANCE);
-	EXPECT_NEAR(tall_height, TALL.terrain.baseHeight, TALL.terrain.amplitude + HEIGHT_TOLERANCE);
+	EXPECT_NEAR(flat_height, FLAT.terrain.heightOffset, FLAT.terrain.amplitude + HEIGHT_TOLERANCE);
+	EXPECT_NEAR(tall_height, TALL.terrain.heightOffset, TALL.terrain.amplitude + HEIGHT_TOLERANCE);
 }
 
 TEST(TrokTerrain, NeighbouringBiomesBlendContinuously)
@@ -108,7 +112,7 @@ TEST(TrokTerrain, NeighbouringBiomesBlendContinuously)
 
 	EXPECT_GT(std::abs(generator.sampleHeight(context, border_x + BLEND_DISTANCE, CellCentre(CENTRE_CELL))
 	                 - generator.sampleHeight(context, border_x - BLEND_DISTANCE, CellCentre(CENTRE_CELL))),
-	          TALL.terrain.baseHeight * 0.5f);
+	          TALL.terrain.heightOffset * 0.5f);
 }
 
 TEST(TrokTerrain, BiomesBlendAcrossRegionBorders)
@@ -130,4 +134,24 @@ TEST(TrokTerrain, SteepSlopesAreRock)
 
 	EXPECT_EQ(generator.sampleColor(context, centre, centre, 0.f, CLIFF), FLAT.colors.rockColor);
 	EXPECT_NE(generator.sampleColor(context, centre, centre, 0.f, UP),    FLAT.colors.rockColor);
+}
+
+TEST(TrokTerrain, TheElevationCurveLiftsTheWholeTerrain)
+{
+	const trok::TerrainGenerator flat    = MakeGenerator(WORLD_SEED);
+	const trok::TerrainGenerator raised  = MakeGenerator(WORLD_SEED, HIGHLAND);
+	const trok::RegionContext    context = ContextOf(FLAT_BIOME, TALL_BIOME);
+	const double                 centre  = CellCentre(CENTRE_CELL);
+
+	EXPECT_FLOAT_EQ(raised.sampleHeight(context, centre, centre) - flat.sampleHeight(context, centre, centre), RAISED_ELEVATION);
+}
+
+TEST(TrokTerrain, ColorsFollowTheHeightAboveTheCurve)
+{
+	const trok::TerrainGenerator flat    = MakeGenerator(WORLD_SEED);
+	const trok::TerrainGenerator raised  = MakeGenerator(WORLD_SEED, HIGHLAND);
+	const trok::RegionContext    context = ContextOf(FLAT_BIOME, FLAT_BIOME);
+	const double                 centre  = CellCentre(CENTRE_CELL);
+
+	EXPECT_EQ(raised.sampleColor(context, centre, centre, RAISED_ELEVATION, UP), flat.sampleColor(context, centre, centre, 0.f, UP));
 }

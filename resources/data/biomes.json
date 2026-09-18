@@ -1,11 +1,11 @@
 {
-    "formatVersion": 2,
+    "formatVersion": 3,
     "default": "core:plains",
     "biomes": [
         {
             "name": "core:plains",
-            "climate": { "continentalness": [-1.0, 0.1] },
-            "terrain": { "baseHeight": 6.0, "amplitude": 10.0, "frequency": 0.0012, "octaves": 3, "ridged": false },
+            "climate": { "temperature": [-0.55, 0.35], "moisture": [-1.0, 0.15], "continentalness": [-1.0, 0.45], "erosion": [-0.3, 1.0] },
+            "terrain": { "heightOffset": 0.0, "amplitude": 10.0, "frequency": 0.0012, "octaves": 3, "ridged": false },
             "colors":
             {
                 "low": [0.16, 0.30, 0.10],
@@ -16,9 +16,48 @@
             }
         },
         {
+            "name": "core:forest",
+            "climate": { "temperature": [-0.55, 1.0], "moisture": [0.15, 1.0], "continentalness": [-1.0, 0.45], "erosion": [-0.3, 1.0] },
+            "terrain": { "heightOffset": 3.0, "amplitude": 16.0, "frequency": 0.002, "octaves": 4, "ridged": false },
+            "colors":
+            {
+                "low": [0.07, 0.19, 0.06],
+                "high": [0.12, 0.26, 0.08],
+                "rock": [0.30, 0.28, 0.26],
+                "rockSlopeStart": 0.30,
+                "rockSlopeEnd": 0.50
+            }
+        },
+        {
+            "name": "core:steppe",
+            "climate": { "temperature": [0.35, 1.0], "moisture": [-1.0, 0.15], "continentalness": [-1.0, 0.45], "erosion": [-0.3, 1.0] },
+            "terrain": { "heightOffset": -2.0, "amplitude": 8.0, "frequency": 0.001, "octaves": 3, "ridged": false },
+            "colors":
+            {
+                "low": [0.55, 0.48, 0.28],
+                "high": [0.66, 0.58, 0.36],
+                "rock": [0.50, 0.40, 0.30],
+                "rockSlopeStart": 0.30,
+                "rockSlopeEnd": 0.50
+            }
+        },
+        {
+            "name": "core:tundra",
+            "climate": { "temperature": [-1.0, -0.55], "continentalness": [-1.0, 0.45], "erosion": [-0.3, 1.0] },
+            "terrain": { "heightOffset": 0.0, "amplitude": 10.0, "frequency": 0.0015, "octaves": 3, "ridged": false },
+            "colors":
+            {
+                "low": [0.36, 0.38, 0.30],
+                "high": [0.52, 0.54, 0.50],
+                "rock": [0.38, 0.37, 0.36],
+                "rockSlopeStart": 0.30,
+                "rockSlopeEnd": 0.50
+            }
+        },
+        {
             "name": "core:hills",
-            "climate": { "continentalness": [0.1, 0.4] },
-            "terrain": { "baseHeight": 25.0, "amplitude": 45.0, "frequency": 0.0022, "octaves": 4, "ridged": false },
+            "climate": { "continentalness": [-1.0, 0.45], "erosion": [-1.0, -0.3] },
+            "terrain": { "heightOffset": 12.0, "amplitude": 35.0, "frequency": 0.0022, "octaves": 4, "ridged": false },
             "colors":
             {
                 "low": [0.10, 0.24, 0.07],
@@ -29,16 +68,42 @@
             }
         },
         {
+            "name": "core:plateau",
+            "climate": { "continentalness": [0.45, 1.0], "erosion": [0.2, 1.0] },
+            "terrain": { "heightOffset": 20.0, "amplitude": 12.0, "frequency": 0.0014, "octaves": 4, "ridged": false },
+            "colors":
+            {
+                "low": [0.30, 0.36, 0.16],
+                "high": [0.40, 0.42, 0.22],
+                "rock": [0.42, 0.36, 0.30],
+                "rockSlopeStart": 0.25,
+                "rockSlopeEnd": 0.45
+            }
+        },
+        {
             "name": "core:mountains",
-            "climate": { "continentalness": [0.4, 1.0] },
-            "terrain": { "baseHeight": 90.0, "amplitude": 140.0, "frequency": 0.0016, "octaves": 5, "ridged": true },
+            "climate": { "temperature": [-0.3, 1.0], "continentalness": [0.45, 1.0], "erosion": [-1.0, 0.2] },
+            "terrain": { "heightOffset": 10.0, "amplitude": 120.0, "frequency": 0.0016, "octaves": 5, "ridged": true },
             "colors":
             {
                 "low": [0.30, 0.29, 0.27],
-                "high": [0.85, 0.86, 0.90],
+                "high": [0.45, 0.43, 0.40],
                 "rock": [0.38, 0.36, 0.34],
                 "rockSlopeStart": 0.15,
                 "rockSlopeEnd": 0.35
+            }
+        },
+        {
+            "name": "core:snowy_mountains",
+            "climate": { "temperature": [-1.0, -0.3], "continentalness": [0.45, 1.0], "erosion": [-1.0, 0.2] },
+            "terrain": { "heightOffset": 25.0, "amplitude": 140.0, "frequency": 0.0016, "octaves": 5, "ridged": true },
+            "colors":
+            {
+                "low": [0.55, 0.56, 0.60],
+                "high": [0.92, 0.93, 0.97],
+                "rock": [0.40, 0.40, 0.42],
+                "rockSlopeStart": 0.35,
+                "rockSlopeEnd": 0.55
             }
         }
     ]

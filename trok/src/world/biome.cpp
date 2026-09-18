@@ -9,7 +9,7 @@ namespace trok
 {
 	namespace
 	{
-		constexpr uint32_t BIOME_FORMAT_VERSION = 2;
+		constexpr uint32_t BIOME_FORMAT_VERSION = 3;
 
 		constexpr std::string_view TEMPERATURE_KEY     = "temperature";
 		constexpr std::string_view MOISTURE_KEY        = "moisture";
@@ -74,11 +74,11 @@ namespace trok
 		{
 			return nlohmann::json
 			{
-				{ "baseHeight", terrain.baseHeight },
-				{ "amplitude",  terrain.amplitude },
-				{ "frequency",  terrain.frequency },
-				{ "octaves",    terrain.octaves },
-				{ "ridged",     terrain.ridged }
+				{ "heightOffset", terrain.heightOffset },
+				{ "amplitude",    terrain.amplitude },
+				{ "frequency",    terrain.frequency },
+				{ "octaves",      terrain.octaves },
+				{ "ridged",       terrain.ridged }
 			};
 		}
 
@@ -86,11 +86,11 @@ namespace trok
 		{
 			return BiomeTerrain
 			{
-				.baseHeight = json.at("baseHeight").get<float>(),
-				.amplitude  = json.at("amplitude").get<float>(),
-				.frequency  = json.at("frequency").get<float>(),
-				.octaves    = json.at("octaves").get<int32_t>(),
-				.ridged     = json.at("ridged").get<bool>()
+				.heightOffset = json.at("heightOffset").get<float>(),
+				.amplitude    = json.at("amplitude").get<float>(),
+				.frequency    = json.at("frequency").get<float>(),
+				.octaves      = json.at("octaves").get<int32_t>(),
+				.ridged       = json.at("ridged").get<bool>()
 			};
 		}
 

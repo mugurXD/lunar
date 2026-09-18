@@ -1,5 +1,6 @@
 #include <trok/world/biome.hpp>
 #include <trok/world/climate.hpp>
+#include <trok/world/elevation.hpp>
 #include <trok/world/region_plan.hpp>
 #include <trok/world/terrain_generator.hpp>
 
@@ -10,6 +11,7 @@
 #include <lunar/world/terrain_generator.hpp>
 #include <lunar/world/terrain_world.hpp>
 #include <lunar/world/world_storage.hpp>
+#include <lunar/file/json_file.hpp>
 #include <lunar/debug.hpp>
 
 #include <format>
@@ -36,11 +38,38 @@ namespace
 	constexpr std::string_view        WORLD_SAVE_DIRECTORY = "saves/trok";
 	constexpr std::string_view        CHUNK_DIRECTORY      = "chunks";
 	constexpr std::string_view        BIOME_FILE_NAME      = "biomes.json";
+	constexpr std::string_view        ELEVATION_FILE_NAME  = "elevation.json";
+	constexpr float                   FOG_START_FRACTION   = 0.5f;
+	constexpr float                   FOG_END_FRACTION     = 0.95f;
 	constexpr World::WorldInfo        NEW_WORLD_INFO       = { .seed = 1337, .generatorVersion = 1 };
 
 	const glm::vec3 CAMERA_START_POSITION = { 0.f, 0.f, 30.f };
 	const glm::vec3 CAMERA_START_ROTATION = { -90.f, -15.f, 0.f };
 	const glm::vec3 SUN_DIRECTION         = { -0.4f, -1.f, -0.3f };
+	const glm::vec3 SKY_COLOR             = { 0.6f, 0.745f, 0.76f };
+
+	template<IsJsonSerializable T>
+	std::optional<T> LoadGameData(std::string_view file_name)
+	{
+		std::optional<T> data = Fs::LoadJson<T>(Fs::fromData(file_name));
+		if (!data.has_value())
+			DEBUG_ERROR("Could not load '{}'", file_name);
+
+		return data;
+	}
+
+	bool PlaceAboveTerrain(Transform&                            transform,
+	                       World::RegionStore<trok::RegionPlan>& regions,
+	                       const trok::TerrainGenerator&         generator,
+	                       const World::WorldSettings&           settings)
+	{
+		const std::optional<trok::RegionContext> context = regions.gatherContext(World::ChunkAt(transform.position, settings));
+		if (!context.has_value())
+			return false;
+
+		transform.position.y = generator.sampleHeight(*context, transform.position.x, transform.position.z) + CAMERA_START_HEIGHT;
+		return true;
+	}
 
 	class FlyCamera : public Component_T
 	{
@@ -77,12 +106,10 @@ int main()
 	Scene&    scene  = engine.getActiveScene();
 	Window_T& window = engine.getWindow();
 
-	const std::optional<trok::BiomeLibrary> loaded_biomes = Fs::LoadJson<trok::BiomeLibrary>(Fs::fromData(BIOME_FILE_NAME));
-	if (!loaded_biomes.has_value())
-	{
-		DEBUG_ERROR("Could not load the biomes from '{}'", BIOME_FILE_NAME);
+	std::optional<trok::BiomeLibrary>   loaded_biomes    = LoadGameData<trok::BiomeLibrary>(BIOME_FILE_NAME);
+	std::optional<trok::ElevationCurve> loaded_elevation = LoadGameData<trok::ElevationCurve>(ELEVATION_FILE_NAME);
+	if (!loaded_biomes.has_value() || !loaded_elevation.has_value())
 		return 1;
-	}
 
 	std::optional<World::WorldStorage> opened_storage = World::WorldStorage::openOrCreate(Fs::fromBase(WORLD_SAVE_DIRECTORY), NEW_WORLD_INFO);
 	if (!opened_storage.has_value())
@@ -94,21 +121,18 @@ int main()
 	const auto                 world_storage     = std::make_shared<const World::WorldStorage>(std::move(*opened_storage));
 	const World::WorldSettings world_settings    = { .sampleReachChunks = trok::BIOME_SAMPLE_REACH_CHUNKS, .viewRadius = VIEW_RADIUS };
 	const auto                 chunk_storage     = std::make_shared<const World::ChunkStorage>(world_storage->getDirectory() / CHUNK_DIRECTORY, world_settings);
-	const auto                 biomes            = std::make_shared<const trok::BiomeLibrary>(*loaded_biomes);
+	const auto                 biomes            = std::make_shared<const trok::BiomeLibrary>(std::move(*loaded_biomes));
 	const auto                 climate           = std::make_shared<const trok::ClimateSampler>(world_storage->getInfo().seed);
-	const auto                 terrain_generator = std::make_shared<const trok::TerrainGenerator>(biomes, world_storage->getInfo().seed);
+	const auto                 terrain_generator = std::make_shared<const trok::TerrainGenerator>(biomes, climate, std::move(*loaded_elevation), world_storage->getInfo().seed);
 	const auto                 region_planner    = std::make_shared<const trok::RegionPlanner>(world_storage->getInfo().generatorVersion, world_storage->getInfo().seed, biomes, climate);
 
 	World::RegionStore<trok::RegionPlan>       regions(engine.getJobSystem(), world_storage, region_planner, world_settings);
 	World::RegionChunkSource<trok::RegionPlan> chunk_source(regions, terrain_generator, chunk_storage, world_settings);
 	World::TerrainWorld                        terrain(scene, engine.getJobSystem(), engine.getRenderer().getMeshes(), chunk_source, world_settings);
 
-	const trok::RegionContext spawn_context(world_settings, {});
-
 	GameObject player = scene.createGameObject("Player");
-	player->getTransform().position   = CAMERA_START_POSITION;
-	player->getTransform().position.y = terrain_generator->sampleHeight(spawn_context, CAMERA_START_POSITION.x, CAMERA_START_POSITION.z) + CAMERA_START_HEIGHT;
-	player->getTransform().rotation   = CAMERA_START_ROTATION;
+	player->getTransform().position = CAMERA_START_POSITION;
+	player->getTransform().rotation = CAMERA_START_ROTATION;
 	player->addComponent<Camera>();
 	player->addComponent<FlyCamera>();
 	scene.setMainCamera(player);
@@ -116,12 +140,21 @@ int main()
 	GameObject sun = scene.createGameObject("Sun");
 	sun->addComponent<DirectionalLight>(SUN_DIRECTION);
 
+	const float view_distance = static_cast<float>(VIEW_RADIUS) * world_settings.getChunkSize();
+	GameObject  sky           = scene.createGameObject("Sky");
+	sky->addComponent<DistanceFog>(SKY_COLOR, view_distance * FOG_START_FRACTION, view_distance * FOG_END_FRACTION);
+
 	window.registerAction("toggle_menu", { { "keyboard.esc" } });
 	window.registerAction("sprint",      { { "keyboard.shift" } });
 
-	engine.addSystem(SystemPhase::eUpdate, [&regions, &terrain, &player](Scene&, const FrameTime&) {
-		regions.update(player->getTransform().position);
-		terrain.update(player->getTransform().position);
+	bool placed_above_terrain = false;
+	engine.addSystem(SystemPhase::eUpdate, [&](Scene&, const FrameTime&) {
+		Transform& transform = player->getTransform();
+		regions.update(transform.position);
+		terrain.update(transform.position);
+
+		if (!placed_above_terrain)
+			placed_above_terrain = PlaceAboveTerrain(transform, regions, *terrain_generator, world_settings);
 	});
 
 	float seconds_since_title_update = 0.f;
