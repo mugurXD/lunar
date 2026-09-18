@@ -83,6 +83,14 @@ namespace lunar::Render
 			return scene_data;
 		}
 
+		glm::mat4 NormalMatrix(const glm::mat4& model)
+		{
+			if (glm::mat3(model) == glm::mat3(1.f))
+				return glm::mat4(1.f);
+
+			return glm::transpose(glm::inverse(model));
+		}
+
 		std::vector<char> LoadShader(std::string_view name)
 		{
 			const Fs::Path path = Fs::fromData(std::format(SHADER_BINARY_PATH, name));
@@ -190,16 +198,19 @@ namespace lunar::Render
 			.depthAttachment  = depth_attachment
 		});
 
-		const Camera*  camera        = scene.getMainCamera();
-		const uint64_t scene_address = camera != nullptr ? frame.writeTransient(BuildSceneData(scene, *camera, extent)) : 0;
-
-		if (scene_address != 0 && meshPipeline != PipelineHandle {})
-			drawMeshes(frame, scene, scene_address);
+		const Camera* camera = scene.getMainCamera();
+		if (camera != nullptr && meshPipeline != PipelineHandle {})
+		{
+			const SceneData scene_data    = BuildSceneData(scene, *camera, extent);
+			const uint64_t  scene_address = frame.writeTransient(scene_data);
+			if (scene_address != 0)
+				drawMeshes(frame, scene, scene_address, Frustum(scene_data.viewProjection));
+		}
 
 		commands.endRendering();
 	}
 
-	void Renderer::drawMeshes(Frame& frame, Scene& scene, uint64_t scene_address)
+	void Renderer::drawMeshes(Frame& frame, Scene& scene, uint64_t scene_address, const Frustum& frustum)
 	{
 		CommandList& commands = frame.commandList();
 		commands.bindPipeline(meshPipeline);
@@ -209,8 +220,11 @@ namespace lunar::Render
 			if (mesh == nullptr)
 				return;
 
-			const glm::mat4 model        = scene.resolveWorldTransform(entity).matrix;
-			const uint64_t  draw_address = frame.writeTransient(DrawData { model, glm::transpose(glm::inverse(model)) });
+			const glm::mat4 model = scene.resolveWorldTransform(entity).matrix;
+			if (!frustum.intersects(mesh->bounds.transformed(model)))
+				return;
+
+			const uint64_t draw_address = frame.writeTransient(DrawData { model, NormalMatrix(model) });
 			if (draw_address == 0)
 				return;
 

@@ -1,5 +1,6 @@
 #pragma once
 #include <lunar/api.hpp>
+#include <lunar/render/frustum.hpp>
 #include <lunar/render/render_device.hpp>
 #include <lunar/render/mesh_registry.hpp>
 
@@ -28,7 +29,7 @@ namespace lunar::Render
 	private:
 		void resizeDepthImage(Extent2D extent);
 		void recordFrame(Frame& frame, Scene& scene, ImageHandle target, Extent2D extent);
-		void drawMeshes(Frame& frame, Scene& scene, uint64_t scene_address);
+		void drawMeshes(Frame& frame, Scene& scene, uint64_t scene_address, const Frustum& frustum);
 
 		RenderDevice&  device;
 		Swapchain*     swapchain    = nullptr;

@@ -2,6 +2,7 @@
 #include <lunar/api.hpp>
 #include <lunar/core/handle.hpp>
 #include <lunar/render/common.hpp>
+#include <lunar/render/frustum.hpp>
 #include <lunar/render/render_device.hpp>
 
 #include <cstdint>
@@ -21,6 +22,7 @@ namespace lunar::Render
 		BufferHandle indexBuffer   = {};
 		uint64_t     vertexAddress = 0;
 		uint32_t     indexCount    = 0;
+		Bounds       bounds        = {};
 	};
 
 	class LUNAR_API MeshRegistry

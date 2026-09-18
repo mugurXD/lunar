@@ -53,6 +53,7 @@ target_sources(lunar PRIVATE
     "src/render/render_device.cpp"
     "src/render/renderer.cpp"
     "src/render/mesh_registry.cpp"
+    "src/render/frustum.cpp"
     "src/stb_image.cpp"
 )
 

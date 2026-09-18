@@ -62,7 +62,8 @@ namespace lunar::Render
 			.vertexBuffer  = vertex_buffer,
 			.indexBuffer   = index_buffer,
 			.vertexAddress = device.getBufferAddress(vertex_buffer),
-			.indexCount    = static_cast<uint32_t>(data.indices.size())
+			.indexCount    = static_cast<uint32_t>(data.indices.size()),
+			.bounds        = Bounds::FromVertices(data.vertices)
 		};
 
 		if (vertex_buffer == BufferHandle {} || index_buffer == BufferHandle {})
