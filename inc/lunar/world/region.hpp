@@ -20,6 +20,11 @@ namespace lunar::World
 		RegionPlanner& operator=(const RegionPlanner&) = delete;
 
 		virtual Plan plan(RegionCoord coord, const WorldSettings& settings) const = 0;
+
+		virtual Plan restore(Plan loaded, RegionCoord, const WorldSettings&) const
+		{
+			return loaded;
+		}
 	};
 
 	template<typename Plan>

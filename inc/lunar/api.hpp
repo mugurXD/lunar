@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <concepts>
@@ -70,12 +71,12 @@ namespace lunar
 
 namespace lunar::imp
 {
-	constexpr LUNAR_API size_t fnv1a_hash(const std::string_view& str)
+	constexpr LUNAR_API uint64_t fnv1a_hash(const std::string_view& str)
 	{
-		size_t hash = 0xcbf29ce484222325;
+		uint64_t hash = 0xcbf29ce484222325;
 		for (char c : str)
 		{
-			hash ^= static_cast<size_t>(c);
+			hash ^= static_cast<uint8_t>(c);
 			hash *= 0x100000001b3;
 		}
 		return hash;

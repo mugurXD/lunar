@@ -130,7 +130,7 @@ namespace lunar::World
 		{
 			std::optional<Plan> loaded = storage.loadRegion<Plan>(coord);
 			if (loaded.has_value())
-				return { std::make_shared<const Plan>(std::move(*loaded)), true };
+				return { std::make_shared<const Plan>(planner.restore(std::move(*loaded), coord, settings)), true };
 
 			Plan plan = planner.plan(coord, settings);
 			storage.saveRegion(coord, plan);
