@@ -1,7 +1,17 @@
 #include <lunar/render/render_device.hpp>
 #include <lunar/render/mesh_registry.hpp>
+#include <lunar/core/jobs.hpp>
+#include <lunar/core/scene.hpp>
+#include <lunar/world/chunk_storage.hpp>
+#include <lunar/world/region_store.hpp>
+#include <lunar/world/terrain_generator.hpp>
+#include <lunar/world/terrain_world.hpp>
+#include <lunar/world/world_storage.hpp>
 #include <lunar/file/binary_file.hpp>
 #include <gtest/gtest.h>
+
+#include "temporary_directory.hpp"
+#include "world_test_types.hpp"
 
 #include <algorithm>
 #include <array>
@@ -34,6 +44,60 @@ namespace
 	constexpr size_t           TRANSIENT_OVERSIZED = size_t(1) << 30;
 
 	constexpr uint32_t TRANSIENT_ALLOCATIONS_PER_FRAME = 10000;
+
+	constexpr int32_t TERRAIN_VIEW_RADIUS      = 2;
+	constexpr size_t  CHUNKS_WITHIN_RADIUS     = 13;
+	constexpr size_t  TERRAIN_WORKERS          = 2;
+	constexpr size_t  UNLIMITED_JOB_BUDGET     = 100;
+	constexpr size_t  SMALL_JOB_BUDGET         = 4;
+	const glm::vec3   FAR_AWAY_FOCUS           = { 10000.f, 0.f, 10000.f };
+
+	lunar::World::WorldSettings SmallTerrain(size_t job_budget)
+	{
+		return { .viewRadius = TERRAIN_VIEW_RADIUS, .maxJobsInFlight = job_budget };
+	}
+
+	size_t CountTerrainChunks(lunar::Scene& scene)
+	{
+		size_t count = 0;
+		scene.forEach<lunar::World::TerrainChunk>([&](lunar::Entity, const lunar::World::TerrainChunk&) { count++; });
+		return count;
+	}
+
+	void FinishJobs(lunar::JobSystem& jobs)
+	{
+		jobs.waitIdle();
+		jobs.processCompleted();
+	}
+
+	struct TerrainHarness
+	{
+		TerrainHarness(RenderDevice& device, size_t job_budget)
+			: registry(device),
+			settings(SmallTerrain(job_budget)),
+			storage(std::make_shared<const lunar::World::WorldStorage>(*lunar::World::WorldStorage::create(directory.getPath(), {}))),
+			regions(jobs, storage, std::make_shared<const TestPlanner>(), settings),
+			source(regions, std::make_shared<const WaveGenerator>(), std::make_shared<const lunar::World::ChunkStorage>(directory.getPath() / "chunks", settings), settings),
+			terrain(scene, jobs, registry, source, settings)
+		{
+		}
+
+		void prepareRegions(const glm::vec3& focus)
+		{
+			regions.update(focus);
+			FinishJobs(jobs);
+		}
+
+		const TemporaryDirectory                                directory;
+		lunar::Scene                                            scene;
+		lunar::JobSystem                                        jobs = lunar::JobSystem(TERRAIN_WORKERS);
+		MeshRegistry                                            registry;
+		const lunar::World::WorldSettings                       settings;
+		const std::shared_ptr<const lunar::World::WorldStorage> storage;
+		lunar::World::RegionStore<TestPlan>                     regions;
+		lunar::World::RegionChunkSource<TestPlan>               source;
+		lunar::World::TerrainWorld                              terrain;
+	};
 
 	struct ComputeConstants
 	{
@@ -533,6 +597,101 @@ TEST_F(RenderDeviceTest, TransientMemoryDoesNotGrowAcrossFrames)
 	device->waitIdle();
 	EXPECT_EQ(device->getStats().allocationCount, baseline.allocationCount);
 	EXPECT_EQ(device->getStats().allocationBytes, baseline.allocationBytes);
+}
+
+TEST_F(RenderDeviceTest, TerrainWaitsForRegionPlans)
+{
+	TerrainHarness harness(*device, UNLIMITED_JOB_BUDGET);
+
+	harness.terrain.update({});
+
+	EXPECT_EQ(harness.terrain.getPendingChunkCount(),  0u);
+	EXPECT_GT(harness.regions.getPendingRegionCount(), 0u);
+}
+
+TEST_F(RenderDeviceTest, TerrainStreamsChunksAroundFocus)
+{
+	TerrainHarness harness(*device, UNLIMITED_JOB_BUDGET);
+	harness.prepareRegions({});
+
+	harness.terrain.update({});
+	EXPECT_EQ(harness.terrain.getPendingChunkCount(), CHUNKS_WITHIN_RADIUS);
+	EXPECT_EQ(harness.terrain.getLoadedChunkCount(),  0u);
+
+	FinishJobs(harness.jobs);
+	EXPECT_EQ(harness.terrain.getPendingChunkCount(), 0u);
+	EXPECT_EQ(harness.terrain.getLoadedChunkCount(),  CHUNKS_WITHIN_RADIUS);
+	EXPECT_EQ(harness.registry.size(),                CHUNKS_WITHIN_RADIUS);
+	EXPECT_EQ(CountTerrainChunks(harness.scene),      CHUNKS_WITHIN_RADIUS);
+}
+
+TEST_F(RenderDeviceTest, TerrainRespectsItsJobBudget)
+{
+	TerrainHarness harness(*device, SMALL_JOB_BUDGET);
+	harness.prepareRegions({});
+
+	harness.terrain.update({});
+	EXPECT_EQ(harness.terrain.getPendingChunkCount(), SMALL_JOB_BUDGET);
+
+	FinishJobs(harness.jobs);
+	harness.terrain.update({});
+	EXPECT_EQ(harness.terrain.getLoadedChunkCount(),  SMALL_JOB_BUDGET);
+	EXPECT_EQ(harness.terrain.getPendingChunkCount(), SMALL_JOB_BUDGET);
+}
+
+TEST_F(RenderDeviceTest, TerrainUnloadsChunksLeftBehind)
+{
+	TerrainHarness harness(*device, UNLIMITED_JOB_BUDGET);
+	harness.prepareRegions({});
+	harness.terrain.update({});
+	FinishJobs(harness.jobs);
+
+	harness.prepareRegions(FAR_AWAY_FOCUS);
+	harness.terrain.update(FAR_AWAY_FOCUS);
+	harness.scene.flushDestroyedEntities();
+	EXPECT_EQ(harness.terrain.getLoadedChunkCount(),  0u);
+	EXPECT_EQ(harness.terrain.getPendingChunkCount(), CHUNKS_WITHIN_RADIUS);
+	EXPECT_EQ(harness.registry.size(),                0u);
+	EXPECT_EQ(CountTerrainChunks(harness.scene),      0u);
+
+	FinishJobs(harness.jobs);
+	EXPECT_EQ(harness.terrain.getLoadedChunkCount(), CHUNKS_WITHIN_RADIUS);
+	EXPECT_EQ(harness.registry.size(),               CHUNKS_WITHIN_RADIUS);
+}
+
+TEST_F(RenderDeviceTest, DestroyingTerrainCancelsPendingChunks)
+{
+	TerrainHarness harness(*device, UNLIMITED_JOB_BUDGET);
+	harness.prepareRegions({});
+	{
+		lunar::World::TerrainWorld terrain(harness.scene, harness.jobs, harness.registry, harness.source, harness.settings);
+		terrain.update({});
+		EXPECT_EQ(terrain.getPendingChunkCount(), CHUNKS_WITHIN_RADIUS);
+	}
+
+	harness.jobs.waitIdle();
+	EXPECT_EQ(harness.jobs.processCompleted(), 0u);
+	EXPECT_EQ(harness.registry.size(),         0u);
+}
+
+TEST_F(RenderDeviceTest, TerrainReloadsStoredChunks)
+{
+	TerrainHarness harness(*device, UNLIMITED_JOB_BUDGET);
+	harness.prepareRegions({});
+	harness.terrain.update({});
+	FinishJobs(harness.jobs);
+
+	const auto generator     = std::make_shared<const WaveGenerator>();
+	const auto chunk_storage = std::make_shared<const lunar::World::ChunkStorage>(harness.directory.getPath() / "chunks", harness.settings);
+	lunar::World::RegionChunkSource<TestPlan> source(harness.regions, generator, chunk_storage, harness.settings);
+	{
+		lunar::World::TerrainWorld terrain(harness.scene, harness.jobs, harness.registry, source, harness.settings);
+		terrain.update({});
+		FinishJobs(harness.jobs);
+		EXPECT_EQ(terrain.getLoadedChunkCount(), CHUNKS_WITHIN_RADIUS);
+	}
+
+	EXPECT_EQ(generator->sampleCount, 0);
 }
 
 TEST(RenderDeviceLifetime, DestroyingDeviceReleasesLiveResources)

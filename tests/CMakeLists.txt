@@ -8,6 +8,10 @@ add_executable(lunar_tests
     "test_camera.cpp"
     "test_mesh_data.cpp"
     "test_jobs.cpp"
+    "test_terrain.cpp"
+    "test_world.cpp"
+    "test_json_file.cpp"
+    "test_hash.cpp"
 )
 
 target_link_libraries(lunar_tests PRIVATE lunar GTest::gtest_main)
