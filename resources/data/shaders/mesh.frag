@@ -13,6 +13,9 @@ void main()
 	const vec3  normal      = dot(face_normal, inNormal) < 0.0 ? -face_normal : face_normal;
 	const float diffuse     = max(dot(normal, -constants.scene.lightDirection.xyz), 0.0);
 	const vec3  lighting    = constants.scene.ambientColor.rgb + constants.scene.lightColor.rgb * diffuse;
+	const vec2  fog_range   = constants.scene.fogRange.xy;
+	const float distance    = length(inWorldPosition - constants.scene.cameraPosition.xyz);
+	const float fog         = fog_range.y > fog_range.x ? smoothstep(fog_range.x, fog_range.y, distance) : 0.0;
 
-	outColor = vec4(inColor * lighting, 1.0);
+	outColor = vec4(mix(inColor * lighting, constants.scene.fogColor.rgb, fog), 1.0);
 }

@@ -37,5 +37,12 @@ namespace lunar
 		float     intensity = 1.f;
 	};
 
+	struct LUNAR_API DistanceFog
+	{
+		glm::vec3 color         = { 0.6f, 0.745f, 0.76f };
+		float     startDistance = 0.f;
+		float     endDistance   = 0.f;
+	};
+
 	LUNAR_API void UpdateCameras(Scene& scene, const FrameTime& frame_time);
 }

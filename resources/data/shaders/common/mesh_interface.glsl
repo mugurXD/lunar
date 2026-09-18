@@ -20,6 +20,9 @@ layout(buffer_reference, std430) readonly buffer SceneData
 	vec4 lightDirection;
 	vec4 lightColor;
 	vec4 ambientColor;
+	vec4 cameraPosition;
+	vec4 fogColor;
+	vec4 fogRange;
 };
 
 layout(buffer_reference, std430) readonly buffer DrawData

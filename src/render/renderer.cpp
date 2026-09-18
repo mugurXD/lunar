@@ -27,6 +27,9 @@ namespace lunar::Render
 			glm::vec4 lightDirection = {};
 			glm::vec4 lightColor     = {};
 			glm::vec4 ambientColor   = {};
+			glm::vec4 cameraPosition = {};
+			glm::vec4 fogColor       = {};
+			glm::vec4 fogRange       = {};
 		};
 
 		struct DrawData
@@ -42,6 +45,18 @@ namespace lunar::Render
 			uint64_t vertexAddress = 0;
 		};
 
+		template<typename T>
+		const T* FindFirst(Scene& scene)
+		{
+			const T* found = nullptr;
+			scene.forEach<T>([&found](Entity, const T& candidate) {
+				if (found == nullptr)
+					found = &candidate;
+			});
+
+			return found;
+		}
+
 		SceneData BuildSceneData(Scene& scene, const Camera& camera, Extent2D extent)
 		{
 			const glm::mat4 projection = camera.getProjectionMatrix(static_cast<int>(extent.width), static_cast<int>(extent.height));
@@ -49,19 +64,20 @@ namespace lunar::Render
 			SceneData scene_data =
 			{
 				.viewProjection = projection * camera.getViewMatrix(),
-				.ambientColor   = AMBIENT_COLOR
+				.ambientColor   = AMBIENT_COLOR,
+				.cameraPosition = glm::vec4(camera.position, 1.f)
 			};
 
-			const DirectionalLight* light = nullptr;
-			scene.forEach<DirectionalLight>([&](Entity, const DirectionalLight& candidate) {
-				if (light == nullptr)
-					light = &candidate;
-			});
-
-			if (light != nullptr)
+			if (const DirectionalLight* light = FindFirst<DirectionalLight>(scene))
 			{
 				scene_data.lightDirection = glm::vec4(glm::normalize(light->direction), 0.f);
 				scene_data.lightColor     = glm::vec4(light->color * light->intensity, 0.f);
+			}
+
+			if (const DistanceFog* fog = FindFirst<DistanceFog>(scene))
+			{
+				scene_data.fogColor = glm::vec4(fog->color, 1.f);
+				scene_data.fogRange = glm::vec4(fog->startDistance, fog->endDistance, 0.f, 0.f);
 			}
 
 			return scene_data;
@@ -152,13 +168,14 @@ namespace lunar::Render
 
 	void Renderer::recordFrame(Frame& frame, Scene& scene, ImageHandle target, Extent2D extent)
 	{
-		CommandList& commands = frame.commandList();
+		CommandList&       commands = frame.commandList();
+		const DistanceFog* fog      = FindFirst<DistanceFog>(scene);
 
 		const ColorAttachment color_attachment =
 		{
 			.image      = target,
 			.loadOp     = LoadOp::eClear,
-			.clearColor = CLEAR_COLOR
+			.clearColor = fog != nullptr ? glm::vec4(fog->color, 1.f) : CLEAR_COLOR
 		};
 
 		const DepthAttachment depth_attachment =
