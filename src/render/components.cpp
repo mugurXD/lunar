@@ -2,10 +2,12 @@
 #include <lunar/core/scene.hpp>
 
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 namespace lunar
 {
-	const glm::vec3 WORLD_UP = { 0.f, 1.f, 0.f };
+	const glm::vec3 WORLD_UP       = { 0.f, 1.f, 0.f };
+	const glm::vec3 CAMERA_FORWARD = { 0.f, 0.f, -1.f };
 
 	glm::mat4 Camera::getViewMatrix() const
 	{
@@ -25,6 +27,15 @@ namespace lunar
 		return projection;
 	}
 
+	glm::quat CameraRotation(float yaw_degrees, float pitch_degrees)
+	{
+		const float     yaw   = glm::radians(yaw_degrees);
+		const float     pitch = glm::radians(pitch_degrees);
+		const glm::vec3 front = glm::vec3(glm::cos(yaw) * glm::cos(pitch), glm::sin(pitch), glm::sin(yaw) * glm::cos(pitch));
+
+		return glm::quatLookAt(glm::normalize(front), WORLD_UP);
+	}
+
 	void UpdateCameras(Scene& scene, const FrameTime&)
 	{
 		scene.forEach<Camera>([&](Entity entity, Camera& camera) {
@@ -32,10 +43,7 @@ namespace lunar
 			if (transform == nullptr)
 				return;
 
-			const float yaw   = glm::radians(transform->rotation.x);
-			const float pitch = glm::radians(transform->rotation.y);
-
-			camera.front    = glm::normalize(glm::vec3(glm::cos(yaw) * glm::cos(pitch), glm::sin(pitch), glm::sin(yaw) * glm::cos(pitch)));
+			camera.front    = glm::normalize(transform->rotation * CAMERA_FORWARD);
 			camera.right    = glm::normalize(glm::cross(camera.front, WORLD_UP));
 			camera.up       = glm::normalize(glm::cross(camera.right, camera.front));
 			camera.position = glm::vec3(scene.resolveWorldTransform(entity).matrix[3]);

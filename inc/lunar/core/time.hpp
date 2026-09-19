@@ -10,6 +10,7 @@ namespace lunar
 	{
 		float    deltaTime      = 0.f;
 		float    fixedDeltaTime = 0.f;
+		float    fixedAlpha     = 0.f;
 		double   elapsedTime    = 0.0;
 		uint64_t frameIndex     = 0;
 	};

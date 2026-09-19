@@ -43,6 +43,7 @@ namespace lunar
 			{ "keyboard.8",         ActionData { ActionType::eKey, GLFW_KEY_8 } },
 			{ "keyboard.9",         ActionData { ActionType::eKey, GLFW_KEY_9 } },
 			{ "keyboard.0",         ActionData { ActionType::eKey, GLFW_KEY_0 } },
+			{ "keyboard.space",     ActionData { ActionType::eKey, GLFW_KEY_SPACE       } },
 			{ "keyboard.shift",     ActionData { ActionType::eKey, GLFW_KEY_LEFT_SHIFT  } },
 			{ "keyboard.rshift",    ActionData { ActionType::eKey, GLFW_KEY_RIGHT_SHIFT } },
 			{ "keyboard.ctrl",      ActionData { ActionType::eKey, GLFW_KEY_LEFT_CONTROL }},

@@ -51,6 +51,15 @@ namespace lunar::World
 		return pendingCount;
 	}
 
+	const Heightmap* TerrainWorld::findHeightmap(ChunkCoord coord) const
+	{
+		const auto found = chunks.find(coord);
+		if (found == chunks.end() || found->second.heightmap.heights.empty())
+			return nullptr;
+
+		return &found->second.heightmap;
+	}
+
 	void TerrainWorld::unloadDistantChunks(ChunkCoord center)
 	{
 		const int32_t unload_radius = settings.viewRadius + settings.unloadMargin;

@@ -15,7 +15,7 @@
 #include <string>
 #include <vector>
 
-#include <reactphysics3d/reactphysics3d.h>
+#include <lunar/physics/reactphysics.hpp>
 
 namespace Render { class LUNAR_API Camera; }
 
@@ -37,6 +37,7 @@ namespace lunar
 
 		void                    physicsUpdate(double dt);
 		PhysicsWorld*           getPhysicsWorld();
+		rp3d::PhysicsCommon&    getPhysicsCommon();
 		Camera*                 getMainCamera();
 		void                    setMainCamera(GameObject camera_object);
 		Render::GpuCubemap      getEnvironment() const;

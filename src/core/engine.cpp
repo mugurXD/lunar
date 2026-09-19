@@ -1,5 +1,6 @@
 #include "lunar/core/engine.hpp"
 #include <lunar/render/components.hpp>
+#include <lunar/physics/rigid_body.hpp>
 #include <lunar/debug.hpp>
 
 namespace lunar
@@ -115,6 +116,9 @@ namespace lunar
 		systemScheduler.addSystem(SystemPhase::eFixedUpdate, [](Scene& scene, const FrameTime& frame_time) {
 			scene.physicsUpdate(frame_time.deltaTime);
 		});
+
+		systemScheduler.addSystem(SystemPhase::eFixedUpdate, Physics::CapturePhysicsPoses);
+		systemScheduler.addSystem(SystemPhase::eUpdate,      Physics::ApplyPhysicsPoses);
 
 		systemScheduler.addSystem(SystemPhase::eUpdate, [](Scene& scene, const FrameTime& frame_time) {
 			scene.updateBehaviours(frame_time);

@@ -28,6 +28,7 @@ namespace lunar
 
 		FrameTime variable_frame_time      = frame_time;
 		variable_frame_time.fixedDeltaTime = static_cast<float>(fixedTimestep);
+		variable_frame_time.fixedAlpha     = static_cast<float>(accumulator / fixedTimestep);
 
 		runPhase(SystemPhase::eUpdate,     scene, variable_frame_time);
 		runPhase(SystemPhase::eLateUpdate, scene, variable_frame_time);

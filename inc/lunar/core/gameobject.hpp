@@ -19,7 +19,7 @@ namespace lunar
 	struct LUNAR_API Transform
 	{
 		glm::vec3 position   = { 0, 0, 0 };
-		glm::vec3 rotation   = { 0, 0, 0 };
+		glm::quat rotation   = glm::quat(1.f, 0.f, 0.f, 0.f);
 		glm::vec3 scale      = { 1, 1, 1 };
 
 		bool operator==(const Transform&) const = default;
@@ -69,7 +69,7 @@ namespace lunar
 		glm::vec3               getWorldScale()     const;
 		glm::mat4               getWorldTransform() const;
 		glm::vec3               getLocalPos()       const;
-		glm::vec3               getLocalRotation()  const;
+		glm::quat               getLocalRotation()  const;
 		glm::vec3               getLocalScale()     const;
 		void                    setWorldPos(glm::vec3 pos);
 		void                    setLocalPos(glm::vec3 pos);

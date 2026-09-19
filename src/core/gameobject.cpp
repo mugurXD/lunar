@@ -105,7 +105,7 @@ namespace lunar
 		return getTransform().position;
 	}
 
-	glm::vec3 GameObject::getLocalRotation() const
+	glm::quat GameObject::getLocalRotation() const
 	{
 		return getTransform().rotation;
 	}

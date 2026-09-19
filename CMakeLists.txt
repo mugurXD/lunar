@@ -36,6 +36,7 @@ file(GLOB_RECURSE LUNAR_SRC
     "src/file/*.cpp"
     "src/exp/*.cpp"
     "src/world/*.cpp"
+    "src/physics/*.cpp"
 )
 
 message(${LUNAR_HEADERS})

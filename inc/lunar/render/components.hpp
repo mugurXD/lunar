@@ -44,5 +44,6 @@ namespace lunar
 		float     endDistance   = 0.f;
 	};
 
-	LUNAR_API void UpdateCameras(Scene& scene, const FrameTime& frame_time);
+	LUNAR_API glm::quat CameraRotation(float yaw_degrees, float pitch_degrees);
+	LUNAR_API void      UpdateCameras(Scene& scene, const FrameTime& frame_time);
 }

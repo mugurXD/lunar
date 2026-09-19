@@ -28,8 +28,9 @@ namespace lunar::World
 		TerrainWorld& operator=(const TerrainWorld&) = delete;
 
 		void   update(const glm::vec3& focus_position);
-		size_t getLoadedChunkCount()  const;
-		size_t getPendingChunkCount() const;
+		size_t           getLoadedChunkCount()          const;
+		size_t           getPendingChunkCount()         const;
+		const Heightmap* findHeightmap(ChunkCoord coord) const;
 
 	private:
 		struct LoadedChunk
