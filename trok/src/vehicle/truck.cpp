@@ -226,7 +226,16 @@ namespace trok
 
 	void Truck::drive(const lunar::Physics::VehicleInput& input, float delta_time)
 	{
-		vehicle.update(*chassis->getComponent<lunar::Physics::RigidBody>(), input, delta_time);
+		lunar::Physics::RigidBody& body = *chassis->getComponent<lunar::Physics::RigidBody>();
+		if (body.getBody().isActive())
+			vehicle.update(body, input, delta_time);
+	}
+
+	void Truck::setSimulated(bool simulated)
+	{
+		rp3d::RigidBody& body = chassis->getComponent<lunar::Physics::RigidBody>()->getBody();
+		if (body.isActive() != simulated)
+			body.setIsActive(simulated);
 	}
 
 	void Truck::updateWheels()

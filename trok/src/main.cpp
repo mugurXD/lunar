@@ -239,6 +239,7 @@ int main()
 		}
 
 		colliders.update(std::span(&truck->getTransform().position, 1));
+		truck->setSimulated(colliders.isReady(truck->getTransform().position));
 		truck->updateWheels();
 
 		if (window.getActionDown("toggle_camera"))

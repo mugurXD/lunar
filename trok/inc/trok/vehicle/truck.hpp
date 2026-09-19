@@ -65,6 +65,7 @@ namespace trok
 		Truck& operator=(const Truck&) = delete;
 
 		void drive(const lunar::Physics::VehicleInput& input, float delta_time);
+		void setSimulated(bool simulated);
 		void updateWheels();
 
 		const lunar::Transform&               getTransform() const;
