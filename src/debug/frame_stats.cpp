@@ -30,21 +30,16 @@ namespace lunar::Debug
 		count         = std::min(count + 1, HISTORY_SIZE);
 	}
 
-	void FrameStatsWindow::toggle()
-	{
-		visible = !visible;
-	}
-
 	void FrameStatsWindow::draw()
 	{
-		if (!visible || count == 0)
+		if (count == 0)
 			return;
 
 		const std::span<const float> recorded          = std::span(history.data(), count);
 		const float                  average           = std::accumulate(recorded.begin(), recorded.end(), 0.f) / static_cast<float>(count);
 		const auto                   [lowest, highest] = std::ranges::minmax(recorded);
 
-		if (ImGui::Begin(WINDOW_TITLE, &visible, ImGuiWindowFlags_AlwaysAutoResize))
+		if (ImGui::Begin(WINDOW_TITLE, nullptr, ImGuiWindowFlags_AlwaysAutoResize))
 		{
 			Text(std::format("{:.0f} FPS", MILLISECONDS_PER_SECOND / average));
 			Text(std::format("{:.2f} ms (min {:.2f}, max {:.2f})", average, lowest, highest));

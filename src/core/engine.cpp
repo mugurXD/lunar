@@ -7,8 +7,8 @@ namespace lunar
 {
 	namespace
 	{
-		constexpr std::string_view TOGGLE_FRAME_STATS = "toggle_frame_stats";
-		constexpr std::string_view FRAME_STATS_KEY    = "keyboard.f3";
+		constexpr std::string_view TOGGLE_DEBUG_MODE = "toggle_debug_mode";
+		constexpr std::string_view DEBUG_MODE_KEY    = "keyboard.f3";
 	}
 
 	Scene& Engine::getActiveScene()
@@ -41,6 +41,11 @@ namespace lunar
 		systemScheduler.addSystem(phase, std::move(system));
 	}
 
+	bool Engine::isDebugMode() const
+	{
+		return debugMode;
+	}
+
 	void Engine::runGameLoop()
 	{
 		while (window.isActive())
@@ -51,16 +56,20 @@ namespace lunar
 			jobSystem.processCompleted();
 
 			if (imguiLayer.has_value())
+			{
 				imguiLayer->beginFrame();
+
+				if (window.getActionDown(TOGGLE_DEBUG_MODE))
+					debugMode = !debugMode;
+			}
 
 			systemScheduler.runFrame(activeScene, timeContext.getFrameTime());
 
 			if (imguiLayer.has_value())
 			{
-				if (window.getActionDown(TOGGLE_FRAME_STATS))
-					frameStats.toggle();
+				if (debugMode)
+					frameStats.draw();
 
-				frameStats.draw();
 				imguiLayer->endFrame();
 			}
 
@@ -103,7 +112,7 @@ namespace lunar
 		if (swapchain != nullptr)
 		{
 			imguiLayer.emplace(*renderDevice, *swapchain, window);
-			window.registerAction(TOGGLE_FRAME_STATS, { { FRAME_STATS_KEY } });
+			window.registerAction(TOGGLE_DEBUG_MODE, { { DEBUG_MODE_KEY } });
 		}
 
 		systemScheduler.addSystem(SystemPhase::eFixedUpdate, [](Scene& scene, const FrameTime& frame_time) {

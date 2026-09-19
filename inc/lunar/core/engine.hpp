@@ -31,6 +31,7 @@ namespace lunar
 		JobSystem&               getJobSystem();
 		Time::TimeContext_T&     getTimeContext();
 		void                     addSystem(SystemPhase phase, System system);
+		bool                     isDebugMode() const;
 		void                     runGameLoop();
 
 	private:
@@ -49,6 +50,7 @@ namespace lunar
 		Render::Renderer                      renderer;
 		std::optional<Render::ImGuiLayer>     imguiLayer;
 		Debug::FrameStatsWindow               frameStats;
+		bool                                  debugMode     = false;
 		Scene                                 activeScene   = {};
 		SystemScheduler                       systemScheduler;
 		JobSystem                             jobSystem;

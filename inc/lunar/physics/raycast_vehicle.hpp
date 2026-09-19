@@ -65,6 +65,7 @@ namespace lunar::Physics
 		void update(RigidBody& chassis, const VehicleInput& input, float delta_time);
 
 		const VehicleSettings&      getSettings()                        const;
+		VehicleSettings&            editSettings();
 		std::span<const WheelState> getWheels()                          const;
 		float                       getForwardSpeed()                    const;
 		float                       getSteerAngle()                      const;

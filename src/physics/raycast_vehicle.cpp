@@ -63,6 +63,11 @@ namespace lunar::Physics
 		return settings;
 	}
 
+	VehicleSettings& RaycastVehicle::editSettings()
+	{
+		return settings;
+	}
+
 	std::span<const WheelState> RaycastVehicle::getWheels() const
 	{
 		return wheels;

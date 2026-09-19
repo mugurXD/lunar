@@ -12,13 +12,11 @@ namespace lunar::Debug
 		static constexpr size_t HISTORY_SIZE = 240;
 
 		void record(float frame_seconds);
-		void toggle();
 		void draw();
 
 	private:
 		std::array<float, HISTORY_SIZE> history = {};
 		size_t                          count   = 0;
 		size_t                          next    = 0;
-		bool                            visible = false;
 	};
 }
