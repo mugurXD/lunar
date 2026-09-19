@@ -1,4 +1,5 @@
 #include <trok/world/biome.hpp>
+#include <trok/json_math.hpp>
 
 #include <algorithm>
 #include <iterator>
@@ -60,16 +61,6 @@ namespace trok
 			    && climate.erosion.min         <= climate.erosion.max;
 		}
 
-		nlohmann::json SerializeColor(const glm::vec3& color)
-		{
-			return nlohmann::json { color.r, color.g, color.b };
-		}
-
-		glm::vec3 DeserializeColor(const nlohmann::json& json)
-		{
-			return glm::vec3(json.at(0).get<float>(), json.at(1).get<float>(), json.at(2).get<float>());
-		}
-
 		nlohmann::json SerializeTerrain(const BiomeTerrain& terrain)
 		{
 			return nlohmann::json
@@ -98,9 +89,9 @@ namespace trok
 		{
 			return nlohmann::json
 			{
-				{ "low",            SerializeColor(colors.lowColor) },
-				{ "high",           SerializeColor(colors.highColor) },
-				{ "rock",           SerializeColor(colors.rockColor) },
+				{ "low",            SerializeVec3(colors.lowColor) },
+				{ "high",           SerializeVec3(colors.highColor) },
+				{ "rock",           SerializeVec3(colors.rockColor) },
 				{ "rockSlopeStart", colors.rockSlopeStart },
 				{ "rockSlopeEnd",   colors.rockSlopeEnd }
 			};
@@ -110,9 +101,9 @@ namespace trok
 		{
 			return BiomeColors
 			{
-				.lowColor       = DeserializeColor(json.at("low")),
-				.highColor      = DeserializeColor(json.at("high")),
-				.rockColor      = DeserializeColor(json.at("rock")),
+				.lowColor       = DeserializeVec3(json.at("low")),
+				.highColor      = DeserializeVec3(json.at("high")),
+				.rockColor      = DeserializeVec3(json.at("rock")),
 				.rockSlopeStart = json.at("rockSlopeStart").get<float>(),
 				.rockSlopeEnd   = json.at("rockSlopeEnd").get<float>()
 			};

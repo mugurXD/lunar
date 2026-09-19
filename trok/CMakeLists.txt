@@ -11,12 +11,18 @@ endif()
 
 add_library(trok_core STATIC
     "FastNoiseLite.h"
+    "inc/trok/json_math.hpp"
+    "inc/trok/vehicle/chase_camera.hpp"
+    "inc/trok/vehicle/truck.hpp"
     "inc/trok/world/biome.hpp"
     "inc/trok/world/climate.hpp"
     "inc/trok/world/elevation.hpp"
     "inc/trok/world/region_plan.hpp"
     "inc/trok/world/stable_hash.hpp"
     "inc/trok/world/terrain_generator.hpp"
+    "src/json_math.cpp"
+    "src/vehicle/chase_camera.cpp"
+    "src/vehicle/truck.cpp"
     "src/world/biome.cpp"
     "src/world/climate.cpp"
     "src/world/elevation.cpp"
@@ -37,9 +43,11 @@ if(${LUNAR_UNIT_TESTS})
         "tests/test_elevation.cpp"
         "tests/test_region_plan.cpp"
         "tests/test_terrain_generator.cpp"
+        "tests/test_truck.cpp"
     )
 
     target_link_libraries(trok_tests PRIVATE trok_core GTest::gtest_main)
+    target_compile_definitions(trok_tests PRIVATE TROK_DATA_DIRECTORY="${CMAKE_SOURCE_DIR}/resources/data")
 
     include(GoogleTest)
     gtest_discover_tests(trok_tests)
