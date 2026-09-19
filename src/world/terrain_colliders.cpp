@@ -46,6 +46,11 @@ namespace lunar::World
 		}
 	}
 
+	void TerrainColliders::clear()
+	{
+		colliders.clear();
+	}
+
 	bool TerrainColliders::isReady(const glm::vec3& position) const
 	{
 		const ChunkCoord focus = ChunkAt(position, settings);
