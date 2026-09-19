@@ -233,6 +233,7 @@ int main()
 			engine.getJobSystem().processCompleted();
 			terrain_generator->refresh();
 			terrain.reload();
+			colliders.clear();
 		}
 
 		if (!placed_above_terrain)
