@@ -68,8 +68,10 @@ namespace trok
 		void setSimulated(bool simulated);
 		void updateWheels();
 
-		const lunar::Transform&               getTransform() const;
-		const lunar::Physics::RaycastVehicle& getVehicle()   const;
+		const lunar::Transform&               getTransform()  const;
+		const lunar::Physics::RaycastVehicle& getVehicle()    const;
+		lunar::Physics::RaycastVehicle&       editVehicle();
+		bool                                  isSimulated()   const;
 
 	private:
 		lunar::GameObject createBox(const glm::vec3& color, const glm::vec3& half_extents, const glm::vec3& offset);
@@ -80,5 +82,6 @@ namespace trok
 		std::vector<lunar::Render::MeshHandle> ownedMeshes = {};
 		lunar::Physics::RaycastVehicle         vehicle;
 		float                                  wheelWidth  = 0.f;
+		bool                                   simulated   = true;
 	};
 }

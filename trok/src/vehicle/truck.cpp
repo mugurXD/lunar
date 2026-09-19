@@ -231,11 +231,13 @@ namespace trok
 			vehicle.update(body, input, delta_time);
 	}
 
-	void Truck::setSimulated(bool simulated)
+	void Truck::setSimulated(bool active)
 	{
 		rp3d::RigidBody& body = chassis->getComponent<lunar::Physics::RigidBody>()->getBody();
-		if (body.isActive() != simulated)
-			body.setIsActive(simulated);
+		if (body.isActive() != active)
+			body.setIsActive(active);
+
+		simulated = active;
 	}
 
 	void Truck::updateWheels()
@@ -256,6 +258,16 @@ namespace trok
 	const lunar::Physics::RaycastVehicle& Truck::getVehicle() const
 	{
 		return vehicle;
+	}
+
+	lunar::Physics::RaycastVehicle& Truck::editVehicle()
+	{
+		return vehicle;
+	}
+
+	bool Truck::isSimulated() const
+	{
+		return simulated;
 	}
 
 	lunar::GameObject Truck::createBox(const glm::vec3& color, const glm::vec3& half_extents, const glm::vec3& offset)

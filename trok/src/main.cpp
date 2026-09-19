@@ -5,6 +5,7 @@
 #include <trok/world/terrain_generator.hpp>
 #include <trok/vehicle/chase_camera.hpp>
 #include <trok/vehicle/truck.hpp>
+#include <trok/vehicle/truck_tuning.hpp>
 
 #include <lunar/core/engine.hpp>
 #include <lunar/render/components.hpp>
@@ -47,6 +48,7 @@ namespace
 	constexpr std::string_view        BIOME_FILE_NAME      = "biomes.json";
 	constexpr std::string_view        ELEVATION_FILE_NAME  = "elevation.json";
 	constexpr std::string_view        TRUCK_FILE_NAME      = "trucks/box_truck.json";
+	constexpr std::string_view        TUNED_TRUCK_FILE     = "trucks/box_truck.tuned.json";
 	constexpr int32_t                 COLLIDER_RADIUS      = 1;
 	constexpr float                   TRUCK_SPAWN_HEIGHT   = 1.5f;
 	constexpr float                   GROUND_RAY_HEIGHT    = 2000.f;
@@ -182,6 +184,7 @@ int main()
 	World::RegionChunkSource<trok::RegionPlan> chunk_source(regions, terrain_generator, chunk_storage, world_settings);
 	World::TerrainWorld                        terrain(scene, engine.getJobSystem(), engine.getRenderer().getMeshes(), chunk_source, world_settings);
 	World::TerrainColliders                    colliders(scene, terrain, world_settings, COLLIDER_RADIUS);
+	trok::TruckTuningWindow                    tuning(*truck_definition, Fs::fromData(TUNED_TRUCK_FILE));
 	std::optional<trok::Truck>                 truck;
 
 	GameObject player = scene.createGameObject("Player");
@@ -241,6 +244,9 @@ int main()
 		colliders.update(std::span(&truck->getTransform().position, 1));
 		truck->setSimulated(colliders.isReady(truck->getTransform().position));
 		truck->updateWheels();
+
+		if (engine.isDebugMode())
+			tuning.draw(*truck);
 
 		if (window.getActionDown("toggle_camera"))
 		{
