@@ -12,3 +12,4 @@ FastNoiseLite.h
 deps/*/build
 deps/*/install
 saves/
+imgui.ini

@@ -1,24 +1,32 @@
 [submodule "deps/glfw"]
 	path = deps/glfw
 	url = https://github.com/glfw/glfw.git
+	ignore = all
 [submodule "deps/glm"]
 	path = deps/glm
 	url = https://github.com/g-truc/glm.git
+	ignore = all
 [submodule "deps/nlohmann-json"]
 	path = deps/nlohmann-json
 	url = https://github.com/nlohmann/json.git
+	ignore = all
 [submodule "deps/fastgltf"]
 	path = deps/fastgltf
 	url = https://github.com/spnda/fastgltf.git
+	ignore = all
 [submodule "deps/reactphysics3d"]
 	path = deps/reactphysics3d
 	url = https://github.com/DanielChappuis/reactphysics3d
+	ignore = all
 [submodule "deps/imgui"]
 	path = deps/imgui
 	url = https://github.com/ocornut/imgui.git
+	ignore = all	
 [submodule "deps/googletest"]
 	path = deps/googletest
 	url = https://github.com/google/googletest
+	ignore = all
 [submodule "deps/vk-bootstrap"]
 	path = deps/vk-bootstrap
 	url = https://github.com/charles-lunarg/vk-bootstrap
+	ignore = all
