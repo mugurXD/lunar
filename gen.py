@@ -77,6 +77,7 @@ class Dependency:
         
         args = [ "-S", self.dir(), "-B", self.build_dir() ]
         args.append(f"-DCMAKE_INSTALL_PREFIX={self.install_dir()}")
+        args.append(f"-DCMAKE_DEBUG_POSTFIX=d")
         args = append_args(args, self.g_args)
         cmake_command(args)
         return self
@@ -86,7 +87,11 @@ class Dependency:
 
         args = [ "--build", self.build_dir(), "--target", "install" ]
         args = append_args(args, self.b_args)
-        cmake_command(args)
+
+        debug_args = [ "--config", "Debug" ]
+        release_args = [ "--config", "Release" ]
+        cmake_command(append_args(args, debug_args))
+        cmake_command(append_args(args, release_args))
         return self
     def clean(self):
         if self.is_built():
@@ -112,6 +117,7 @@ dependencies = [
     Dependency('glm')
         .gen_flag('GLM_BUILD_TESTS=OFF'),
     Dependency('reactphysics3d')
+        .gen_flag('CMAKE_CXX_FLAGS_INIT=/FIchrono')
 ]
 
 def create_prefix_path():
