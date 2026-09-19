@@ -2,6 +2,8 @@
 #include <lunar/render/components.hpp>
 #include <gtest/gtest.h>
 
+#include <glm/gtc/quaternion.hpp>
+
 namespace
 {
 	struct Position
@@ -276,7 +278,7 @@ TEST(Camera, UpdateCamerasFollowsTransform)
 	lunar::GameObject object = scene.createGameObject("Camera", parent);
 	parent->getTransform().position = { 0.f, 5.f, 0.f };
 	object->getTransform().position = { 1.f, 0.f, 0.f };
-	object->getTransform().rotation = { -90.f, 0.f, 0.f };
+	object->getTransform().rotation = lunar::CameraRotation(-90.f, 0.f);
 	object->addComponent<lunar::Camera>();
 
 	lunar::UpdateCameras(scene, lunar::FrameTime{});
@@ -329,7 +331,7 @@ TEST(GameObject, WorldRotationAndScaleCombineParents)
 
 	lunar::GameObject root  = scene.createGameObject("Root");
 	lunar::GameObject child = scene.createGameObject("Child", root);
-	root->getTransform().rotation  = { 0.f, 90.f, 0.f };
+	root->getTransform().rotation  = glm::angleAxis(glm::radians(90.f), glm::vec3(0.f, 1.f, 0.f));
 	root->getTransform().scale     = { 2.f, 2.f, 2.f };
 	child->getTransform().position = { 1.f, 0.f, 0.f };
 	child->getTransform().scale    = { 3.f, 3.f, 3.f };
