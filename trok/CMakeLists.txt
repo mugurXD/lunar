@@ -39,6 +39,7 @@ target_link_libraries(trok PRIVATE trok_core)
 if(${LUNAR_UNIT_TESTS})
     add_executable(trok_tests
         "tests/test_biome.cpp"
+        "tests/test_chase_camera.cpp"
         "tests/test_climate.cpp"
         "tests/test_elevation.cpp"
         "tests/test_region_plan.cpp"

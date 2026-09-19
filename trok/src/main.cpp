@@ -60,8 +60,7 @@ namespace
 	const glm::vec3 SUN_DIRECTION         = { -0.4f, -1.f, -0.3f };
 	const glm::vec3 SKY_COLOR             = { 0.6f, 0.745f, 0.76f };
 
-	const trok::ChaseCameraSettings CHASE_CAMERA = {};
-	const Physics::VehicleInput     PARKED_INPUT = { .brake = 1.f };
+	const Physics::VehicleInput PARKED_INPUT = { .brake = 1.f };
 
 	template<IsJsonSerializable T>
 	std::optional<T> LoadGameData(std::string_view file_name)
@@ -192,7 +191,8 @@ int main()
 	player->addComponent<FlyCamera>(CAMERA_START_YAW, CAMERA_START_PITCH);
 	scene.setMainCamera(player);
 
-	GameObject chase_camera = scene.createGameObject("Chase Camera");
+	GameObject        chase_camera = scene.createGameObject("Chase Camera");
+	trok::ChaseCamera chase(trok::ChaseCameraSettings {});
 	chase_camera->addComponent<Camera>();
 
 	GameObject sun = scene.createGameObject("Sun");
@@ -234,7 +234,7 @@ int main()
 				return;
 
 			truck.emplace(scene, engine.getRenderer().getMeshes(), *truck_definition, glm::vec3(CAMERA_START_POSITION.x, *ground + TRUCK_SPAWN_HEIGHT, CAMERA_START_POSITION.z), glm::quat(1.f, 0.f, 0.f, 0.f));
-			chase_camera->getTransform().position = trok::ChaseCameraPosition(truck->getTransform(), CHASE_CAMERA);
+			chase.snap(chase_camera->getTransform(), truck->getTransform());
 			scene.setMainCamera(chase_camera);
 		}
 
@@ -247,8 +247,11 @@ int main()
 			scene.setMainCamera(is_driving() ? player : chase_camera);
 		}
 
-		if (is_driving())
-			trok::FollowTarget(chase_camera->getTransform(), truck->getTransform(), CHASE_CAMERA, frame_time.deltaTime);
+		if (!is_driving())
+			return;
+
+		chase.orbit(Input::GetRotation(), Input::GetScroll());
+		chase.update(chase_camera->getTransform(), truck->getTransform(), truck->getVehicle().getForwardSpeed(), frame_time.deltaTime);
 	});
 
 	float seconds_since_title_update = 0.f;
