@@ -28,7 +28,8 @@ namespace lunar::World
 		TerrainColliders& operator=(const TerrainColliders&) = delete;
 
 		void   update(std::span<const glm::vec3> focus_positions);
-		size_t getColliderCount() const;
+		bool   isReady(const glm::vec3& position) const;
+		size_t getColliderCount()                 const;
 
 	private:
 		bool isNeeded(ChunkCoord coord, std::span<const ChunkCoord> focus_chunks) const;

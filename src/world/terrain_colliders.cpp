@@ -46,6 +46,18 @@ namespace lunar::World
 		}
 	}
 
+	bool TerrainColliders::isReady(const glm::vec3& position) const
+	{
+		const ChunkCoord focus = ChunkAt(position, settings);
+
+		for (int32_t offset_z = -radiusChunks; offset_z <= radiusChunks; offset_z++)
+			for (int32_t offset_x = -radiusChunks; offset_x <= radiusChunks; offset_x++)
+				if (!colliders.contains({ focus.x + offset_x, focus.z + offset_z }))
+					return false;
+
+		return true;
+	}
+
 	size_t TerrainColliders::getColliderCount() const
 	{
 		return colliders.size();

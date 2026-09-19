@@ -14,6 +14,7 @@
 #include <lunar/render/render_device.hpp>
 #include <lunar/render/renderer.hpp>
 #include <lunar/render/imgui_layer.hpp>
+#include <lunar/debug/frame_stats.hpp>
 
 namespace lunar
 {
@@ -47,6 +48,7 @@ namespace lunar
 		std::unique_ptr<Render::Swapchain>    swapchain;
 		Render::Renderer                      renderer;
 		std::optional<Render::ImGuiLayer>     imguiLayer;
+		Debug::FrameStatsWindow               frameStats;
 		Scene                                 activeScene   = {};
 		SystemScheduler                       systemScheduler;
 		JobSystem                             jobSystem;

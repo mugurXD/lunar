@@ -5,6 +5,12 @@
 
 namespace lunar
 {
+	namespace
+	{
+		constexpr std::string_view TOGGLE_FRAME_STATS = "toggle_frame_stats";
+		constexpr std::string_view FRAME_STATS_KEY    = "keyboard.f3";
+	}
+
 	Scene& Engine::getActiveScene()
 	{
 		return activeScene;
@@ -41,6 +47,7 @@ namespace lunar
 		{
 			window.pollEvents();
 			timeContext.update();
+			frameStats.record(timeContext.getFrameTime().deltaTime);
 			jobSystem.processCompleted();
 
 			if (imguiLayer.has_value())
@@ -49,7 +56,13 @@ namespace lunar
 			systemScheduler.runFrame(activeScene, timeContext.getFrameTime());
 
 			if (imguiLayer.has_value())
+			{
+				if (window.getActionDown(TOGGLE_FRAME_STATS))
+					frameStats.toggle();
+
+				frameStats.draw();
 				imguiLayer->endFrame();
+			}
 
 			renderFrame();
 			activeScene.flushDestroyedEntities();
@@ -88,7 +101,10 @@ namespace lunar
 		Input::SetGlobalHandler(window);
 
 		if (swapchain != nullptr)
+		{
 			imguiLayer.emplace(*renderDevice, *swapchain, window);
+			window.registerAction(TOGGLE_FRAME_STATS, { { FRAME_STATS_KEY } });
+		}
 
 		systemScheduler.addSystem(SystemPhase::eFixedUpdate, [](Scene& scene, const FrameTime& frame_time) {
 			scene.physicsUpdate(frame_time.deltaTime);
