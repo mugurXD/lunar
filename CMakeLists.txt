@@ -78,7 +78,7 @@ if(ON)
     target_link_libraries(imgui PUBLIC glfw)
     target_include_directories(imgui PUBLIC glfw)
 
-    if(${LUNAR_RENDER_BACKEND} STREQUAL "VULKAN")
+    if(ON)
         target_link_libraries(imgui PUBLIC Vulkan::Vulkan)
         target_include_directories(imgui PUBLIC Vulkan::Vulkan)
         target_sources(imgui PRIVATE
