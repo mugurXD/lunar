@@ -16,7 +16,9 @@ if(LUNAR_ADD_INSTALL_PATHS)
         "deps/glfw/install"
         "deps/fastgltf/install"
         "deps/nlohmann-json/install"
-        "deps/reactphysics3d/install"
+        "deps/reactphysics3d/install",
+        "deps/googletest/install",
+        "deps/vk-bootstrap/install"
     )
 endif()
 
@@ -119,15 +121,8 @@ if(${LUNAR_RENDER_BACKEND} STREQUAL "OPENGL")
 endif()
 
 # TODO: add if guard Vulkan
-include(FetchContent)
-FetchContent_Declare(
-    fetch_vk_bootstrap
-    GIT_REPOSITORY https://github.com/charles-lunarg/vk-bootstrap
-    GIT_TAG        9064ea7
-)
-FetchContent_MakeAvailable(fetch_vk_bootstrap)
-
 find_package(Vulkan REQUIRED COMPONENTS glslc)
+find_package(vk-bootstrap REQUIRED)
 target_link_libraries(lunar PRIVATE vk-bootstrap::vk-bootstrap Vulkan::Vulkan)
 
 file(GLOB_RECURSE LUNAR_VK_SRC "src/render/vk/*.cpp")
@@ -229,15 +224,7 @@ endif()
 if(${LUNAR_UNIT_TESTS})
     message("-- lunar: Building unit tests")
 
-    include(FetchContent)
-    FetchContent_Declare(
-      googletest
-      URL https://github.com/google/googletest/archive/03597a01ee50ed33e9dfd640b249b4be3799d395.zip
-    )
-    # For Windows: Prevent overriding the parent project's compiler/linker settings
-    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-    FetchContent_MakeAvailable(googletest)
-
+    find_package(gtest REQUIRED)
     enable_testing()
     add_subdirectory(tests)
 endif()

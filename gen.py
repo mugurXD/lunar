@@ -117,7 +117,11 @@ dependencies = [
     Dependency('glm')
         .gen_flag('GLM_BUILD_TESTS=OFF'),
     Dependency('reactphysics3d')
-        .gen_flag('CMAKE_CXX_FLAGS_INIT=/FIchrono')
+        .gen_flag('CMAKE_CXX_FLAGS_INIT=/FIchrono'),
+    Dependency('vk-bootstrap')
+        .gen_flag("VK_BOOTSTRAP_TEST=OFF"),
+    Dependency('googletest')
+        .gen_flag("gtest_force_shared_crt=ON")
 ]
 
 def create_prefix_path():

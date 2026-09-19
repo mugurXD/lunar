@@ -16,3 +16,9 @@
 [submodule "deps/imgui"]
 	path = deps/imgui
 	url = https://github.com/ocornut/imgui.git
+[submodule "deps/googletest"]
+	path = deps/googletest
+	url = https://github.com/google/googletest
+[submodule "deps/vk-bootstrap"]
+	path = deps/vk-bootstrap
+	url = https://github.com/charles-lunarg/vk-bootstrap
