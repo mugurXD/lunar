@@ -32,13 +32,16 @@ namespace lunar::World
 	                              const ChunkStorage&           storage,
 	                              const RegionContext<Plan>&    context,
 	                              ChunkCoord                    coord,
-	                              const WorldSettings&          settings)
+	                              const WorldSettings&          settings,
+	                              bool                          use_storage = true)
 	{
-		std::optional<Heightmap> heightmap = storage.load(coord);
+		std::optional<Heightmap> heightmap = use_storage ? storage.load(coord) : std::nullopt;
 		if (!heightmap.has_value())
 		{
 			heightmap = SampleHeightmap([&](double x, double z) { return generator.sampleHeight(context, x, z); }, coord, settings);
-			storage.save(coord, *heightmap);
+
+			if (use_storage)
+				storage.save(coord, *heightmap);
 		}
 
 		Render::MeshData mesh = BuildChunkMesh(*heightmap, [&](double x, double z, float height, const glm::vec3& normal) {
@@ -69,12 +72,18 @@ namespace lunar::World
 			if (!context.has_value())
 				return std::nullopt;
 
-			return ChunkWork([generator = generator, storage = storage, context = std::move(*context), settings = settings, coord] {
-				return LoadOrGenerateChunk(*generator, *storage, context, coord, settings);
+			return ChunkWork([generator = generator, storage = storage, context = std::move(*context), settings = settings, coord, use_storage = useStorage] {
+				return LoadOrGenerateChunk(*generator, *storage, context, coord, settings, use_storage);
 			});
 		}
 
+		void setStorageEnabled(bool enabled)
+		{
+			useStorage = enabled;
+		}
+
 	private:
+		bool                                          useStorage = true;
 		RegionStore<Plan>&                            regions;
 		std::shared_ptr<const TerrainGenerator<Plan>> generator;
 		std::shared_ptr<const ChunkStorage>           storage;

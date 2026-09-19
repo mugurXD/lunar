@@ -29,8 +29,7 @@ namespace lunar::World
 
 	TerrainWorld::~TerrainWorld() noexcept
 	{
-		for (const auto& [coord, chunk] : chunks)
-			unloadChunk(chunk);
+		reload();
 	}
 
 	void TerrainWorld::update(const glm::vec3& focus_position)
@@ -39,6 +38,14 @@ namespace lunar::World
 
 		unloadDistantChunks(center);
 		requestMissingChunks(center);
+	}
+
+	void TerrainWorld::reload()
+	{
+		for (const auto& [coord, chunk] : chunks)
+			unloadChunk(chunk);
+
+		chunks.clear();
 	}
 
 	size_t TerrainWorld::getLoadedChunkCount() const
