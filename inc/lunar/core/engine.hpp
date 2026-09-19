@@ -1,6 +1,7 @@
 #pragma once
 #include <string_view>
 #include <memory>
+#include <optional>
 
 #include <lunar/core/time.hpp>
 #include <lunar/core/jobs.hpp>
@@ -13,6 +14,7 @@
 #include <lunar/render/common.hpp>
 #include <lunar/render/render_device.hpp>
 #include <lunar/render/renderer.hpp>
+#include <lunar/render/imgui_layer.hpp>
 
 namespace lunar
 {
@@ -47,6 +49,7 @@ namespace lunar
 		std::unique_ptr<Render::RenderDevice> renderDevice;
 		std::unique_ptr<Render::Swapchain>    swapchain;
 		Render::Renderer                      renderer;
+		std::optional<Render::ImGuiLayer>     imguiLayer;
 		Scene                                 activeScene   = {};
 		SystemScheduler                       systemScheduler;
 		JobSystem                             jobSystem;

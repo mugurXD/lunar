@@ -13,6 +13,8 @@ namespace lunar
 
 namespace lunar::Render
 {
+	class ImGuiLayer;
+
 	class LUNAR_API Renderer
 	{
 	public:
@@ -22,13 +24,14 @@ namespace lunar::Render
 		Renderer(const Renderer&)            = delete;
 		Renderer& operator=(const Renderer&) = delete;
 
-		void          render(Scene& scene);
+		void          render(Scene& scene, ImGuiLayer* ui = nullptr);
 		MeshRegistry& getMeshes();
 		MeshHandle    getCubeMesh() const;
 
 	private:
 		void resizeDepthImage(Extent2D extent);
 		void recordFrame(Frame& frame, Scene& scene, ImageHandle target, Extent2D extent);
+		void recordOverlay(Frame& frame, ImageHandle target, ImGuiLayer& ui);
 		void drawMeshes(Frame& frame, Scene& scene, uint64_t scene_address, const Frustum& frustum);
 
 		RenderDevice&  device;

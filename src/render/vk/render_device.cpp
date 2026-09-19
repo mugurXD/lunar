@@ -376,6 +376,21 @@ namespace lunar::Render::imp
 		return device;
 	}
 
+	VkQueue VkRenderDevice::getGraphicsQueue() const
+	{
+		return graphicsQueue;
+	}
+
+	uint32_t VkRenderDevice::getGraphicsQueueFamily() const
+	{
+		return graphicsQueueFamilyIndex;
+	}
+
+	const vkb::Instance& VkRenderDevice::getInstance() const
+	{
+		return instance;
+	}
+
 	void VkRenderDevice::waitIdle()
 	{
 		flushUploads();

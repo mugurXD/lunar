@@ -135,14 +135,17 @@ namespace lunar::Render::imp
 		PipelineHandle             createComputePipeline(const ComputePipelineDesc& desc)                             override;
 		void                       destroyPipeline(PipelineHandle pipeline)                                           override;
 
-		const vkb::Device& getDevice()         const;
-		VkPipelineLayout   getPipelineLayout() const;
-		VkBufferRecord*    resolve(BufferHandle buffer);
-		void               flushBuffer(BufferHandle buffer, size_t offset, size_t size);
-		VkImageRecord*     resolve(ImageHandle image);
-		VkPipelineRecord*  resolve(PipelineHandle pipeline);
-		ImageHandle        registerImage(const VkImageRecord& record);
-		void               unregisterImage(ImageHandle image);
+		const vkb::Device&   getDevice()              const;
+		const vkb::Instance& getInstance()            const;
+		VkQueue              getGraphicsQueue()       const;
+		uint32_t             getGraphicsQueueFamily() const;
+		VkPipelineLayout     getPipelineLayout()      const;
+		VkBufferRecord*      resolve(BufferHandle buffer);
+		void                 flushBuffer(BufferHandle buffer, size_t offset, size_t size);
+		VkImageRecord*       resolve(ImageHandle image);
+		VkPipelineRecord*    resolve(PipelineHandle pipeline);
+		ImageHandle          registerImage(const VkImageRecord& record);
+		void                 unregisterImage(ImageHandle image);
 
 	private:
 		static constexpr size_t UPLOAD_BATCH_COUNT = 3;

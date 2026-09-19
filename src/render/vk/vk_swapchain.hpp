@@ -16,6 +16,7 @@ namespace lunar::Render::imp
 		void        present(VkQueue present_queue);
 		ImageHandle getAcquiredImage()    const;
 		VkSemaphore getPresentSemaphore() const;
+		uint32_t    getImageCount()       const;
 
 	private:
 		bool build();

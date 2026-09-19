@@ -1,4 +1,5 @@
 #include <lunar/render/renderer.hpp>
+#include <lunar/render/imgui_layer.hpp>
 #include <lunar/render/components.hpp>
 #include <lunar/core/scene.hpp>
 #include <lunar/file/binary_file.hpp>
@@ -136,7 +137,7 @@ namespace lunar::Render
 		device.destroyPipeline(meshPipeline);
 	}
 
-	void Renderer::render(Scene& scene)
+	void Renderer::render(Scene& scene, ImGuiLayer* ui)
 	{
 		Frame&            frame      = device.beginFrame();
 		const ImageHandle backbuffer = swapchain != nullptr ? frame.acquire(*swapchain) : ImageHandle {};
@@ -146,6 +147,9 @@ namespace lunar::Render
 			const Extent2D extent = device.getImageExtent(backbuffer);
 			resizeDepthImage(extent);
 			recordFrame(frame, scene, backbuffer, extent);
+
+			if (ui != nullptr)
+				recordOverlay(frame, backbuffer, *ui);
 		}
 
 		device.endFrame(frame);
@@ -207,6 +211,16 @@ namespace lunar::Render
 				drawMeshes(frame, scene, scene_address, Frustum(scene_data.viewProjection));
 		}
 
+		commands.endRendering();
+	}
+
+	void Renderer::recordOverlay(Frame& frame, ImageHandle target, ImGuiLayer& ui)
+	{
+		CommandList&          commands           = frame.commandList();
+		const ColorAttachment overlay_attachment = { .image = target, .loadOp = LoadOp::eLoad };
+
+		commands.beginRendering({ .colorAttachments = std::span(&overlay_attachment, 1) });
+		ui.record(commands);
 		commands.endRendering();
 	}
 

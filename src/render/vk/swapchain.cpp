@@ -89,6 +89,11 @@ namespace lunar::Render::imp
 		return presentSemaphores[imageIndex];
 	}
 
+	uint32_t VkSwapchain::getImageCount() const
+	{
+		return swapchain.image_count;
+	}
+
 	bool VkSwapchain::build()
 	{
 		vkDeviceWaitIdle(device.getDevice());

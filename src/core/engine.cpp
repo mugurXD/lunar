@@ -46,7 +46,15 @@ namespace lunar
 			window.pollEvents();
 			timeContext.update();
 			jobSystem.processCompleted();
+
+			if (imguiLayer.has_value())
+				imguiLayer->beginFrame();
+
 			systemScheduler.runFrame(activeScene, timeContext.getFrameTime());
+
+			if (imguiLayer.has_value())
+				imguiLayer->endFrame();
+
 			renderFrame();
 			activeScene.flushDestroyedEntities();
 			window.update();
@@ -55,7 +63,7 @@ namespace lunar
 
 	void Engine::renderFrame()
 	{
-		renderer.render(activeScene);
+		renderer.render(activeScene, imguiLayer.has_value() ? &*imguiLayer : nullptr);
 
 		//renderContext.begin(&window);
 		//renderContext.clear(CLEAR_COLOR.r, CLEAR_COLOR.g, CLEAR_COLOR.b, CLEAR_COLOR.a);
@@ -100,6 +108,9 @@ namespace lunar
 		jobSystem(JobSystem::defaultWorkerCount())
 	{
 		Input::SetGlobalHandler(window);
+
+		if (swapchain != nullptr)
+			imguiLayer.emplace(*renderDevice, *swapchain, window);
 
 		systemScheduler.addSystem(SystemPhase::eFixedUpdate, [](Scene& scene, const FrameTime& frame_time) {
 			scene.physicsUpdate(frame_time.deltaTime);
