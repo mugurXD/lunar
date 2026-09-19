@@ -80,6 +80,7 @@ namespace trok
 		const std::vector<Biome>& getBiomes()                                          const;
 		std::vector<std::string>  getNames()                                           const;
 		const Biome&              get(BiomeIndex index)                                const;
+		Biome&                    editBiome(BiomeIndex index);
 		BiomeIndex                getDefault()                                         const;
 		std::optional<BiomeIndex> indexOf(std::string_view name)                       const;
 		BiomeIndex                select(const Climate& climate, uint64_t tie_breaker) const;

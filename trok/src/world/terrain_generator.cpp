@@ -28,10 +28,17 @@ namespace trok
 	                                   ElevationCurve                        elevation,
 	                                   int32_t                               seed) noexcept
 		: biomes(std::move(biomes)),
+		seed(seed),
 		climate(std::move(climate)),
 		elevation(std::move(elevation))
 	{
-		for (const Biome& biome : this->biomes->getBiomes())
+		refresh();
+	}
+
+	void TerrainGenerator::refresh()
+	{
+		noises.clear();
+		for (const Biome& biome : biomes->getBiomes())
 			noises.push_back(MakeNoise(SeedFromHash(MixHash(static_cast<uint64_t>(seed), lunar::imp::fnv1a_hash(biome.name))), biome.terrain));
 	}
 

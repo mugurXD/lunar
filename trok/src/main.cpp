@@ -1,4 +1,5 @@
 #include <trok/world/biome.hpp>
+#include <trok/world/biome_tuning.hpp>
 #include <trok/world/climate.hpp>
 #include <trok/world/elevation.hpp>
 #include <trok/world/region_plan.hpp>
@@ -49,6 +50,7 @@ namespace
 	constexpr std::string_view        ELEVATION_FILE_NAME  = "elevation.json";
 	constexpr std::string_view        TRUCK_FILE_NAME      = "trucks/box_truck.json";
 	constexpr std::string_view        TUNED_TRUCK_FILE     = "trucks/box_truck.tuned.json";
+	constexpr std::string_view        TUNED_BIOME_FILE     = "biomes.tuned.json";
 	constexpr int32_t                 COLLIDER_RADIUS      = 1;
 	constexpr float                   TRUCK_SPAWN_HEIGHT   = 1.5f;
 	constexpr float                   GROUND_RAY_HEIGHT    = 2000.f;
@@ -175,9 +177,9 @@ int main()
 	const auto                 world_storage     = std::make_shared<const World::WorldStorage>(std::move(*opened_storage));
 	const World::WorldSettings world_settings    = { .sampleReachChunks = trok::BIOME_SAMPLE_REACH_CHUNKS, .viewRadius = VIEW_RADIUS };
 	const auto                 chunk_storage     = std::make_shared<const World::ChunkStorage>(world_storage->getDirectory() / CHUNK_DIRECTORY, world_settings);
-	const auto                 biomes            = std::make_shared<const trok::BiomeLibrary>(std::move(*loaded_biomes));
+	const auto                 biomes            = std::make_shared<trok::BiomeLibrary>(std::move(*loaded_biomes));
 	const auto                 climate           = std::make_shared<const trok::ClimateSampler>(world_storage->getInfo().seed);
-	const auto                 terrain_generator = std::make_shared<const trok::TerrainGenerator>(biomes, climate, std::move(*loaded_elevation), world_storage->getInfo().seed);
+	const auto                 terrain_generator = std::make_shared<trok::TerrainGenerator>(biomes, climate, std::move(*loaded_elevation), world_storage->getInfo().seed);
 	const auto                 region_planner    = std::make_shared<const trok::RegionPlanner>(world_storage->getInfo().generatorVersion, world_storage->getInfo().seed, biomes, climate);
 
 	World::RegionStore<trok::RegionPlan>       regions(engine.getJobSystem(), world_storage, region_planner, world_settings);
@@ -185,6 +187,7 @@ int main()
 	World::TerrainWorld                        terrain(scene, engine.getJobSystem(), engine.getRenderer().getMeshes(), chunk_source, world_settings);
 	World::TerrainColliders                    colliders(scene, terrain, world_settings, COLLIDER_RADIUS);
 	trok::TruckTuningWindow                    tuning(*truck_definition, Fs::fromData(TUNED_TRUCK_FILE));
+	trok::BiomeTuningWindow                    biome_tuning(biomes, Fs::fromData(TUNED_BIOME_FILE));
 	std::optional<trok::Truck>                 truck;
 
 	GameObject player = scene.createGameObject("Player");
@@ -220,8 +223,17 @@ int main()
 	bool placed_above_terrain = false;
 	engine.addSystem(SystemPhase::eUpdate, [&](Scene&, const FrameTime&) {
 		const glm::vec3 viewer = is_driving() ? chase_camera->getTransform().position : player->getTransform().position;
+		chunk_source.setStorageEnabled(!engine.isDebugMode());
 		regions.update(viewer);
 		terrain.update(viewer);
+
+		if (engine.isDebugMode() && biome_tuning.draw())
+		{
+			engine.getJobSystem().waitIdle();
+			engine.getJobSystem().processCompleted();
+			terrain_generator->refresh();
+			terrain.reload();
+		}
 
 		if (!placed_above_terrain)
 			placed_above_terrain = PlaceAboveTerrain(player->getTransform(), regions, *terrain_generator, world_settings);

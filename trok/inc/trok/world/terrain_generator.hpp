@@ -27,6 +27,7 @@ namespace trok
 		                 int32_t                               seed) noexcept;
 		~TerrainGenerator() noexcept override;
 
+		void      refresh();
 		float     sampleHeight(const RegionContext& context, double x, double z)                                       const override;
 		glm::vec3 sampleColor(const RegionContext& context, double x, double z, float height, const glm::vec3& normal) const override;
 
@@ -43,6 +44,7 @@ namespace trok
 		glm::vec3 biomeColor(BiomeIndex biome, float local_height, const glm::vec3& normal) const;
 
 		std::shared_ptr<const BiomeLibrary>         biomes;
+		int32_t                                     seed = 0;
 		std::shared_ptr<const ClimateSampler>       climate;
 		ElevationCurve                              elevation;
 		std::vector<std::unique_ptr<FastNoiseLite>> noises;

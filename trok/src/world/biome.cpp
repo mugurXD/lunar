@@ -174,6 +174,11 @@ namespace trok
 		return biomes[index];
 	}
 
+	Biome& BiomeLibrary::editBiome(BiomeIndex index)
+	{
+		return biomes[index];
+	}
+
 	BiomeIndex BiomeLibrary::getDefault() const
 	{
 		return defaultBiome;
