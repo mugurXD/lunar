@@ -63,6 +63,7 @@ namespace lunar::Render
 		bool                    getAction(const std::string_view& name)     const override;
 		glm::vec2               getAxis()                                   const override;
 		glm::vec2               getRotation()                               const override;
+		float                   getScroll()                                 const override;
 		GLFWwindow*             glfwGetHandle();
 		ImGuiContext*           imguiGetHandle();
 		imp::WindowBackendData& getBackendData();
@@ -80,6 +81,7 @@ namespace lunar::Render
 		std::unordered_map<int, KeyState> keys         = {};
 		glm::vec2                         axis         = { 0, 0 };
 		glm::vec2                         rotation     = { 0, 0 };
+		float                             scroll       = 0.f;
 		glm::vec2                         lastMouse    = { 0, 0 };
 		bool                              mouseInside  = true;
 		bool                              mouseLocked  = false;
@@ -95,6 +97,7 @@ namespace lunar::Render
 		friend void GLFW_MouseBtnCallback(GLFWwindow*, int, int, int);
 		friend void GLFW_CursorPosCb(GLFWwindow*, double, double);
 		friend void GLFW_CursorEnterCb(GLFWwindow*, int);
+		friend void GLFW_ScrollCb(GLFWwindow*, double, double);
 	};
 
 	struct LUNAR_API WindowBuilder

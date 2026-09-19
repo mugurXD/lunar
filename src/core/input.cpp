@@ -131,6 +131,11 @@ namespace lunar::Input
 		return GetGlobalHandler().getRotation();
 	}
 
+	float GetScroll()
+	{
+		return GetGlobalHandler().getScroll();
+	}
+
 }
 
 namespace lunar

@@ -27,6 +27,7 @@ namespace lunar::Render
 	void GLFW_MouseBtnCallback(GLFWwindow*, int, int, int);
 	void GLFW_CursorPosCb(GLFWwindow*, double, double);
 	void GLFW_CursorEnterCb(GLFWwindow*, int);
+	void GLFW_ScrollCb(GLFWwindow*, double, double);
 
 	Window_T::Window_T
 	(
@@ -92,6 +93,7 @@ namespace lunar::Render
 		glfwSetMouseButtonCallback(handle,     GLFW_MouseBtnCallback);
 		glfwSetCursorPosCallback(handle,       GLFW_CursorPosCb);
 		glfwSetCursorEnterCallback(handle,     GLFW_CursorEnterCb);
+		glfwSetScrollCallback(handle,          GLFW_ScrollCb);
 
 		IMGUI_CHECKVERSION();
 		imguiContext = ImGui::CreateContext();
@@ -246,6 +248,7 @@ namespace lunar::Render
 	void Window_T::update()
 	{
 		rotation = { 0, 0 };
+		scroll   = 0.f;
 
 		for (auto& [key, value] : keys)
 		{
@@ -332,6 +335,11 @@ namespace lunar::Render
 		return rotation;
 	}
 
+	float Window_T::getScroll() const
+	{
+		return scroll;
+	}
+
 	imp::WindowBackendData& Window_T::getBackendData()
 	{
 		return this->imp;
@@ -393,6 +401,13 @@ namespace lunar::Render
 		}
 
 		window.lastMouse = current;
+	}
+
+	void GLFW_ScrollCb(GLFWwindow* handle, double, double y_offset)
+	{
+		auto& window = GetWindowHandle(handle);
+		if (window.isCursorLocked())
+			window.scroll += static_cast<float>(y_offset);
 	}
 
 	void GLFW_CursorEnterCb(GLFWwindow* handle, int entered)

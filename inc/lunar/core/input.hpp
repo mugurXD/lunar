@@ -39,6 +39,7 @@ namespace lunar
 		virtual void      update()            = 0;
 		virtual glm::vec2 getAxis()     const = 0;
 		virtual glm::vec2 getRotation() const = 0;
+		virtual float     getScroll()   const = 0;
 		virtual bool      getAction(const std::string_view&) const = 0;
 		virtual bool      getActionUp(const std::string_view&) const = 0;
 		virtual bool      getActionDown(const std::string_view&) const = 0;
@@ -92,4 +93,5 @@ namespace lunar::Input
 	LUNAR_API bool          GetActionDown(const std::string_view& name);
 	LUNAR_API glm::vec2     GetAxis();
 	LUNAR_API glm::vec2     GetRotation();
+	LUNAR_API float         GetScroll();
 }
