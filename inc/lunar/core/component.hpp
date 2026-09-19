@@ -9,7 +9,6 @@
 #include <string_view>
 #include <string>
 
-namespace Render { class LUNAR_API RenderContext; }
 
 namespace lunar
 {

@@ -40,8 +40,6 @@ namespace lunar
 		rp3d::PhysicsCommon&    getPhysicsCommon();
 		Camera*                 getMainCamera();
 		void                    setMainCamera(GameObject camera_object);
-		Render::GpuCubemap      getEnvironment() const;
-		void                    setEnvironment(Render::GpuCubemap environment_map);
 		void                    updateBehaviours(const FrameTime& frame_time);
 		std::string_view        getName() const;
 		void                    setName(const std::string_view& name);
@@ -135,7 +133,6 @@ namespace lunar
 		std::string         name         = "Scene";
 		rp3d::PhysicsWorld* physicsWorld = nullptr;
 		GameObject          mainCamera   = nullptr;
-		Render::GpuCubemap  environment  = nullptr;
 
 		Pool<EntityRecord>                            entities          = {};
 		vector<std::unique_ptr<ComponentStorageBase>> componentStorages = {};

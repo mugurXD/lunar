@@ -1,24 +1,8 @@
-#ifdef LUNAR_VULKAN
-//#	define VULKAN_HPP_DISPATCH_LOADER_DYNAMIC 1
-#	define GLFW_INCLUDE_VULKAN
-#	include <lunar/render/internal/render_vk.hpp>
-#	include <vulkan/vulkan.hpp>
-#endif
-
-#ifdef LUNAR_OPENGL
-#	include <glad/gl.h>
-#endif	
-
-#include <lunar/file/config_file.hpp>
 #include <lunar/render/window.hpp>
-#include <lunar/render/context.hpp>
 #include <lunar/debug.hpp>
 
 #include <atomic>
 #include <GLFW/glfw3.h>
-#include <imgui.h>
-#include <imgui_impl_glfw.h>
-#include <imgui_impl_opengl3.h>
 
 namespace lunar::Render
 {
@@ -45,20 +29,10 @@ namespace lunar::Render
 		msaa(msaa),
 		vsync(true)
 	{
-		glfwWindowHint(GLFW_SAMPLES, msaa);
-
 		switch (backend)
 		{
 		case Backend::eVulkan:
 			glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-			break;
-		case Backend::eOpenGL:
-			glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);
-			glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-			glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
-			glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-			glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE); // for Mac
-			glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);
 			break;
 		}
 		
@@ -69,8 +43,6 @@ namespace lunar::Render
 			(fullscreen)
 				? glfwGetPrimaryMonitor() // TODO: monitor selection
 				: nullptr,
-			//imp::GetGlobalRenderContext()
-			//	.glfw.headless
 			nullptr
 		);
 
@@ -80,12 +52,6 @@ namespace lunar::Render
 			DEBUG_LOG("Raw mouse motion support found.");
 		}
 
-		if (vsync)
-		{
-			glfwSwapInterval(2);
-		}
-
-		glfwMakeContextCurrent(handle);
 		glfwSetWindowUserPointer(handle, this);
 
 		glfwSetFramebufferSizeCallback(handle, GLFW_FramebufferSizeCb);
@@ -95,21 +61,6 @@ namespace lunar::Render
 		glfwSetCursorEnterCallback(handle,     GLFW_CursorEnterCb);
 		glfwSetScrollCallback(handle,          GLFW_ScrollCb);
 
-		IMGUI_CHECKVERSION();
-		imguiContext = ImGui::CreateContext();
-		ImGui::SetCurrentContext(imguiContext);
-
-		switch (backend)
-		{
-		case Backend::eOpenGL:
-			ImGui_ImplGlfw_InitForOpenGL(handle, true);
-			ImGui_ImplOpenGL3_Init();
-			//initializeBackendData();
-			break;
-		default:
-			break;
-		}
-
 		DEBUG_LOG("Window initialized.");
 	}
 
@@ -117,7 +68,6 @@ namespace lunar::Render
 	{
 		if (handle != nullptr)
 		{
-			//clearBackendData();
 			glfwDestroyWindow(handle);
 			DEBUG_LOG("Window destroyed.");
 		}
@@ -167,11 +117,6 @@ namespace lunar::Render
 	GLFWwindow* Window_T::glfwGetHandle()
 	{
 		return handle;
-	}
-
-	ImGuiContext* Window_T::imguiGetHandle()
-	{
-		return imguiContext;
 	}
 
 	bool Window_T::isActive() const
@@ -340,10 +285,6 @@ namespace lunar::Render
 		return scroll;
 	}
 
-	imp::WindowBackendData& Window_T::getBackendData()
-	{
-		return this->imp;
-	}
 
 	/*
 		Event handlers

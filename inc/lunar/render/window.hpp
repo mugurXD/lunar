@@ -1,28 +1,15 @@
 #pragma once
 #include <lunar/render/common.hpp>
-#include <lunar/render/render_target.hpp>
-#include <lunar/file/config_file.hpp>
 #include <lunar/core/input.hpp>
 #include <lunar/api.hpp>
 
 #include <GLFW/glfw3.h>
+#include <string>
 #include <unordered_map>
-#include <imgui.h>
-
-#include <lunar/render/common.hpp>
-
-#ifdef LUNAR_VULKAN
-#	include <lunar/render/internal/render_vk.hpp>
-#	include <vulkan/vulkan.hpp>
-#endif
-
-#ifdef LUNAR_OPENGL
-#	include <lunar/render/imp/gl/window.hpp>
-#endif
 
 namespace lunar::Render
 {
-	struct LUNAR_API Window_T : public RenderTarget, public InputHandler
+	struct LUNAR_API Window_T : public InputHandler
 	{
 	public:
 		Window_T
@@ -56,8 +43,8 @@ namespace lunar::Render
 		bool                    isMinimized()                               const;
 		bool                    isFullscreen()                              const;
 		bool                    isCursorLocked()                            const;
-		int                     getRenderWidth()                            const override;
-		int                     getRenderHeight()                           const override;
+		int                     getRenderWidth()                            const;
+		int                     getRenderHeight()                           const;
 		bool                    getActionDown(const std::string_view& name) const override;
 		bool                    getActionUp(const std::string_view& name)   const override;
 		bool                    getAction(const std::string_view& name)     const override;
@@ -65,8 +52,6 @@ namespace lunar::Render
 		glm::vec2               getRotation()                               const override;
 		float                   getScroll()                                 const override;
 		GLFWwindow*             glfwGetHandle();
-		ImGuiContext*           imguiGetHandle();
-		imp::WindowBackendData& getBackendData();
 
 		static void pollEvents();
 
@@ -85,12 +70,8 @@ namespace lunar::Render
 		glm::vec2                         lastMouse    = { 0, 0 };
 		bool                              mouseInside  = true;
 		bool                              mouseLocked  = false;
-		ImGuiContext*                     imguiContext = nullptr;
-		imp::WindowBackendData            imp          = {};
 
 		bool checkActionValue(const std::string_view& name, KeyState required) const;
-		void initializeBackendData();
-		void clearBackendData();
 
 		friend void GLFW_FramebufferSizeCb(GLFWwindow*, int, int);
 		friend void GLFW_KeyCallback(GLFWwindow*, int, int, int, int);

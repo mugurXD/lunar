@@ -10,7 +10,6 @@
 #include <lunar/core/common.hpp>
 #include <lunar/core/platform.hpp>
 #include <lunar/render/window.hpp>
-#include <lunar/render/context.hpp>
 #include <lunar/render/common.hpp>
 #include <lunar/render/render_device.hpp>
 #include <lunar/render/renderer.hpp>
@@ -26,7 +25,6 @@ namespace lunar
 		~Engine() = default;
 
 		Scene&                   getActiveScene();
-		//Render::RenderContext_T& getRenderContext();
 		Render::Window_T&        getWindow();
 		Render::Renderer&        getRenderer();
 		JobSystem&               getJobSystem();
@@ -45,7 +43,6 @@ namespace lunar
 		Time::TimeContext_T                   timeContext   = {};
 		Platform                              platform      = {};
 		Render::Window_T                      window        = {};
-		//Render::RenderContext_T               renderContext = {};
 		std::unique_ptr<Render::RenderDevice> renderDevice;
 		std::unique_ptr<Render::Swapchain>    swapchain;
 		Render::Renderer                      renderer;

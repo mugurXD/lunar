@@ -1,8 +1,6 @@
 #pragma once
 #include <lunar/api.hpp>
 #include <lunar/core/time.hpp>
-#include <lunar/render/imp.hpp>
-#include <lunar/render/mesh.hpp>
 #include <lunar/render/gpu_types.hpp>
 #include <glm/glm.hpp>
 

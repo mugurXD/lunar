@@ -215,16 +215,6 @@ namespace lunar
 		return mainCamera == nullptr ? nullptr : mainCamera.getComponent<Camera>();
 	}
 
-	Render::GpuCubemap Scene::getEnvironment() const
-	{
-		return environment;
-	}
-
-	void Scene::setEnvironment(Render::GpuCubemap environment_map)
-	{
-		this->environment = environment_map;
-	}
-
 	void Scene::updateBehaviours(const FrameTime& frame_time)
 	{
 		for (size_t position = 0; position < behaviourUpdaters.size(); position++)

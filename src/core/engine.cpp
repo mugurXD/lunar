@@ -10,11 +10,6 @@ namespace lunar
 		return activeScene;
 	}
 
-	//Render::RenderContext_T& Engine::getRenderContext()
-	//{
-	//	return renderContext;
-	//}
-
 	Time::TimeContext_T& Engine::getTimeContext()
 	{
 		return timeContext;
@@ -65,29 +60,11 @@ namespace lunar
 	void Engine::renderFrame()
 	{
 		renderer.render(activeScene, imguiLayer.has_value() ? &*imguiLayer : nullptr);
-
-		//renderContext.begin(&window);
-		//renderContext.clear(CLEAR_COLOR.r, CLEAR_COLOR.g, CLEAR_COLOR.b, CLEAR_COLOR.a);
-
-		//const Camera* camera = activeScene.getMainCamera();
-		//if (camera != nullptr)
-		//{
-		//	renderContext.useCamera(camera);
-
-		//	const Render::GpuCubemap environment = activeScene.getEnvironment();
-		//	if (environment != nullptr)
-		//		renderContext.draw(environment);
-
-		//	renderContext.draw(activeScene);
-		//}
-
-		//renderContext.end();
 	}
 
 	Engine::Engine(const EngineBuilder& builder)
 		:
 		timeContext(),
-		//renderContext(),
 		window(
 			Render::WindowBuilder(builder.windowBuilder)
 				.renderBackend(builder.backend)
