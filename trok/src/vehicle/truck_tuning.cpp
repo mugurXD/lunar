@@ -58,6 +58,7 @@ namespace trok
 		{
 			{ "Cornering stiffness", &VehicleSettings::corneringStiffness, 0.f,  2e5f },
 			{ "Friction",            &VehicleSettings::tyreFriction,       0.2f, 2.f },
+			{ "Road grip",           &VehicleSettings::roadGrip,           1.f,  2.f },
 			{ "Roll influence",      &VehicleSettings::rollInfluence,      0.f,  1.f }
 		};
 

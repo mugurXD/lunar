@@ -20,6 +20,8 @@ add_library(trok_core STATIC
     "inc/trok/world/climate.hpp"
     "inc/trok/world/elevation.hpp"
     "inc/trok/world/region_plan.hpp"
+    "inc/trok/world/road.hpp"
+    "inc/trok/world/road_planner.hpp"
     "inc/trok/world/stable_hash.hpp"
     "inc/trok/world/terrain_generator.hpp"
     "src/json_math.cpp"
@@ -31,6 +33,8 @@ add_library(trok_core STATIC
     "src/world/climate.cpp"
     "src/world/elevation.cpp"
     "src/world/region_plan.cpp"
+    "src/world/road.cpp"
+    "src/world/road_planner.cpp"
     "src/world/terrain_generator.cpp"
 )
 
@@ -47,6 +51,7 @@ if(${LUNAR_UNIT_TESTS})
         "tests/test_climate.cpp"
         "tests/test_elevation.cpp"
         "tests/test_region_plan.cpp"
+        "tests/test_road.cpp"
         "tests/test_terrain_generator.cpp"
         "tests/test_truck.cpp"
     )

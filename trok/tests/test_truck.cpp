@@ -16,13 +16,12 @@ namespace
 {
 	constexpr float STEP            = 1.f / 60.f;
 	constexpr int   SETTLE_STEPS    = 240;
-	constexpr int   DRIVE_STEPS     = 900;
+	constexpr int   DRIVE_STEPS     = 1800;
 	constexpr int   BRAKE_STEPS     = 600;
 	constexpr int   TURN_STEPS      = 600;
 	constexpr float SPAWN_HEIGHT    = 2.f;
 	constexpr float UPRIGHT         = 0.99f;
 	constexpr float STILL_UPRIGHT   = 0.9f;
-	constexpr float MIN_TOP_SPEED   = 15.f;
 	constexpr float GOVERNOR_MARGIN = 0.5f;
 	constexpr float STOPPED_SPEED   = 0.3f;
 	constexpr float TURN_THROTTLE   = 0.4f;
@@ -120,8 +119,7 @@ TEST(Truck, ShippedTruckSettlesDrivesAndStops)
 	EXPECT_GT(rig.uprightness(), UPRIGHT);
 
 	rig.simulate({ .throttle = 1.f }, DRIVE_STEPS);
-	EXPECT_GT(rig.vehicle.getForwardSpeed(), MIN_TOP_SPEED);
-	EXPECT_LT(rig.vehicle.getForwardSpeed(), definition.vehicle.maxSpeed + GOVERNOR_MARGIN);
+	EXPECT_NEAR(rig.vehicle.getForwardSpeed(), definition.vehicle.maxSpeed, GOVERNOR_MARGIN);
 
 	rig.simulate({ .brake = 1.f }, BRAKE_STEPS);
 	EXPECT_LT(std::abs(rig.vehicle.getForwardSpeed()), STOPPED_SPEED);

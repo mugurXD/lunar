@@ -120,6 +120,7 @@ namespace trok
 				{
 					{ "corneringStiffness", vehicle.corneringStiffness },
 					{ "friction",           vehicle.tyreFriction },
+					{ "roadGrip",           vehicle.roadGrip },
 					{ "rollInfluence",      vehicle.rollInfluence }
 				}
 			},
@@ -161,6 +162,7 @@ namespace trok
 				.steerSpeed         = steering.at("speed").get<float>(),
 				.corneringStiffness = tyres.at("corneringStiffness").get<float>(),
 				.tyreFriction       = tyres.at("friction").get<float>(),
+				.roadGrip           = tyres.at("roadGrip").get<float>(),
 				.rollingResistance  = engine.at("rollingResistance").get<float>(),
 				.dragCoefficient    = engine.at("dragCoefficient").get<float>(),
 				.rollInfluence      = tyres.at("rollInfluence").get<float>()

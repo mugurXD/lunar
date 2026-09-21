@@ -1,6 +1,7 @@
 #include "test_biomes.hpp"
 
 #include <trok/world/terrain_generator.hpp>
+#include <trok/world/road.hpp>
 #include <lunar/world/terrain.hpp>
 #include <gtest/gtest.h>
 
@@ -18,7 +19,8 @@ namespace
 	constexpr float   MAX_STEP_DELTA   = 8.f;
 	constexpr double  BLEND_DISTANCE   = 512.0;
 	constexpr double  CENTRE_CELL      = 4.0;
-	constexpr float   RAISED_ELEVATION = 100.f;
+	constexpr float   RAISED_ELEVATION     = 100.f;
+	constexpr size_t  VERTICES_PER_SEGMENT = trok::QUAD_CORNERS * 3;
 
 	const lunar::World::WorldSettings SETTINGS  = { .sampleReachChunks = trok::BIOME_SAMPLE_REACH_CHUNKS };
 	const auto                        BIOMES    = std::make_shared<const trok::BiomeLibrary>(TestBiomes());
@@ -154,4 +156,106 @@ TEST(TrokTerrain, ColorsFollowTheHeightAboveTheCurve)
 	const double                 centre  = CellCentre(CENTRE_CELL);
 
 	EXPECT_EQ(raised.sampleColor(context, centre, centre, RAISED_ELEVATION, UP), flat.sampleColor(context, centre, centre, 0.f, UP));
+}
+
+TEST(TrokTerrain, RoadsGradeTheTerrainAndAddAsphalt)
+{
+	constexpr float ROAD_HEIGHT   = -80.f;
+	constexpr float FAR_FROM_ROAD = 400.f;
+
+	const trok::RoadClass     road_class = {};
+	const trok::RegionContext context    = ContextOf(FLAT_BIOME, FLAT_BIOME);
+	const double              centre     = CellCentre(CENTRE_CELL);
+	trok::TerrainGenerator    generator  = MakeGenerator(WORLD_SEED);
+
+	const float natural      = generator.sampleHeight(context, centre, centre);
+	const float natural_away = generator.sampleHeight(context, centre, centre + FAR_FROM_ROAD);
+	generator.setRoads(std::make_shared<const trok::RoadNetwork>(
+		std::vector<glm::vec3> { { centre - FAR_FROM_ROAD, ROAD_HEIGHT, centre }, { centre + FAR_FROM_ROAD, ROAD_HEIGHT, centre } },
+		road_class));
+
+	EXPECT_FLOAT_EQ(generator.sampleHeight(context, centre, centre), ROAD_HEIGHT);
+	EXPECT_FLOAT_EQ(generator.sampleHeight(context, centre, centre + FAR_FROM_ROAD), natural_away);
+	EXPECT_NE(natural, ROAD_HEIGHT);
+
+	lunar::Render::MeshData mesh;
+	generator.buildDecorations(context, lunar::World::ChunkAt(glm::vec3(centre, 0.f, centre), SETTINGS), SETTINGS, mesh);
+
+	EXPECT_FALSE(mesh.vertices.empty());
+	EXPECT_EQ(mesh.indices.size(), mesh.vertices.size() / trok::QUAD_CORNERS * 6);
+	EXPECT_EQ(mesh.vertices.size() % VERTICES_PER_SEGMENT, 0u);
+
+	const float surface = ROAD_HEIGHT + road_class.surfaceOffset;
+	for (size_t vertex = 0; vertex < mesh.vertices.size(); vertex++)
+	{
+		EXPECT_LE(mesh.vertices[vertex].position.y, surface + 0.001f);
+
+		if (vertex % VERTICES_PER_SEGMENT < trok::QUAD_CORNERS)
+		{
+			EXPECT_NEAR(mesh.vertices[vertex].position.y, surface, 0.001f);
+			EXPECT_GT(mesh.vertices[vertex].normal.y, 0.9f);
+		}
+	}
+}
+
+TEST(TrokTerrain, FillIsLeftToTheRoadGeometry)
+{
+	constexpr float ROAD_HEIGHT   = 80.f;
+	constexpr float FAR_FROM_ROAD = 400.f;
+
+	const trok::RegionContext context   = ContextOf(FLAT_BIOME, FLAT_BIOME);
+	const double              centre    = CellCentre(CENTRE_CELL);
+	trok::TerrainGenerator    generator = MakeGenerator(WORLD_SEED);
+
+	const float natural = generator.sampleHeight(context, centre, centre);
+	generator.setRoads(std::make_shared<const trok::RoadNetwork>(
+		std::vector<glm::vec3> { { centre - FAR_FROM_ROAD, ROAD_HEIGHT, centre }, { centre + FAR_FROM_ROAD, ROAD_HEIGHT, centre } },
+		trok::RoadClass {}));
+
+	EXPECT_FLOAT_EQ(generator.sampleHeight(context, centre, centre), natural);
+
+	lunar::Render::MeshData mesh;
+	generator.buildDecorations(context, lunar::World::ChunkAt(glm::vec3(centre, 0.f, centre), SETTINGS), SETTINGS, mesh);
+
+	ASSERT_GE(mesh.vertices.size(), VERTICES_PER_SEGMENT);
+
+	const glm::vec3 top  = mesh.vertices[0].position;
+	const glm::vec3 base = mesh.vertices[trok::QUAD_CORNERS].position;
+
+	EXPECT_LT(base.y, top.y - 1.f) << "the embankment should reach down towards the natural ground";
+	EXPECT_GT(glm::distance(glm::vec2(base.x, base.z), glm::vec2(top.x, top.z)), 1.f) << "the embankment should flare outwards";
+}
+
+TEST(TrokTerrain, CurvedRoadsFormAContinuousStrip)
+{
+	constexpr float ROAD_HEIGHT = 40.f;
+	constexpr float ARC_RADIUS  = 120.f;
+	constexpr int   ARC_POINTS  = 24;
+
+	const trok::RegionContext context   = ContextOf(FLAT_BIOME, FLAT_BIOME);
+	const double              centre    = CellCentre(CENTRE_CELL);
+	trok::TerrainGenerator    generator = MakeGenerator(WORLD_SEED);
+
+	std::vector<glm::vec3> arc;
+	for (int index = 0; index < ARC_POINTS; index++)
+	{
+		const float angle = glm::radians(180.f) * static_cast<float>(index) / static_cast<float>(ARC_POINTS - 1);
+		arc.emplace_back(centre + ARC_RADIUS * std::cos(angle), ROAD_HEIGHT, centre + ARC_RADIUS * std::sin(angle));
+	}
+
+	const glm::vec3 on_the_arc = arc[ARC_POINTS / 2];
+	generator.setRoads(std::make_shared<const trok::RoadNetwork>(std::move(arc), trok::RoadClass {}));
+
+	lunar::Render::MeshData mesh;
+	generator.buildDecorations(context, lunar::World::ChunkAt(on_the_arc, SETTINGS), SETTINGS, mesh);
+
+	ASSERT_GE(mesh.vertices.size(), VERTICES_PER_SEGMENT * 2);
+	for (size_t segment = 0; segment + 1 < mesh.vertices.size() / VERTICES_PER_SEGMENT; segment++)
+	{
+		const size_t current = segment * VERTICES_PER_SEGMENT;
+		const size_t next    = current + VERTICES_PER_SEGMENT;
+
+		EXPECT_EQ(mesh.vertices[current + 2].position, mesh.vertices[next].position)         << "gap on the left side of segment " << segment;
+		EXPECT_EQ(mesh.vertices[current + 3].position, mesh.vertices[next + 1].position)     << "gap on the right side of segment " << segment;
+	}
 }
