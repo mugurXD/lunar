@@ -6,6 +6,7 @@
 #include <trok/world/elevation.hpp>
 #include <trok/world/region_plan.hpp>
 #include <trok/world/terrain_generator.hpp>
+#include <trok/world/world_map.hpp>
 #include <trok/vehicle/chase_camera.hpp>
 #include <trok/vehicle/truck.hpp>
 #include <trok/vehicle/truck_tuning.hpp>
@@ -291,6 +292,7 @@ int main()
 	World::TerrainColliders                    colliders(scene, terrain, world_settings, COLLIDER_RADIUS);
 	trok::TruckTuningWindow                    tuning(*truck_definition, Fs::fromData(TUNED_TRUCK_FILE));
 	trok::BiomeTuningWindow                    biome_tuning(biomes, Fs::fromData(TUNED_BIOME_FILE));
+	trok::WorldMapWindow                       world_map(biomes, region_planner, world_settings);
 	std::optional<trok::Truck>                 truck;
 
 	GameObject player = scene.createGameObject("Player");
@@ -332,6 +334,7 @@ int main()
 	const MeshHandle endpoint_marker_mesh = MakeMarkerMesh(engine.getRenderer().getMeshes(), ENDPOINT_MARKER_COLOR);
 	const MeshHandle node_marker_mesh     = MakeMarkerMesh(engine.getRenderer().getMeshes(), NODE_MARKER_COLOR);
 
+	std::shared_ptr<const trok::RoadNetwork> road_network;
 	std::vector<GameObject>  road_markers;
 	std::optional<glm::vec2> road_start;
 	std::optional<glm::vec2> road_end;
@@ -384,7 +387,8 @@ int main()
 		for (const glm::vec3& point : *centreline)
 			road_markers.push_back(PlaceMarker(scene, node_marker_mesh, point, NODE_MARKER_SIZE));
 
-		terrain_generator->setRoads(std::make_shared<const trok::RoadNetwork>(*centreline, *road_class));
+		road_network = std::make_shared<const trok::RoadNetwork>(*centreline, *road_class);
+		terrain_generator->setRoads(road_network);
 		roads_planned = true;
 		regenerate_chunks();
 	};
@@ -398,6 +402,9 @@ int main()
 
 		if (engine.isDebugMode() && biome_tuning.draw())
 			regenerate_chunks();
+
+		if (engine.isDebugMode())
+			world_map.draw(viewer, road_network.get());
 
 		if (window.getActionDown("toggle_terrain"))
 		{
