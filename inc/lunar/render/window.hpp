@@ -43,6 +43,7 @@ namespace lunar::Render
 		bool                    isMinimized()                               const;
 		bool                    isFullscreen()                              const;
 		bool                    isCursorLocked()                            const;
+		glm::vec2               getCursorUv()                               const;
 		int                     getRenderWidth()                            const;
 		int                     getRenderHeight()                           const;
 		bool                    getActionDown(const std::string_view& name) const override;

@@ -6,6 +6,8 @@
 
 namespace lunar::Render
 {
+	constexpr float CURSOR_UV_CENTER = 0.5f;
+
 	void GLFW_FramebufferSizeCb(GLFWwindow*, int, int);
 	void GLFW_KeyCallback(GLFWwindow*, int, int, int, int);
 	void GLFW_MouseBtnCallback(GLFWwindow*, int, int, int);
@@ -161,6 +163,18 @@ namespace lunar::Render
 	bool Window_T::isCursorLocked() const
 	{
 		return mouseLocked;
+	}
+
+	glm::vec2 Window_T::getCursorUv() const
+	{
+		int content_width  = 0;
+		int content_height = 0;
+		glfwGetWindowSize(handle, &content_width, &content_height);
+
+		if (mouseLocked || content_width <= 0 || content_height <= 0)
+			return glm::vec2(CURSOR_UV_CENTER);
+
+		return lastMouse / glm::vec2(content_width, content_height);
 	}
 
 	void Window_T::setCursorLocked(bool value)
