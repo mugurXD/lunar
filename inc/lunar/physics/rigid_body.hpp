@@ -20,6 +20,7 @@ namespace lunar::Physics
 {
 	constexpr uint16_t TERRAIN_CATEGORY = 1 << 0;
 	constexpr uint16_t VEHICLE_CATEGORY = 1 << 1;
+	constexpr uint16_t ROAD_CATEGORY    = 1 << 2;
 
 	enum class LUNAR_API BodyType
 	{
@@ -33,6 +34,12 @@ namespace lunar::Physics
 		std::span<const float> heights        = {};
 		uint32_t               samplesPerSide = 0;
 		float                  spacing        = 1.f;
+	};
+
+	struct LUNAR_API TriangleMeshDesc
+	{
+		std::span<const glm::vec3> vertices = {};
+		std::span<const uint32_t>  indices  = {};
 	};
 
 	class LUNAR_API RigidBody
@@ -49,6 +56,7 @@ namespace lunar::Physics
 
 		rp3d::Collider* addBox(const glm::vec3& half_extents, const glm::vec3& offset, uint16_t category);
 		rp3d::Collider* addHeightfield(const HeightfieldDesc& desc, uint16_t category);
+		rp3d::Collider* addTriangleMesh(const TriangleMeshDesc& desc, uint16_t category);
 		void            setMass(float mass, const glm::vec3& center_of_mass);
 
 		rp3d::RigidBody&    getBody();
@@ -64,6 +72,7 @@ namespace lunar::Physics
 		rp3d::PhysicsWorld*                world            = nullptr;
 		rp3d::RigidBody*                   body             = nullptr;
 		std::vector<rp3d::CollisionShape*> shapes           = {};
+		std::vector<rp3d::TriangleMesh*>   triangleMeshes   = {};
 		glm::vec3                          previousPosition = {};
 		glm::vec3                          currentPosition  = {};
 		glm::quat                          previousRotation = glm::quat(1.f, 0.f, 0.f, 0.f);

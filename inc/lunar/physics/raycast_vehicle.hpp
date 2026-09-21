@@ -36,6 +36,7 @@ namespace lunar::Physics
 		float                      steerSpeed         = 60.f;
 		float                      corneringStiffness = 0.f;
 		float                      tyreFriction       = 1.f;
+		float                      roadGrip           = 1.f;
 		float                      rollingResistance  = 0.f;
 		float                      dragCoefficient    = 0.f;
 		float                      rollInfluence      = 0.3f;

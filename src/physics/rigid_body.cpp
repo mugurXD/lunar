@@ -10,6 +10,8 @@ namespace lunar::Physics
 {
 	namespace
 	{
+		constexpr uint32_t TRIANGLE_INDICES = 3;
+
 		rp3d::BodyType ToPhysics(BodyType type)
 		{
 			switch (type)
@@ -60,6 +62,7 @@ namespace lunar::Physics
 		world            = other.world;
 		body             = std::exchange(other.body, nullptr);
 		shapes           = std::move(other.shapes);
+		triangleMeshes   = std::move(other.triangleMeshes);
 		previousPosition = other.previousPosition;
 		currentPosition  = other.currentPosition;
 		previousRotation = other.previousRotation;
@@ -95,6 +98,30 @@ namespace lunar::Physics
 
 		collider->setCollisionCategoryBits(category);
 		shapes.push_back(shape);
+		return collider;
+	}
+
+	rp3d::Collider* RigidBody::addTriangleMesh(const TriangleMeshDesc& desc, uint16_t category)
+	{
+		const rp3d::TriangleVertexArray triangles(static_cast<uint32_t>(desc.vertices.size()), desc.vertices.data(), sizeof(glm::vec3),
+		                                          static_cast<uint32_t>(desc.indices.size() / TRIANGLE_INDICES), desc.indices.data(), sizeof(uint32_t) * TRIANGLE_INDICES,
+		                                          rp3d::TriangleVertexArray::VertexDataType::VERTEX_FLOAT_TYPE,
+		                                          rp3d::TriangleVertexArray::IndexDataType::INDEX_INTEGER_TYPE);
+
+		std::vector<rp3d::Message> messages = {};
+		rp3d::TriangleMesh*        mesh     = common->createTriangleMesh(triangles, messages);
+		if (mesh == nullptr)
+		{
+			DEBUG_ERROR("Failed to create a triangle mesh collider");
+			return nullptr;
+		}
+
+		rp3d::ConcaveMeshShape* shape    = common->createConcaveMeshShape(mesh);
+		rp3d::Collider*         collider = body->addCollider(shape, rp3d::Transform::identity());
+
+		collider->setCollisionCategoryBits(category);
+		shapes.push_back(shape);
+		triangleMeshes.push_back(mesh);
 		return collider;
 	}
 
@@ -150,6 +177,9 @@ namespace lunar::Physics
 			if (shape->getName() == rp3d::CollisionShapeName::BOX)
 				common->destroyBoxShape(static_cast<rp3d::BoxShape*>(shape));
 
+			if (shape->getName() == rp3d::CollisionShapeName::TRIANGLE_MESH)
+				common->destroyConcaveMeshShape(static_cast<rp3d::ConcaveMeshShape*>(shape));
+
 			if (shape->getName() != rp3d::CollisionShapeName::HEIGHTFIELD)
 				continue;
 
@@ -159,7 +189,11 @@ namespace lunar::Physics
 			common->destroyHeightField(field);
 		}
 
+		for (rp3d::TriangleMesh* mesh : triangleMeshes)
+			common->destroyTriangleMesh(mesh);
+
 		shapes.clear();
+		triangleMeshes.clear();
 	}
 
 	void CapturePhysicsPoses(Scene& scene, const FrameTime&)

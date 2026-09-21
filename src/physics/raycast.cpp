@@ -10,7 +10,7 @@ namespace lunar::Physics
 		public:
 			rp3d::decimal notifyRaycastHit(const rp3d::RaycastInfo& info) override
 			{
-				hit = RaycastHit { ToGlm(info.worldPoint), ToGlm(info.worldNormal), info.hitFraction };
+				hit = RaycastHit { ToGlm(info.worldPoint), ToGlm(info.worldNormal), info.hitFraction, static_cast<uint16_t>(info.collider->getCollisionCategoryBits()) };
 				return info.hitFraction;
 			}
 

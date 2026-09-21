@@ -141,7 +141,7 @@ namespace lunar::Physics
 		const float     stopping_force = state.massPerWheel / delta_time;
 		const float     brake_limit    = input.brake * settings.brakeForce / static_cast<float>(wheels.size());
 
-		float longitudinal = -forward_slip * settings.rollingResistance;
+		float longitudinal = -forward_slip * settings.rollingResistance / static_cast<float>(wheels.size());
 		if (wheel_settings.driven && state.drivenWheels > 0)
 			longitudinal += totalDriveForce(input.throttle) / static_cast<float>(state.drivenWheels);
 
@@ -149,7 +149,8 @@ namespace lunar::Physics
 
 		const float lateral   = -side_slip * std::min(settings.corneringStiffness, stopping_force);
 		glm::vec3   traction  = wheel_forward * longitudinal + wheel_side * lateral;
-		const float max_grip  = settings.tyreFriction * load;
+		const float surface   = (hit->category & ROAD_CATEGORY) != 0 ? settings.roadGrip : 1.f;
+		const float max_grip  = settings.tyreFriction * surface * load;
 		const float magnitude = glm::length(traction);
 		if (magnitude > max_grip)
 			traction *= max_grip / magnitude;
