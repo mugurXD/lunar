@@ -231,7 +231,7 @@ namespace lunar::Render
 
 		scene.forEach<MeshRenderer>([&](Entity entity, const MeshRenderer& mesh_renderer) {
 			const Mesh* mesh = meshes.get(mesh_renderer.mesh);
-			if (mesh == nullptr)
+			if (mesh == nullptr || !mesh_renderer.visible)
 				return;
 
 			const glm::mat4 model = scene.resolveWorldTransform(entity).matrix;
