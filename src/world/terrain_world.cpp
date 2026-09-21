@@ -11,7 +11,8 @@ namespace lunar::World
 {
 	namespace
 	{
-		constexpr std::string_view CHUNK_NAME_FORMAT = "TerrainChunk {},{}";
+		constexpr std::string_view CHUNK_NAME_FORMAT      = "TerrainChunk {},{}";
+		constexpr std::string_view DECORATION_NAME_FORMAT = "TerrainDecoration {},{}";
 	}
 
 	TerrainWorld::TerrainWorld(Scene&                scene,
@@ -56,6 +57,15 @@ namespace lunar::World
 	size_t TerrainWorld::getPendingChunkCount() const
 	{
 		return pendingCount;
+	}
+
+	const Render::MeshData* TerrainWorld::findDecoration(ChunkCoord coord) const
+	{
+		const auto found = chunks.find(coord);
+		if (found == chunks.end() || found->second.decoration.vertices.empty())
+			return nullptr;
+
+		return &found->second.decoration;
 	}
 
 	const Heightmap* TerrainWorld::findHeightmap(ChunkCoord coord) const
@@ -126,6 +136,15 @@ namespace lunar::World
 		chunk.object->addComponent<MeshRenderer>(chunk.mesh);
 		chunk.object->addComponent<TerrainChunk>(coord);
 
+		if (!data.decoration.vertices.empty())
+		{
+			chunk.decorationMesh = meshes.create(data.decoration);
+			chunk.decoration     = std::move(data.decoration);
+
+			GameObject decoration = chunk.object->createChildObject(std::format(DECORATION_NAME_FORMAT, coord.x, coord.z));
+			decoration->addComponent<MeshRenderer>(chunk.decorationMesh);
+		}
+
 		pendingCount--;
 	}
 
@@ -139,6 +158,9 @@ namespace lunar::World
 		}
 
 		meshes.destroy(chunk.mesh);
+
+		if (chunk.decorationMesh != Render::MeshHandle {})
+			meshes.destroy(chunk.decorationMesh);
 
 		GameObject object = chunk.object;
 		object.destroy();

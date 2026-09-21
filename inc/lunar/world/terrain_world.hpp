@@ -31,15 +31,18 @@ namespace lunar::World
 		void   reload();
 		size_t           getLoadedChunkCount()          const;
 		size_t           getPendingChunkCount()         const;
-		const Heightmap* findHeightmap(ChunkCoord coord) const;
+		const Heightmap*         findHeightmap(ChunkCoord coord)  const;
+		const Render::MeshData*  findDecoration(ChunkCoord coord) const;
 
 	private:
 		struct LoadedChunk
 		{
-			JobHandle          job       = {};
-			GameObject         object    = nullptr;
-			Render::MeshHandle mesh      = {};
-			Heightmap          heightmap = {};
+			JobHandle          job            = {};
+			GameObject         object         = nullptr;
+			Render::MeshHandle mesh           = {};
+			Render::MeshHandle decorationMesh = {};
+			Render::MeshData   decoration     = {};
+			Heightmap          heightmap      = {};
 		};
 
 		void unloadDistantChunks(ChunkCoord center);

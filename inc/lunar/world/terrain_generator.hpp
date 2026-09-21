@@ -25,6 +25,10 @@ namespace lunar::World
 
 		virtual float     sampleHeight(const RegionContext<Plan>& context, double x, double z)                                         const = 0;
 		virtual glm::vec3 sampleColor(const RegionContext<Plan>& context, double x, double z, float height, const glm::vec3& normal) const = 0;
+
+		virtual void buildDecorations(const RegionContext<Plan>&, ChunkCoord, const WorldSettings&, Render::MeshData&) const
+		{
+		}
 	};
 
 	template<typename Plan>
@@ -48,7 +52,10 @@ namespace lunar::World
 			return generator.sampleColor(context, x, z, height, normal);
 		}, coord, settings);
 
-		return ChunkData { std::move(*heightmap), std::move(mesh) };
+		Render::MeshData decoration;
+		generator.buildDecorations(context, coord, settings, decoration);
+
+		return ChunkData { std::move(*heightmap), std::move(mesh), std::move(decoration) };
 	}
 
 	template<IsJsonSerializable Plan>

@@ -33,8 +33,9 @@ namespace lunar::World
 
 	struct LUNAR_API ChunkData
 	{
-		Heightmap        heightmap = {};
-		Render::MeshData mesh      = {};
+		Heightmap        heightmap  = {};
+		Render::MeshData mesh       = {};
+		Render::MeshData decoration = {};
 	};
 
 	using ChunkWork = std::move_only_function<ChunkData()>;

@@ -85,6 +85,17 @@ namespace lunar::World
 
 		Physics::RigidBody body(scene, ChunkOrigin(coord, settings), glm::quat(1.f, 0.f, 0.f, 0.f), Physics::BodyType::eStatic);
 		body.addHeightfield({ .heights = heights, .samplesPerSide = static_cast<uint32_t>(samples_per_side), .spacing = settings.vertexSpacing }, Physics::TERRAIN_CATEGORY);
+
+		if (const Render::MeshData* decoration = terrain.findDecoration(coord); decoration != nullptr)
+		{
+			std::vector<glm::vec3> positions;
+			positions.reserve(decoration->vertices.size());
+			for (const Render::Vertex& vertex : decoration->vertices)
+				positions.push_back(vertex.position);
+
+			body.addTriangleMesh({ .vertices = positions, .indices = decoration->indices }, Physics::ROAD_CATEGORY);
+		}
+
 		colliders.emplace(coord, std::move(body));
 	}
 }
