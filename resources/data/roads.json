@@ -1,0 +1,22 @@
+{
+    "formatVersion": 1,
+    "name": "core:national",
+    "lanes": 2,
+    "laneWidth": 8,
+    "shoulderWidth": 1.0,
+    "minCurveRadius": 60.0,
+    "maxGrade": 0.15,
+    "slopePenalty": 8.0,
+    "turnPenalty": 0.15,
+    "embankmentSpread": 0.0,
+    "maxFillHeight": 2.0,
+    "maxGradingWidth": 24.0,
+    "gradingMargin": 3.0,
+    "surfaceOffset": 0.35,
+    "color": [
+        0.16,
+        0.16,
+        0.17
+    ],
+    "edgeDepth": 0.5
+}

@@ -109,6 +109,7 @@
     "tyres": {
         "corneringStiffness": 60000.0,
         "friction": 1.0,
+        "roadGrip": 1.35,
         "rollInfluence": 0.25
     },
     "parts": [
