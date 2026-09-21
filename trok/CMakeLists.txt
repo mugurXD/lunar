@@ -24,6 +24,7 @@ add_library(trok_core STATIC
     "inc/trok/world/road_planner.hpp"
     "inc/trok/world/stable_hash.hpp"
     "inc/trok/world/terrain_generator.hpp"
+    "inc/trok/world/world_map.hpp"
     "src/json_math.cpp"
     "src/vehicle/chase_camera.cpp"
     "src/vehicle/truck.cpp"
@@ -36,6 +37,7 @@ add_library(trok_core STATIC
     "src/world/road.cpp"
     "src/world/road_planner.cpp"
     "src/world/terrain_generator.cpp"
+    "src/world/world_map.cpp"
 )
 
 target_include_directories(trok_core PUBLIC inc)

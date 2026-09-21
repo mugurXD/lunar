@@ -259,3 +259,4 @@ TEST(TrokTerrain, CurvedRoadsFormAContinuousStrip)
 		EXPECT_EQ(mesh.vertices[current + 3].position, mesh.vertices[next + 1].position)     << "gap on the right side of segment " << segment;
 	}
 }
+
