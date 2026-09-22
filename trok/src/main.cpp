@@ -24,6 +24,8 @@
 #include <lunar/file/json_file.hpp>
 #include <lunar/debug.hpp>
 
+#include <imgui.h>
+
 #include <format>
 #include <memory>
 #include <optional>
@@ -57,9 +59,12 @@ namespace
 	constexpr std::string_view        TUNED_BIOME_FILE     = "biomes.tuned.json";
 	constexpr std::string_view        ROAD_FILE_NAME       = "roads.json";
 	constexpr float                   ROAD_PLANNING_MARGIN = 200.f;
+	constexpr int32_t                 TOWN_SURVEY_RADIUS   = 1;
+	constexpr int32_t                 TOWN_LINK_REACH      = 2;
 	constexpr int32_t                 COLLIDER_RADIUS      = 1;
 	constexpr float                   TRUCK_SPAWN_HEIGHT   = 1.5f;
 	constexpr float                   GROUND_RAY_HEIGHT    = 2000.f;
+	constexpr uint16_t                GROUND_RAY_MASK      = Physics::TERRAIN_CATEGORY | Physics::ROAD_CATEGORY;
 	constexpr float                   REVERSE_THRESHOLD    = 1.f;
 	constexpr float                   AUTO_HOLD_SPEED      = 0.5f;
 	constexpr float                   FOG_START_FRACTION   = 0.5f;
@@ -166,6 +171,71 @@ namespace
 		return std::nullopt;
 	}
 
+	struct TownLink
+	{
+		glm::vec2 from = {};
+		glm::vec2 to   = {};
+	};
+
+	struct TownSurvey
+	{
+		std::vector<TownLink>                    links;
+		std::vector<trok::RegionContext::Region> regions;
+	};
+
+	TownSurvey SurveyTowns(const trok::RegionPlanner& planner, const World::WorldSettings& settings, World::RegionCoord centre, int32_t radius)
+	{
+		const int32_t                         side = radius * 2 + 1;
+		std::vector<std::optional<glm::vec2>> towns(static_cast<size_t>(side) * side);
+		TownSurvey                            survey;
+
+		const auto town_at = [&](int32_t x, int32_t z) -> std::optional<glm::vec2>& {
+			return towns[static_cast<size_t>(z + radius) * side + (x + radius)];
+		};
+
+		for (int32_t z = -radius; z <= radius; z++)
+		{
+			for (int32_t x = -radius; x <= radius; x++)
+			{
+				const World::RegionCoord coord = { centre.x + x, centre.z + z };
+				const auto               plan  = std::make_shared<const trok::RegionPlan>(planner.plan(coord, settings));
+
+				survey.regions.push_back({ coord, plan });
+				if (!plan->settlements.empty())
+					town_at(x, z) = glm::vec2(plan->settlements.front().center);
+			}
+		}
+
+		const glm::ivec2 steps[] = { { 1, 0 }, { 0, 1 } };
+		for (int32_t z = -radius; z <= radius; z++)
+		{
+			for (int32_t x = -radius; x <= radius; x++)
+			{
+				if (!town_at(x, z).has_value())
+					continue;
+
+				for (const glm::ivec2& step : steps)
+				{
+					for (int32_t reach = 1; reach <= TOWN_LINK_REACH; reach++)
+					{
+						const int32_t other_x = x + step.x * reach;
+						const int32_t other_z = z + step.y * reach;
+						if (other_x > radius || other_z > radius)
+							break;
+
+						if (!town_at(other_x, other_z).has_value())
+							continue;
+
+						survey.links.push_back({ *town_at(x, z), *town_at(other_x, other_z) });
+						break;
+					}
+				}
+			}
+		}
+
+		return survey;
+	}
+
 	std::optional<trok::RegionContext> GatherRegions(World::RegionStore<trok::RegionPlan>& regions,
 	                                                 const glm::vec2&                      start,
 	                                                 const glm::vec2&                      end,
@@ -195,7 +265,7 @@ namespace
 	std::optional<float> GroundHeight(Scene& scene, float x, float z)
 	{
 		const glm::vec3                          top = { x, GROUND_RAY_HEIGHT, z };
-		const std::optional<Physics::RaycastHit> hit = Physics::CastRay(*scene.getPhysicsWorld(), top, { x, -GROUND_RAY_HEIGHT, z }, Physics::TERRAIN_CATEGORY);
+		const std::optional<Physics::RaycastHit> hit = Physics::CastRay(*scene.getPhysicsWorld(), top, { x, -GROUND_RAY_HEIGHT, z }, GROUND_RAY_MASK);
 		return hit.has_value() ? std::optional<float>(hit->point.y) : std::nullopt;
 	}
 
@@ -283,8 +353,9 @@ int main()
 	const auto                 chunk_storage     = std::make_shared<const World::ChunkStorage>(world_storage->getDirectory() / CHUNK_DIRECTORY, world_settings);
 	const auto                 biomes            = std::make_shared<trok::BiomeLibrary>(std::move(*loaded_biomes));
 	const auto                 climate           = std::make_shared<const trok::ClimateSampler>(world_storage->getInfo().seed);
-	const auto                 terrain_generator = std::make_shared<trok::TerrainGenerator>(biomes, climate, std::move(*loaded_elevation), world_storage->getInfo().seed);
-	const auto                 region_planner    = std::make_shared<const trok::RegionPlanner>(world_storage->getInfo().generatorVersion, world_storage->getInfo().seed, biomes, climate);
+	const trok::ElevationCurve elevation         = std::move(*loaded_elevation);
+	const auto                 terrain_generator = std::make_shared<trok::TerrainGenerator>(biomes, climate, elevation, world_storage->getInfo().seed);
+	const auto                 region_planner    = std::make_shared<const trok::RegionPlanner>(world_storage->getInfo().generatorVersion, world_storage->getInfo().seed, biomes, climate, elevation);
 
 	World::RegionStore<trok::RegionPlan>       regions(engine.getJobSystem(), world_storage, region_planner, world_settings);
 	World::RegionChunkSource<trok::RegionPlan> chunk_source(regions, terrain_generator, chunk_storage, world_settings);
@@ -292,7 +363,7 @@ int main()
 	World::TerrainColliders                    colliders(scene, terrain, world_settings, COLLIDER_RADIUS);
 	trok::TruckTuningWindow                    tuning(*truck_definition, Fs::fromData(TUNED_TRUCK_FILE));
 	trok::BiomeTuningWindow                    biome_tuning(biomes, Fs::fromData(TUNED_BIOME_FILE));
-	trok::WorldMapWindow                       world_map(biomes, region_planner, world_settings);
+	trok::WorldMapWindow                       world_map(biomes, region_planner, climate, elevation, world_settings);
 	std::optional<trok::Truck>                 truck;
 
 	GameObject player = scene.createGameObject("Player");
@@ -323,6 +394,7 @@ int main()
 	window.registerAction("road_point",     { { "keyboard.f5" }, { "mouse.right_button" } });
 	window.registerAction("road_build",     { { "keyboard.f6" }, { "mouse.middle_button" } });
 	window.registerAction("toggle_terrain", { { "keyboard.f7" } });
+	window.registerAction("recover",        { { "keyboard.i" } });
 
 	const auto is_driving = [&scene, &chase_camera] { return scene.getMainCamera() == chase_camera->getComponent<Camera>(); };
 
@@ -335,6 +407,9 @@ int main()
 	const MeshHandle node_marker_mesh     = MakeMarkerMesh(engine.getRenderer().getMeshes(), NODE_MARKER_COLOR);
 
 	std::shared_ptr<const trok::RoadNetwork> road_network;
+	std::vector<std::vector<glm::vec3>>      planned_roads;
+	bool                                     roads_ready     = false;
+	bool                                     roads_requested = false;
 	std::vector<GameObject>  road_markers;
 	std::optional<glm::vec2> road_start;
 	std::optional<glm::vec2> road_end;
@@ -347,6 +422,35 @@ int main()
 		terrain_generator->refresh();
 		terrain.reload();
 		colliders.clear();
+	};
+
+	const auto connect_towns = [&] {
+		roads_requested = true;
+
+		engine.getJobSystem().submit(
+			[planner = region_planner, generator = terrain_generator, settings = world_settings, shape = *road_class,
+			 centre = World::RegionAt(CAMERA_START_POSITION, world_settings)] {
+				const TownSurvey          survey = SurveyTowns(*planner, settings, centre, TOWN_SURVEY_RADIUS);
+				const trok::RegionContext context(settings, survey.regions);
+
+				std::vector<std::vector<glm::vec3>> centrelines;
+				for (const TownLink& link : survey.links)
+				{
+					const std::optional<std::vector<glm::vec3>> road = trok::PlanRoad(link.from, link.to, shape, [&](double x, double z) {
+						return generator->sampleHeight(context, x, z);
+					});
+
+					if (road.has_value())
+						centrelines.push_back(*road);
+				}
+
+				DEBUG_LOG("Connected {} of {} town pairs", centrelines.size(), survey.links.size());
+				return centrelines;
+			},
+			[&](std::vector<std::vector<glm::vec3>> centrelines) {
+				planned_roads = std::move(centrelines);
+				roads_ready   = true;
+			});
 	};
 
 	const auto place_road_point = [&](const glm::vec3& point) {
@@ -393,7 +497,8 @@ int main()
 		regenerate_chunks();
 	};
 
-	bool placed_above_terrain = false;
+	bool                      placed_above_terrain = false;
+	std::optional<glm::dvec2> travelling;
 	engine.addSystem(SystemPhase::eUpdate, [&](Scene&, const FrameTime&) {
 		const glm::vec3 viewer = is_driving() ? chase_camera->getTransform().position : player->getTransform().position;
 		chunk_source.setStorageEnabled(!engine.isDebugMode() && !roads_planned);
@@ -404,7 +509,17 @@ int main()
 			regenerate_chunks();
 
 		if (engine.isDebugMode())
-			world_map.draw(viewer, road_network.get());
+		{
+			const std::optional<glm::dvec2> target = world_map.draw(viewer, road_network.get());
+			if (target.has_value())
+			{
+				player->getTransform().position = { static_cast<float>(target->x), 0.f, static_cast<float>(target->y) };
+				placed_above_terrain            = false;
+				travelling                      = target;
+
+				DEBUG_LOG("Travelling to ({:.0f}, {:.0f})", target->x, target->y);
+			}
+		}
 
 		if (window.getActionDown("toggle_terrain"))
 		{
@@ -417,7 +532,28 @@ int main()
 				renderer.visible = false;
 			});
 
-		if (window.getActionDown("road_point"))
+		if (!roads_requested)
+			connect_towns();
+
+		if (roads_ready)
+		{
+			roads_ready = false;
+
+			if (!planned_roads.empty())
+			{
+				engine.getJobSystem().waitIdle();
+				engine.getJobSystem().processCompleted();
+
+				road_network = std::make_shared<const trok::RoadNetwork>(std::move(planned_roads), *road_class);
+				terrain_generator->setRoads(road_network);
+				roads_planned = true;
+				regenerate_chunks();
+			}
+		}
+
+		const bool ui_has_mouse = ImGui::GetIO().WantCaptureMouse;
+
+		if (window.getActionDown("road_point") && !ui_has_mouse)
 		{
 			const Camera* camera = scene.getMainCamera();
 			if (camera == nullptr)
@@ -429,11 +565,20 @@ int main()
 				DEBUG_ERROR("There is no terrain under the cursor");
 		}
 
-		if (window.getActionDown("road_build") && road_start.has_value() && road_end.has_value())
+		if (window.getActionDown("road_build") && !ui_has_mouse && road_start.has_value() && road_end.has_value())
 			build_road();
 
 		if (!placed_above_terrain)
 			placed_above_terrain = PlaceAboveTerrain(player->getTransform(), regions, *terrain_generator, world_settings);
+		else if (travelling.has_value())
+		{
+			const float ground = player->getTransform().position.y - CAMERA_START_HEIGHT;
+
+			if (truck.has_value())
+				truck->recover({ static_cast<float>(travelling->x), ground + TRUCK_SPAWN_HEIGHT, static_cast<float>(travelling->y) });
+
+			travelling.reset();
+		}
 	});
 
 	engine.addSystem(SystemPhase::eUpdate, [&](Scene&, const FrameTime& frame_time) {
@@ -461,6 +606,17 @@ int main()
 		{
 			player->getTransform().position = chase_camera->getTransform().position;
 			scene.setMainCamera(is_driving() ? player : chase_camera);
+		}
+
+		if (window.getActionDown("recover"))
+		{
+			const glm::vec3            stuck  = truck->getTransform().position;
+			const std::optional<float> ground = GroundHeight(scene, stuck.x, stuck.z);
+
+			if (ground.has_value())
+				truck->recover({ stuck.x, *ground + TRUCK_SPAWN_HEIGHT, stuck.z });
+			else
+				DEBUG_ERROR("There is no ground under the truck to recover onto");
 		}
 
 		if (!is_driving())

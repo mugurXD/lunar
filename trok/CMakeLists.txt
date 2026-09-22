@@ -11,6 +11,7 @@ endif()
 
 add_library(trok_core STATIC
     "FastNoiseLite.h"
+    "inc/trok/geometry.hpp"
     "inc/trok/json_math.hpp"
     "inc/trok/vehicle/chase_camera.hpp"
     "inc/trok/vehicle/truck.hpp"
@@ -20,6 +21,7 @@ add_library(trok_core STATIC
     "inc/trok/world/climate.hpp"
     "inc/trok/world/elevation.hpp"
     "inc/trok/world/region_plan.hpp"
+    "inc/trok/world/river.hpp"
     "inc/trok/world/road.hpp"
     "inc/trok/world/road_planner.hpp"
     "inc/trok/world/stable_hash.hpp"
@@ -34,6 +36,7 @@ add_library(trok_core STATIC
     "src/world/climate.cpp"
     "src/world/elevation.cpp"
     "src/world/region_plan.cpp"
+    "src/world/river.cpp"
     "src/world/road.cpp"
     "src/world/road_planner.cpp"
     "src/world/terrain_generator.cpp"
