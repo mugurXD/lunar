@@ -4,12 +4,21 @@
 #include <lunar/debug.hpp>
 
 #include <algorithm>
+#include <cmath>
+#include <string_view>
 
 namespace trok
 {
 	namespace
 	{
-		constexpr uint32_t PLAN_FORMAT_VERSION = 2;
+		constexpr uint32_t         PLAN_FORMAT_VERSION    = 3;
+		constexpr double           HALF                   = 0.5;
+		constexpr double           SETTLEMENT_JITTER      = 0.5;
+		constexpr double           SETTLEMENT_MIN_RADIUS  = 140.0;
+		constexpr double           SETTLEMENT_MAX_RADIUS  = 380.0;
+		constexpr uint64_t         SETTLEMENT_OFFSET_SALT = 1;
+		constexpr uint64_t         SETTLEMENT_RADIUS_SALT = 2;
+		constexpr std::string_view SETTLEMENT_TYPE        = "core:town";
 
 		nlohmann::json SerializeSettlement(const Settlement& settlement)
 		{
@@ -20,6 +29,11 @@ namespace trok
 				{ "center", { settlement.center.x, settlement.center.y } },
 				{ "radius", settlement.radius }
 			};
+		}
+
+		double UnitFromHash(uint64_t hash)
+		{
+			return static_cast<double>(hash >> 11) * 0x1p-53;
 		}
 
 		double BiomeCellCenter(int32_t region_chunk, uint32_t cell, const lunar::World::WorldSettings& settings)
@@ -61,6 +75,10 @@ namespace trok
 		for (const Settlement& settlement : plan.settlements)
 			settlements.push_back(SerializeSettlement(settlement));
 
+		nlohmann::json rivers = nlohmann::json::array();
+		for (const River& river : plan.rivers)
+			rivers.push_back(River::Serialize(river));
+
 		return nlohmann::json
 		{
 			{ "formatVersion",     PLAN_FORMAT_VERSION },
@@ -68,7 +86,8 @@ namespace trok
 			{ "biomeCellsPerSide", plan.biomeCellsPerSide },
 			{ "biomePalette",      plan.biomePalette },
 			{ "biomes",            plan.biomes },
-			{ "settlements",       std::move(settlements) }
+			{ "settlements",       std::move(settlements) },
+			{ "rivers",            std::move(rivers) }
 		};
 	}
 
@@ -91,6 +110,15 @@ namespace trok
 
 		for (const nlohmann::json& settlement : json.at("settlements"))
 			plan.settlements.push_back(DeserializeSettlement(settlement));
+
+		for (const nlohmann::json& river : json.at("rivers"))
+		{
+			const std::optional<River> restored = River::Deserialize(river);
+			if (!restored.has_value())
+				return std::nullopt;
+
+			plan.rivers.push_back(*restored);
+		}
 
 		return plan;
 	}
@@ -120,12 +148,22 @@ namespace trok
 	RegionPlanner::RegionPlanner(uint32_t                              generator_version,
 	                             int32_t                               seed,
 	                             std::shared_ptr<const BiomeLibrary>   biomes,
-	                             std::shared_ptr<const ClimateSampler> climate) noexcept
+	                             std::shared_ptr<const ClimateSampler> climate,
+	                             ElevationCurve                        elevation) noexcept
 		: generatorVersion(generator_version),
 		seed(seed),
 		biomes(std::move(biomes)),
-		climate(std::move(climate))
+		climate(std::move(climate)),
+		elevation(std::move(elevation))
 	{
+	}
+
+	float CarvedHeight(const RegionContext& context, double x, double z, float terrain_height)
+	{
+		const lunar::World::ChunkCoord chunk = lunar::World::ChunkAt(x, z, context.getSettings());
+		const RegionPlan*              plan  = context.findRegion(lunar::World::RegionAt(chunk, context.getSettings()));
+
+		return plan == nullptr ? terrain_height : CarvedHeight(plan->rivers, x, z, terrain_height);
 	}
 
 	RegionPlan RegionPlanner::plan(lunar::World::RegionCoord coord, const lunar::World::WorldSettings& settings) const
@@ -154,7 +192,74 @@ namespace trok
 			}
 		}
 
+		traceRivers(plan, coord, settings);
+		placeSettlement(plan, coord, settings);
 		return plan;
+	}
+
+	void RegionPlanner::traceRivers(RegionPlan& plan, lunar::World::RegionCoord coord, const lunar::World::WorldSettings& settings) const
+	{
+		//const int32_t    region_chunks = static_cast<int32_t>(settings.regionChunks);
+		//const double     region_size   = static_cast<double>(settings.regionChunks) * settings.getChunkSize();
+		//const double     block_size    = region_size * RIVER_SOURCE_REGIONS;
+		//const glm::dvec2 origin        = { lunar::World::SampleCoordinate(coord.x * region_chunks, 0, settings),
+		//                                   lunar::World::SampleCoordinate(coord.z * region_chunks, 0, settings) };
+
+		//const double     margin  = RiverReach() * 2.0;
+		//const glm::dvec2 minimum = origin - glm::dvec2(margin);
+		//const glm::dvec2 maximum = origin + glm::dvec2(region_size + margin);
+		//const glm::dvec2 middle  = origin + glm::dvec2(region_size * HALF);
+
+		//const int32_t block_x = static_cast<int32_t>(std::floor(origin.x / block_size));
+		//const int32_t block_z = static_cast<int32_t>(std::floor(origin.y / block_size));
+
+		//for (int32_t z = -1; z <= 1; z++)
+		//{
+		//	for (int32_t x = -1; x <= 1; x++)
+		//	{
+		//		const glm::dvec2 source = RiverSource(seed, block_x + x, block_z + z, block_size);
+		//		if (glm::distance(source, middle) > RiverMaxLength() + region_size)
+		//			continue;
+
+		//		const uint64_t id     = MixHash(static_cast<uint64_t>(block_x + x), static_cast<uint64_t>(block_z + z));
+		//		const River    traced = TraceRiver(static_cast<uint32_t>(id), source, elevation, *climate, *biomes);
+		//		if (traced.points.empty())
+		//			continue;
+
+		//		const River clipped = ClipRiver(traced, minimum, maximum);
+		//		if (clipped.points.size() >= 2)
+		//			plan.rivers.push_back(clipped);
+		//	}
+		//}
+	}
+
+	void RegionPlanner::placeSettlement(RegionPlan& plan, lunar::World::RegionCoord coord, const lunar::World::WorldSettings& settings) const
+	{
+		const int32_t    region_chunks = static_cast<int32_t>(settings.regionChunks);
+		const double     region_size   = static_cast<double>(settings.regionChunks) * settings.getChunkSize();
+		const glm::dvec2 origin        = { lunar::World::SampleCoordinate(coord.x * region_chunks, 0, settings),
+		                                   lunar::World::SampleCoordinate(coord.z * region_chunks, 0, settings) };
+
+		const uint64_t   roll   = MixHash(MixHash(static_cast<uint64_t>(seed), static_cast<uint64_t>(coord.x)), static_cast<uint64_t>(coord.z));
+		const glm::dvec2 offset = { UnitFromHash(roll) - HALF, UnitFromHash(MixHash(roll, SETTLEMENT_OFFSET_SALT)) - HALF };
+		const glm::dvec2 center = origin + region_size * (glm::dvec2(HALF) + offset * SETTLEMENT_JITTER);
+
+		const double   cell_size = BiomeCellSize(settings);
+		const uint32_t cell_x    = static_cast<uint32_t>((center.x - origin.x) / cell_size);
+		const uint32_t cell_z    = static_cast<uint32_t>((center.y - origin.y) / cell_size);
+
+		if (!biomes->get(plan.getBiome(cell_x, cell_z)).habitable)
+			return;
+
+		if (elevation.heightAt(climate->sampleContinentalness(center.x, center.y)) <= elevation.seaLevel)
+			return;
+
+		plan.settlements.push_back({
+			.id     = static_cast<uint32_t>(roll),
+			.type   = std::string(SETTLEMENT_TYPE),
+			.center = center,
+			.radius = glm::mix(SETTLEMENT_MIN_RADIUS, SETTLEMENT_MAX_RADIUS, UnitFromHash(MixHash(roll, SETTLEMENT_RADIUS_SALT)))
+		});
 	}
 
 	RegionPlan RegionPlanner::restore(RegionPlan loaded, lunar::World::RegionCoord coord, const lunar::World::WorldSettings&) const
