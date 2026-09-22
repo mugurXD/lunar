@@ -9,6 +9,7 @@
 #include <glm/glm.hpp>
 
 #include <memory>
+#include <optional>
 #include <unordered_map>
 
 struct ImDrawList;
@@ -18,11 +19,13 @@ namespace trok
 	class WorldMapWindow
 	{
 	public:
-		WorldMapWindow(std::shared_ptr<const BiomeLibrary>  biomes,
-		               std::shared_ptr<const RegionPlanner> planner,
-		               lunar::World::WorldSettings          settings) noexcept;
+		WorldMapWindow(std::shared_ptr<const BiomeLibrary>   biomes,
+		               std::shared_ptr<const RegionPlanner>  planner,
+		               std::shared_ptr<const ClimateSampler> climate,
+		               ElevationCurve                        elevation,
+		               lunar::World::WorldSettings           settings) noexcept;
 
-		void draw(const glm::vec3& viewer, const RoadNetwork* roads);
+		std::optional<glm::dvec2> draw(const glm::vec3& viewer, const RoadNetwork* roads);
 
 	private:
 		struct View
@@ -39,9 +42,12 @@ namespace trok
 		void drawBiomes(ImDrawList& drawing, const View& view, const RegionContext& context);
 		void drawSettlements(ImDrawList& drawing, const View& view, const std::vector<RegionContext::Region>& visible);
 		void drawRoads(ImDrawList& drawing, const View& view, const RoadNetwork& roads);
+		void drawRivers(ImDrawList& drawing, const View& view, const std::vector<RegionContext::Region>& visible);
 
-		std::shared_ptr<const BiomeLibrary>  biomes;
-		std::shared_ptr<const RegionPlanner> planner;
+		std::shared_ptr<const BiomeLibrary>   biomes;
+		std::shared_ptr<const RegionPlanner>  planner;
+		std::shared_ptr<const ClimateSampler> climate;
+		ElevationCurve                        elevation;
 		lunar::World::WorldSettings          settings;
 
 		std::unordered_map<lunar::World::RegionCoord, std::shared_ptr<const RegionPlan>, lunar::World::GridCoordHash> plans;
