@@ -61,10 +61,11 @@ namespace trok
 
 	struct Biome
 	{
-		std::string  name    = {};
-		BiomeClimate climate = {};
-		BiomeTerrain terrain = {};
-		BiomeColors  colors  = {};
+		std::string  name      = {};
+		BiomeClimate climate   = {};
+		BiomeTerrain terrain   = {};
+		BiomeColors  colors    = {};
+		bool         habitable = true;
 
 		bool operator==(const Biome&) const = default;
 
@@ -84,6 +85,7 @@ namespace trok
 		BiomeIndex                getDefault()                                         const;
 		std::optional<BiomeIndex> indexOf(std::string_view name)                       const;
 		BiomeIndex                select(const Climate& climate, uint64_t tie_breaker) const;
+		float                     heightOffsetAt(const Climate& climate)                  const;
 
 		bool operator==(const BiomeLibrary&) const = default;
 

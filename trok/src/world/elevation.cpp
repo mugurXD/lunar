@@ -36,7 +36,8 @@ namespace trok
 		return nlohmann::json
 		{
 			{ "formatVersion", ELEVATION_FORMAT_VERSION },
-			{ "points",        std::move(points) }
+			{ "points",        std::move(points) },
+			{ "seaLevel",      curve.seaLevel }
 		};
 	}
 
@@ -45,7 +46,7 @@ namespace trok
 		if (json.at("formatVersion").get<uint32_t>() != ELEVATION_FORMAT_VERSION)
 			return std::nullopt;
 
-		ElevationCurve curve = { .points = {} };
+		ElevationCurve curve = { .points = {}, .seaLevel = json.at("seaLevel").get<float>() };
 		for (const nlohmann::json& point : json.at("points"))
 			curve.points.emplace_back(point.at(0).get<float>(), point.at(1).get<float>());
 

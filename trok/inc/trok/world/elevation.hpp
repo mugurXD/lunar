@@ -9,7 +9,8 @@ namespace trok
 {
 	struct ElevationCurve
 	{
-		std::vector<glm::vec2> points = { { -1.f, 0.f }, { 1.f, 0.f } };
+		std::vector<glm::vec2> points   = { { -1.f, 0.f }, { 1.f, 0.f } };
+		float                  seaLevel = 0.f;
 
 		float heightAt(float continentalness) const;
 

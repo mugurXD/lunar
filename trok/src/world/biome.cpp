@@ -11,6 +11,7 @@ namespace trok
 	namespace
 	{
 		constexpr uint32_t BIOME_FORMAT_VERSION = 3;
+		constexpr float    BLEND_SOFTNESS       = 0.05f;
 
 		constexpr std::string_view TEMPERATURE_KEY     = "temperature";
 		constexpr std::string_view MOISTURE_KEY        = "moisture";
@@ -129,10 +130,11 @@ namespace trok
 	{
 		return nlohmann::json
 		{
-			{ "name",    biome.name },
-			{ "climate", SerializeClimate(biome.climate) },
-			{ "terrain", SerializeTerrain(biome.terrain) },
-			{ "colors",  SerializeColors(biome.colors) }
+			{ "name",      biome.name },
+			{ "climate",   SerializeClimate(biome.climate) },
+			{ "terrain",   SerializeTerrain(biome.terrain) },
+			{ "colors",    SerializeColors(biome.colors) },
+			{ "habitable", biome.habitable }
 		};
 	}
 
@@ -140,10 +142,11 @@ namespace trok
 	{
 		const Biome biome =
 		{
-			.name    = json.at("name").get<std::string>(),
-			.climate = DeserializeClimate(json.at("climate")),
-			.terrain = DeserializeTerrain(json.at("terrain")),
-			.colors  = DeserializeColors(json.at("colors"))
+			.name      = json.at("name").get<std::string>(),
+			.climate   = DeserializeClimate(json.at("climate")),
+			.terrain   = DeserializeTerrain(json.at("terrain")),
+			.colors    = DeserializeColors(json.at("colors")),
+			.habitable = json.at("habitable").get<bool>()
 		};
 
 		if (!IsOrdered(biome.climate))
@@ -191,6 +194,23 @@ namespace trok
 			return std::nullopt;
 
 		return static_cast<BiomeIndex>(found - biomes.begin());
+	}
+
+	float BiomeLibrary::heightOffsetAt(const Climate& climate) const
+	{
+		float offset = 0.f;
+		float total  = 0.f;
+
+		for (const Biome& biome : biomes)
+		{
+			const float distance  = biome.distanceTo(climate);
+			const float closeness = 1.f / (distance * distance + BLEND_SOFTNESS);
+
+			offset += closeness * biome.terrain.heightOffset;
+			total  += closeness;
+		}
+
+		return total > 0.f ? offset / total : 0.f;
 	}
 
 	BiomeIndex BiomeLibrary::select(const Climate& climate, uint64_t tie_breaker) const
