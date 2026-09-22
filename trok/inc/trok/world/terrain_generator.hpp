@@ -34,6 +34,7 @@ namespace trok
 		float     sampleHeight(const RegionContext& context, double x, double z)                                       const override;
 		glm::vec3 sampleColor(const RegionContext& context, double x, double z, float height, const glm::vec3& normal) const override;
 		void      buildDecorations(const RegionContext& context, lunar::World::ChunkCoord coord, const lunar::World::WorldSettings& settings, lunar::Render::MeshData& mesh) const override;
+		void      buildWater(const RegionContext& context, lunar::World::ChunkCoord coord, const lunar::World::WorldSettings& settings, lunar::Render::MeshData& mesh) const override;
 
 	private:
 		struct Blend
@@ -42,7 +43,7 @@ namespace trok
 			std::array<float,      BIOME_BLEND_CELLS> weights = {};
 		};
 
-		static void appendQuad(lunar::Render::MeshData& mesh, const std::array<glm::vec3, QUAD_CORNERS>& corners, const glm::vec3& origin, const glm::vec3& color);
+		static void appendQuad(lunar::Render::MeshData& mesh, const std::array<glm::vec3, QUAD_CORNERS>& corners, const glm::vec3& origin, const glm::vec3& color, float alpha = 1.f);
 
 		glm::vec3 baseEdge(const RegionContext& context, const glm::vec3& top, const glm::vec3& outward) const;
 		Blend     gatherBlend(const RegionContext& context, double x, double z)             const;
