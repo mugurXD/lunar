@@ -22,14 +22,12 @@
 #	define APP_VER_PATCH 1
 #endif
 
-#ifdef WIN32
-#	if defined(LUNAR_DLL) && defined(LUNAR_LIBRARY_EXPORT)
-#		define LUNAR_API __declspec(dllexport)
-#	elif defined(LUNAR_DLL)
-#		define LUNAR_API __declspec(dllimport)
-#	else
-#		define LUNAR_API
-#	endif
+#if defined(_WIN32) && defined(LUNAR_DLL) && defined(LUNAR_LIBRARY_EXPORT)
+#	define LUNAR_API __declspec(dllexport)
+#elif defined(_WIN32) && defined(LUNAR_DLL)
+#	define LUNAR_API __declspec(dllimport)
+#else
+#	define LUNAR_API
 #endif
 
 #ifndef NDEBUG
