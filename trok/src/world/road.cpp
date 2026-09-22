@@ -1,4 +1,5 @@
 #include <trok/world/road.hpp>
+#include <trok/geometry.hpp>
 #include <trok/json_math.hpp>
 
 #include <lunar/file/json_file.hpp>
@@ -37,14 +38,6 @@ namespace trok
 			return std::max(road_class.maxGradingWidth, FlatWidth(road_class));
 		}
 
-		float DistanceToSegment(const glm::vec2& point, const glm::vec2& from, const glm::vec2& to, float& amount)
-		{
-			const glm::vec2 direction = to - from;
-			const float     length    = glm::dot(direction, direction);
-
-			amount = length > 0.f ? std::clamp(glm::dot(point - from, direction) / length, 0.f, 1.f) : 0.f;
-			return glm::distance(point, from + direction * amount);
-		}
 	}
 
 	float RoadClass::halfWidth() const
@@ -109,13 +102,32 @@ namespace trok
 	}
 
 	RoadNetwork::RoadNetwork(std::vector<glm::vec3> centreline, RoadClass road_class) noexcept
-		: points(std::move(centreline)),
-		roadClass(std::move(road_class))
+		: RoadNetwork(std::vector<std::vector<glm::vec3>> { std::move(centreline) }, std::move(road_class))
 	{
+	}
+
+	RoadNetwork::RoadNetwork(std::vector<std::vector<glm::vec3>> centrelines, RoadClass road_class) noexcept
+		: roadClass(std::move(road_class))
+	{
+		for (const std::vector<glm::vec3>& road : centrelines)
+		{
+			roadStarts.push_back(static_cast<uint32_t>(points.size()));
+			for (const glm::vec3& point : road)
+			{
+				roadOf.push_back(static_cast<uint32_t>(roadStarts.size() - 1));
+				points.push_back(point);
+			}
+		}
+
+		roadStarts.push_back(static_cast<uint32_t>(points.size()));
+
 		const float reach = GradingReach(roadClass);
 
 		for (uint32_t segment = 0; segment + 1 < points.size(); segment++)
 		{
+			if (isRoadEnd(segment))
+				continue;
+
 			const glm::vec3& from    = points[segment];
 			const glm::vec3& to      = points[segment + 1];
 			const Cell       minimum = CellAt(std::min(from.x, to.x) - reach, std::min(from.z, to.z) - reach);
@@ -125,6 +137,26 @@ namespace trok
 				for (int32_t x = minimum.x; x <= maximum.x; x++)
 					cells[{ x, z }].push_back(segment);
 		}
+	}
+
+	bool RoadNetwork::isRoadStart(size_t point) const
+	{
+		return point == roadStarts[roadOf[point]];
+	}
+
+	bool RoadNetwork::isRoadEnd(size_t point) const
+	{
+		return point + 1 == roadStarts[roadOf[point] + 1];
+	}
+
+	std::span<const glm::vec3> RoadNetwork::getRoad(size_t road) const
+	{
+		return std::span(points).subspan(roadStarts[road], roadStarts[road + 1] - roadStarts[road]);
+	}
+
+	size_t RoadNetwork::getRoadCount() const
+	{
+		return roadStarts.empty() ? 0 : roadStarts.size() - 1;
 	}
 
 	float RoadNetwork::gradedHeight(double x, double z, float terrain_height) const
@@ -148,8 +180,10 @@ namespace trok
 
 	glm::vec3 RoadNetwork::sideAt(size_t point) const
 	{
-		const glm::vec3 before = Perpendicular(points[point == 0 ? point : point - 1], points[point == 0 ? point + 1 : point]);
-		const glm::vec3 after  = Perpendicular(points[point + 1 < points.size() ? point : point - 1], points[point + 1 < points.size() ? point + 1 : point]);
+		const bool      first  = isRoadStart(point);
+		const bool      last   = isRoadEnd(point);
+		const glm::vec3 before = Perpendicular(points[first ? point : point - 1], points[first ? point + 1 : point]);
+		const glm::vec3 after  = Perpendicular(points[last ? point - 1 : point], points[last ? point : point + 1]);
 		const glm::vec3 mitre  = glm::normalize(before + after);
 
 		return mitre * (roadClass.halfWidth() / std::max(glm::dot(mitre, after), MIN_MITRE_SCALE));

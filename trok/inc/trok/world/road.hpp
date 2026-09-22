@@ -42,12 +42,15 @@ namespace trok
 	class RoadNetwork
 	{
 	public:
-		RoadNetwork(std::vector<glm::vec3> centreline, RoadClass road_class) noexcept;
+		RoadNetwork(std::vector<glm::vec3> centreline, RoadClass road_class)                noexcept;
+		RoadNetwork(std::vector<std::vector<glm::vec3>> centrelines, RoadClass road_class) noexcept;
 
 		float                      gradedHeight(double x, double z, float terrain_height) const;
 		glm::vec3                  sideAt(size_t point)                                   const;
 		std::vector<uint32_t>      segmentsWithin(const glm::vec2& minimum, const glm::vec2& maximum) const;
 		std::span<const glm::vec3> getCentreline()                                        const;
+		std::span<const glm::vec3> getRoad(size_t road)                                   const;
+		size_t                     getRoadCount()                                         const;
 		const RoadClass&           getRoadClass()                                         const;
 
 	private:
@@ -61,8 +64,12 @@ namespace trok
 		};
 
 		Nearest nearestPoint(double x, double z) const;
+		bool    isRoadStart(size_t point)        const;
+		bool    isRoadEnd(size_t point)          const;
 
 		std::vector<glm::vec3>                                            points;
+		std::vector<uint32_t>                                             roadOf;
+		std::vector<uint32_t>                                             roadStarts;
 		RoadClass                                                         roadClass;
 		std::unordered_map<Cell, std::vector<uint32_t>, lunar::World::GridCoordHash> cells;
 	};
