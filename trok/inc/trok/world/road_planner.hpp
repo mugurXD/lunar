@@ -24,7 +24,7 @@ namespace trok
 		int    profilePasses       = 24;
 		float  groundWeight        = 0.35f;
 		float  searchMargin        = 600.f;
-		size_t maxNodes            = 400000;
+		size_t maxNodes            = 1500000;
 	};
 
 	std::optional<std::vector<glm::vec3>> PlanRoad(const glm::vec2&           start,
