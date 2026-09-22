@@ -41,6 +41,7 @@ namespace lunar::World
 			GameObject         object         = nullptr;
 			Render::MeshHandle mesh           = {};
 			Render::MeshHandle decorationMesh = {};
+			Render::MeshHandle waterMesh      = {};
 			Render::MeshData   decoration     = {};
 			Heightmap          heightmap      = {};
 		};

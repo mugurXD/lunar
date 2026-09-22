@@ -118,7 +118,8 @@ namespace lunar::Render
 		const std::vector<char> fragment_shader = LoadShader("mesh.frag");
 		const Format            color_format    = swapchain->getFormat();
 
-		meshPipeline = device.createGraphicsPipeline({
+		const GraphicsPipelineDesc mesh_desc =
+		{
 			.vertexShader   = std::as_bytes(std::span(vertex_shader)),
 			.fragmentShader = std::as_bytes(std::span(fragment_shader)),
 			.colorFormats   = std::span(&color_format, 1),
@@ -128,12 +129,21 @@ namespace lunar::Render
 			.depthTest      = true,
 			.depthWrite     = true,
 			.depthCompare   = REVERSE_Z_DEPTH_COMPARE
-		});
+		};
+
+		GraphicsPipelineDesc translucent_desc = mesh_desc;
+		translucent_desc.cullMode   = CullMode::eNone;
+		translucent_desc.depthWrite = false;
+		translucent_desc.blendMode  = BlendMode::eAlpha;
+
+		meshPipeline        = device.createGraphicsPipeline(mesh_desc);
+		translucentPipeline = device.createGraphicsPipeline(translucent_desc);
 	}
 
 	Renderer::~Renderer() noexcept
 	{
 		device.destroyImage(depthImage);
+		device.destroyPipeline(translucentPipeline);
 		device.destroyPipeline(meshPipeline);
 	}
 
@@ -208,7 +218,12 @@ namespace lunar::Render
 			const SceneData scene_data    = BuildSceneData(scene, *camera, extent);
 			const uint64_t  scene_address = frame.writeTransient(scene_data);
 			if (scene_address != 0)
-				drawMeshes(frame, scene, scene_address, Frustum(scene_data.viewProjection));
+			{
+				const Frustum frustum(scene_data.viewProjection);
+
+				drawMeshes(frame, scene, scene_address, frustum, false);
+				drawMeshes(frame, scene, scene_address, frustum, true);
+			}
 		}
 
 		commands.endRendering();
@@ -224,14 +239,14 @@ namespace lunar::Render
 		commands.endRendering();
 	}
 
-	void Renderer::drawMeshes(Frame& frame, Scene& scene, uint64_t scene_address, const Frustum& frustum)
+	void Renderer::drawMeshes(Frame& frame, Scene& scene, uint64_t scene_address, const Frustum& frustum, bool translucent)
 	{
 		CommandList& commands = frame.commandList();
-		commands.bindPipeline(meshPipeline);
+		commands.bindPipeline(translucent ? translucentPipeline : meshPipeline);
 
 		scene.forEach<MeshRenderer>([&](Entity entity, const MeshRenderer& mesh_renderer) {
 			const Mesh* mesh = meshes.get(mesh_renderer.mesh);
-			if (mesh == nullptr || !mesh_renderer.visible)
+			if (mesh == nullptr || !mesh_renderer.visible || mesh_renderer.translucent != translucent)
 				return;
 
 			const glm::mat4 model = scene.resolveWorldTransform(entity).matrix;

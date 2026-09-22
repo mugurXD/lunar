@@ -25,8 +25,9 @@ namespace lunar
 
 	struct LUNAR_API MeshRenderer
 	{
-		Render::MeshHandle mesh    = {};
-		bool               visible = true;
+		Render::MeshHandle mesh        = {};
+		bool               visible     = true;
+		bool               translucent = false;
 	};
 
 	struct LUNAR_API DirectionalLight

@@ -32,12 +32,13 @@ namespace lunar::Render
 		void resizeDepthImage(Extent2D extent);
 		void recordFrame(Frame& frame, Scene& scene, ImageHandle target, Extent2D extent);
 		void recordOverlay(Frame& frame, ImageHandle target, ImGuiLayer& ui);
-		void drawMeshes(Frame& frame, Scene& scene, uint64_t scene_address, const Frustum& frustum);
+		void drawMeshes(Frame& frame, Scene& scene, uint64_t scene_address, const Frustum& frustum, bool translucent);
 
 		RenderDevice&  device;
 		Swapchain*     swapchain    = nullptr;
 		MeshRegistry   meshes;
 		MeshHandle     cubeMesh     = {};
+		PipelineHandle translucentPipeline = {};
 		PipelineHandle meshPipeline = {};
 		ImageHandle    depthImage   = {};
 	};

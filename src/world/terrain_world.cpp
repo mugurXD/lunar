@@ -13,6 +13,7 @@ namespace lunar::World
 	{
 		constexpr std::string_view CHUNK_NAME_FORMAT      = "TerrainChunk {},{}";
 		constexpr std::string_view DECORATION_NAME_FORMAT = "TerrainDecoration {},{}";
+		constexpr std::string_view WATER_NAME_FORMAT      = "TerrainWater {},{}";
 	}
 
 	TerrainWorld::TerrainWorld(Scene&                scene,
@@ -145,6 +146,14 @@ namespace lunar::World
 			decoration->addComponent<MeshRenderer>(chunk.decorationMesh);
 		}
 
+		if (!data.water.vertices.empty())
+		{
+			chunk.waterMesh = meshes.create(data.water);
+
+			GameObject water = chunk.object->createChildObject(std::format(WATER_NAME_FORMAT, coord.x, coord.z));
+			water->addComponent<MeshRenderer>(chunk.waterMesh, true, true);
+		}
+
 		pendingCount--;
 	}
 
@@ -161,6 +170,9 @@ namespace lunar::World
 
 		if (chunk.decorationMesh != Render::MeshHandle {})
 			meshes.destroy(chunk.decorationMesh);
+
+		if (chunk.waterMesh != Render::MeshHandle {})
+			meshes.destroy(chunk.waterMesh);
 
 		GameObject object = chunk.object;
 		object.destroy();

@@ -29,6 +29,10 @@ namespace lunar::World
 		virtual void buildDecorations(const RegionContext<Plan>&, ChunkCoord, const WorldSettings&, Render::MeshData&) const
 		{
 		}
+
+		virtual void buildWater(const RegionContext<Plan>&, ChunkCoord, const WorldSettings&, Render::MeshData&) const
+		{
+		}
 	};
 
 	template<typename Plan>
@@ -55,7 +59,10 @@ namespace lunar::World
 		Render::MeshData decoration;
 		generator.buildDecorations(context, coord, settings, decoration);
 
-		return ChunkData { std::move(*heightmap), std::move(mesh), std::move(decoration) };
+		Render::MeshData water;
+		generator.buildWater(context, coord, settings, water);
+
+		return ChunkData { std::move(*heightmap), std::move(mesh), std::move(decoration), std::move(water) };
 	}
 
 	template<IsJsonSerializable Plan>

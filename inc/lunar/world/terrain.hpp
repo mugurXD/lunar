@@ -36,6 +36,7 @@ namespace lunar::World
 		Heightmap        heightmap  = {};
 		Render::MeshData mesh       = {};
 		Render::MeshData decoration = {};
+		Render::MeshData water      = {};
 	};
 
 	using ChunkWork = std::move_only_function<ChunkData()>;
