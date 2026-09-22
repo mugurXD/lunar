@@ -2,10 +2,12 @@
 #include <trok/json_math.hpp>
 
 #include <lunar/core/scene.hpp>
+#include <lunar/physics/conversions.hpp>
 #include <lunar/file/json_file.hpp>
 #include <lunar/render/components.hpp>
 
 #include <algorithm>
+#include <cmath>
 
 namespace trok
 {
@@ -13,6 +15,9 @@ namespace trok
 	{
 		constexpr uint32_t TRUCK_FORMAT_VERSION = 1;
 		constexpr float    HALF                 = 0.5f;
+
+		const glm::vec3    CHASSIS_FORWARD      = { 0.f, 0.f, -1.f };
+		const glm::vec3    CHASSIS_UP           = { 0.f, 1.f, 0.f };
 
 		nlohmann::json SerializeWheel(const lunar::Physics::WheelSettings& wheel)
 		{
@@ -231,6 +236,20 @@ namespace trok
 		lunar::Physics::RigidBody& body = *chassis->getComponent<lunar::Physics::RigidBody>();
 		if (body.getBody().isActive())
 			vehicle.update(body, input, delta_time);
+	}
+
+	void Truck::recover(const glm::vec3& position)
+	{
+		lunar::Physics::RigidBody& body    = *chassis->getComponent<lunar::Physics::RigidBody>();
+		const glm::vec3            forward = getTransform().rotation * CHASSIS_FORWARD;
+		const glm::quat            upright = glm::angleAxis(std::atan2(forward.x, -forward.z), CHASSIS_UP);
+
+		body.getBody().setTransform(rp3d::Transform(lunar::Physics::ToPhysics(position), lunar::Physics::ToPhysics(upright)));
+		body.getBody().setLinearVelocity(rp3d::Vector3::zero());
+		body.getBody().setAngularVelocity(rp3d::Vector3::zero());
+
+		body.capturePose();
+		body.capturePose();
 	}
 
 	void Truck::setSimulated(bool active)
