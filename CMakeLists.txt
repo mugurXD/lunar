@@ -5,18 +5,19 @@ message("-- lunar: Version ${lunar_VERSION_MAJOR}.${lunar_VERSION_MINOR}.${lunar
 
 set(LUNAR_BUILD_EXAMPLE ON)
 set(LUNAR_UNIT_TESTS ON)
+set(LUNAR_ADD_INSTALL_PATHS ON)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if(LUNAR_ADD_INSTALL_PATHS)
-    list(APPEND CMAKE_PREFIX_PATH 
+    list(APPEND CMAKE_PREFIX_PATH
         "deps/glm/install"
         "deps/glfw/install"
         "deps/fastgltf/install"
         "deps/nlohmann-json/install"
-        "deps/reactphysics3d/install",
-        "deps/googletest/install",
+        "deps/reactphysics3d/install"
+        "deps/googletest/install"
         "deps/vk-bootstrap/install"
     )
 endif()
@@ -28,7 +29,7 @@ find_package(fastgltf REQUIRED)
 find_package(nlohmann_json REQUIRED)
 
 file(GLOB_RECURSE LUNAR_HEADERS "inc/lunar/*.hpp")
-file(GLOB_RECURSE LUNAR_SRC 
+file(GLOB_RECURSE LUNAR_SRC
     "src/core/*.cpp"
     "src/debug/*.cpp"
     "src/utils/*.cpp"
@@ -41,8 +42,8 @@ message(${LUNAR_HEADERS})
 message(${LUNAR_SRC})
 
 add_library(lunar STATIC)
-target_sources(lunar PRIVATE 
-    ${LUNAR_SRC} 
+target_sources(lunar PRIVATE
+    ${LUNAR_SRC}
     ${LUNAR_HEADERS}
     "src/render/components.cpp"
     "src/render/window.cpp"
@@ -53,7 +54,7 @@ target_sources(lunar PRIVATE
     "src/stb_image.cpp"
 )
 
-target_compile_definitions(lunar PUBLIC LUNAR_EXPERIMENTAL) # will be removed 
+target_compile_definitions(lunar PUBLIC LUNAR_EXPERIMENTAL) # will be removed
 
 if(ON)
     message("-- lunar: Using imgui library")
@@ -137,8 +138,8 @@ add_dependencies(lunar lunar_shaders)
 if(NOT EXISTS "${CMAKE_CURRENT_LIST_DIR}/stb_image.h")
     message("-- lunar: Downloading 'stb_image.h' file")
     file(
-        DOWNLOAD 
-        https://raw.githubusercontent.com/nothings/stb/refs/heads/master/stb_image.h 
+        DOWNLOAD
+        https://raw.githubusercontent.com/nothings/stb/refs/heads/master/stb_image.h
         "${CMAKE_CURRENT_LIST_DIR}/stb_image.h"
     )
 else()
@@ -148,16 +149,16 @@ endif()
 target_sources(lunar PRIVATE "stb_image.h")
 
 target_include_directories(lunar PUBLIC inc)
-target_link_libraries(lunar PUBLIC 
+target_link_libraries(lunar PUBLIC
     nlohmann_json::nlohmann_json
-    glm::glm 
+    glm::glm
     glfw
-    fastgltf::fastgltf 
+    fastgltf::fastgltf
     ReactPhysics3D::ReactPhysics3D
 )
 
 target_compile_definitions(lunar PRIVATE LUNAR_LIBRARY_EXPORT)
-target_compile_definitions(lunar PUBLIC 
+target_compile_definitions(lunar PUBLIC
     LUNAR_VER_MAJOR=${lunar_VERSION_MAJOR}
     LUNAR_VER_MINOR=${lunar_VERSION_MINOR}
     LUNAR_VER_PATCH=${lunar_VERSION_PATCH}
