@@ -16,7 +16,7 @@ program_args = arg_parser.parse_args()
 def log(message, delay = 2, verbose = False):
     if verbose and not program_args.verbose:
         return
-    
+
     print(f"(setup.py) ------- {message}")
     time.sleep(delay)
 
@@ -29,12 +29,12 @@ def append_args(args, other = None):
 def cmake_command(args):
     command = [ "cmake" ]
     command = append_args(command, args)
-    
+
     if sys.platform.startswith('win'):
         shell = True
     else:
         shell = False
-    
+
     log(command, verbose=True)
 
     code = subprocess.check_call(command, stderr=subprocess.STDOUT, shell=shell)
@@ -49,8 +49,9 @@ class Dependency:
     def gen_args(self, args):
         self.g_args = append_args(self.g_args, args)
         return self
-    def gen_flag(self, flag):
-        self.g_args = append_args(self.g_args, f"-D{flag}")
+    def gen_flag(self, flag, platform = None):
+        if (platform and (sys.platform == platform)) or platform == None:
+            self.g_args = append_args(self.g_args, f"-D{flag}")
         return self
     def build_args(self, args):
         self.b_args = append_args(self.b_args, args)
@@ -71,10 +72,10 @@ class Dependency:
         return f"{self.dir()}/install"
     def is_built(self):
         return os.path.exists(self.install_dir()) or os.path.exists(self.build_dir())
-    def configure(self): 
+    def configure(self):
         log(f"Configuring '{self.name}'", delay=0)
         log(f"Custom arguments: {self.g_args}")
-        
+
         args = [ "-S", self.dir(), "-B", self.build_dir() ]
         args.append(f"-DCMAKE_INSTALL_PREFIX={self.install_dir()}")
         args.append(f"-DCMAKE_DEBUG_POSTFIX=d")
@@ -117,8 +118,10 @@ dependencies = [
     Dependency('glm')
         .gen_flag('GLM_BUILD_TESTS=OFF'),
     Dependency('reactphysics3d')
-        .gen_flag('CMAKE_CXX_FLAGS_INIT=/FIchrono'),
+        .gen_flag('CMAKE_CXX_FLAGS_INIT=/FIchrono', platform = "win32")
+        .gen_flag('CMAKE_CXX_FLAGS_INIT=-include chrono', platform = "darwin"),
     Dependency('vk-bootstrap')
+        .gen_flag("VK_BOOTSTRAP_INSTALL=ON")
         .gen_flag("VK_BOOTSTRAP_TEST=OFF"),
     Dependency('googletest')
         .gen_flag("gtest_force_shared_crt=ON")
@@ -134,6 +137,7 @@ if program_args.clean:
     log("Cleaning build files...")
     for dep in dependencies:
         dep.clean()
+
 
 log(f"Building dependencies... (Release: {program_args.release})")
 for dep in dependencies:
