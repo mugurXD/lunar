@@ -4,6 +4,7 @@
 #include <lunar/world/region.hpp>
 #include <lunar/world/region_store.hpp>
 #include <lunar/world/terrain.hpp>
+#include <lunar/world/terrain_shaping.hpp>
 #include <lunar/world/world_settings.hpp>
 
 #include <glm/glm.hpp>
@@ -33,6 +34,22 @@ namespace lunar::World
 	};
 
 	template<typename Plan>
+	class TerrainShaper
+	{
+	public:
+		TerrainShaper()          noexcept = default;
+		virtual ~TerrainShaper() noexcept = default;
+
+		TerrainShaper(const TerrainShaper&)            = delete;
+		TerrainShaper& operator=(const TerrainShaper&) = delete;
+
+		virtual void declare(const RegionContext<Plan>&     context,
+		                     const glm::dvec2&              minimum,
+		                     const glm::dvec2&              maximum,
+		                     std::vector<ShapeDeclaration>& output) const = 0;
+	};
+
+	template<typename Plan>
 	class TerrainGenerator
 	{
 	public:
@@ -42,8 +59,28 @@ namespace lunar::World
 		TerrainGenerator(const TerrainGenerator&)            = delete;
 		TerrainGenerator& operator=(const TerrainGenerator&) = delete;
 
-		virtual float     sampleHeight(const RegionContext<Plan>& context, double x, double z)                                         const = 0;
+		virtual float     sampleBaseHeight(const RegionContext<Plan>& context, double x, double z)                                     const = 0;
 		virtual glm::vec3 sampleColor(const RegionContext<Plan>& context, double x, double z, float height, const glm::vec3& normal) const = 0;
+
+		float sampleHeight(const RegionContext<Plan>& context, double x, double z) const
+		{
+			const glm::dvec2 point = { x, z };
+			return ApplyShapes(gatherShapes(context, point, point), x, z, sampleBaseHeight(context, x, z));
+		}
+
+		std::vector<ShapeDeclaration> gatherShapes(const RegionContext<Plan>& context, const glm::dvec2& minimum, const glm::dvec2& maximum) const
+		{
+			std::vector<ShapeDeclaration> declarations;
+			for (const std::shared_ptr<const TerrainShaper<Plan>>& shaper : shapers)
+				shaper->declare(context, minimum, maximum, declarations);
+
+			return declarations;
+		}
+
+		void addShaper(std::shared_ptr<const TerrainShaper<Plan>> shaper)
+		{
+			shapers.push_back(std::move(shaper));
+		}
 
 		void addDresser(std::shared_ptr<const TerrainDresser<Plan>> dresser)
 		{
@@ -56,6 +93,7 @@ namespace lunar::World
 		}
 
 	private:
+		std::vector<std::shared_ptr<const TerrainShaper<Plan>>>  shapers;
 		std::vector<std::shared_ptr<const TerrainDresser<Plan>>> dressers;
 	};
 
@@ -70,7 +108,12 @@ namespace lunar::World
 		std::optional<Heightmap> heightmap = use_storage ? storage.load(coord) : std::nullopt;
 		if (!heightmap.has_value())
 		{
-			heightmap = SampleHeightmap([&](double x, double z) { return generator.sampleHeight(context, x, z); }, coord, settings);
+			const glm::vec3                     origin = ChunkOrigin(coord, settings);
+			const glm::dvec2                    border = glm::dvec2(HEIGHTMAP_BORDER * settings.vertexSpacing);
+			const glm::dvec2                    corner = { origin.x, origin.z };
+			const std::vector<ShapeDeclaration> shapes = generator.gatherShapes(context, corner - border, corner + glm::dvec2(settings.getChunkSize()) + border);
+
+			heightmap = SampleHeightmap([&](double x, double z) { return ApplyShapes(shapes, x, z, generator.sampleBaseHeight(context, x, z)); }, coord, settings);
 
 			if (use_storage)
 				storage.save(coord, *heightmap);
