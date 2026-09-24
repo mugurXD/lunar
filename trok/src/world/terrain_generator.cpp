@@ -46,7 +46,7 @@ namespace trok
 
 	TerrainGenerator::~TerrainGenerator() noexcept = default;
 
-	float TerrainGenerator::sampleHeight(const RegionContext& context, double x, double z) const
+	float TerrainGenerator::sampleBaseHeight(const RegionContext& context, double x, double z) const
 	{
 		const Blend blend = gatherBlend(context, x, z);
 
@@ -55,10 +55,8 @@ namespace trok
 			if (blend.weights[corner] > 0.f)
 				height += blend.weights[corner] * biomeHeight(blend.indices[corner], x, z);
 
-		const float        carved  = CarvedHeight(context, x, z, height);
 		const RoadNetwork* network = roads == nullptr ? nullptr : roads->get();
-
-		return network == nullptr ? carved : network->gradedHeight(x, z, carved);
+		return network == nullptr ? height : network->gradedHeight(x, z, height);
 	}
 
 	glm::vec3 TerrainGenerator::sampleColor(const RegionContext& context, double x, double z, float height, const glm::vec3& normal) const

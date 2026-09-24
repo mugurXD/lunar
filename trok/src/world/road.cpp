@@ -1,8 +1,8 @@
 #include <trok/world/road.hpp>
-#include <trok/geometry.hpp>
 #include <trok/json_math.hpp>
 
 #include <lunar/file/json_file.hpp>
+#include <lunar/utils/geometry.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -243,7 +243,7 @@ namespace trok
 			const glm::vec3& from     = points[segment];
 			const glm::vec3& to       = points[segment + 1];
 			float            amount   = 0.f;
-			const float      distance = DistanceToSegment(point, { from.x, from.z }, { to.x, to.z }, amount);
+			const float      distance = lunar::DistanceToSegment(point, { from.x, from.z }, { to.x, to.z }, amount);
 
 			if (distance >= nearest.distance)
 				continue;

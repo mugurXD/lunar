@@ -158,14 +158,6 @@ namespace trok
 	{
 	}
 
-	float CarvedHeight(const RegionContext& context, double x, double z, float terrain_height)
-	{
-		const lunar::World::ChunkCoord chunk = lunar::World::ChunkAt(x, z, context.getSettings());
-		const RegionPlan*              plan  = context.findRegion(lunar::World::RegionAt(chunk, context.getSettings()));
-
-		return plan == nullptr ? terrain_height : CarvedHeight(plan->rivers, x, z, terrain_height);
-	}
-
 	RegionPlan RegionPlanner::plan(lunar::World::RegionCoord coord, const lunar::World::WorldSettings& settings) const
 	{
 		const uint32_t cells_per_side = BiomeCellsPerSide(settings);

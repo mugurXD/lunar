@@ -1,5 +1,4 @@
 #include <trok/world/river.hpp>
-#include <trok/geometry.hpp>
 #include <trok/json_math.hpp>
 #include <trok/world/stable_hash.hpp>
 
@@ -192,56 +191,25 @@ namespace trok
 		return clipped;
 	}
 
-	float CarvedHeight(const std::vector<River>& rivers, double x, double z, float terrain_height)
+	std::vector<lunar::World::ShapeDeclaration> RiverShapes(const River& river)
 	{
-		const glm::dvec2 point   = { x, z };
-		const double     reach   = RiverReach();
-		float            carved  = terrain_height;
+		lunar::World::ShapeDeclaration valley;
+		lunar::World::ShapeDeclaration channel;
 
-		for (const River& river : rivers)
+		for (const RiverPoint& point : river.points)
 		{
-			if (point.x < river.minimum.x - reach || point.x > river.maximum.x + reach ||
-			    point.y < river.minimum.y - reach || point.y > river.maximum.y + reach)
-				continue;
+			const double depth     = RiverDepth(point.width);
+			const double waterline = point.width * HALF;
+			const double floor     = std::max(waterline - depth * RIVER_BANK_SPREAD, 0.0);
+			const double basin     = RiverValleyWidth(point.width);
 
-			for (size_t index = 0; index + 1 < river.points.size(); index++)
-			{
-				const RiverPoint& from  = river.points[index];
-				const RiverPoint& to    = river.points[index + 1];
-				const double      widest = RiverValleyWidth(std::max(from.width, to.width));
+			valley.points.push_back({ .position = point.position, .height = point.bed + depth, .core = waterline, .blend = basin });
+			channel.points.push_back({ .position = point.position, .height = point.bed, .core = floor, .blend = waterline - floor });
 
-				if (point.x < std::min(from.position.x, to.position.x) - widest || point.x > std::max(from.position.x, to.position.x) + widest ||
-				    point.y < std::min(from.position.y, to.position.y) - widest || point.y > std::max(from.position.y, to.position.y) + widest)
-					continue;
-
-				double       amount   = 0.0;
-				const double distance = DistanceToSegment(point, from.position, to.position, amount);
-				const double width    = glm::mix(from.width, to.width, amount);
-				const double basin    = RiverValleyWidth(width);
-				if (distance >= basin)
-					continue;
-
-				const double bed     = glm::mix(from.bed, to.bed, amount);
-				const double depth   = RiverDepth(width);
-				const double surface = bed + depth;
-				const double valley  = glm::mix(surface, static_cast<double>(terrain_height), glm::smoothstep(0.0, 1.0, distance / basin));
-
-				const double waterline = width * HALF;
-				if (distance >= waterline)
-				{
-					carved = std::min(carved, static_cast<float>(valley));
-					continue;
-				}
-
-				const double floor   = std::max(waterline - depth * RIVER_BANK_SPREAD, 0.0);
-				const double bank    = waterline - floor;
-				const double across  = bank > 0.0 ? std::clamp((distance - floor) / bank, 0.0, 1.0) : 0.0;
-				const double channel = glm::mix(bed, surface, glm::smoothstep(0.0, 1.0, across));
-
-				carved = std::min(carved, static_cast<float>(std::min(channel, valley)));
-			}
+			valley.reach  = std::max(valley.reach, waterline + basin);
+			channel.reach = std::max(channel.reach, waterline);
 		}
 
-		return carved;
+		return { std::move(valley), std::move(channel) };
 	}
 }

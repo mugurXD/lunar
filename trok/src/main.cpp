@@ -5,6 +5,7 @@
 #include <trok/world/climate.hpp>
 #include <trok/world/elevation.hpp>
 #include <trok/world/region_plan.hpp>
+#include <trok/world/shapers.hpp>
 #include <trok/world/dressers.hpp>
 #include <trok/world/terrain_generator.hpp>
 #include <trok/world/world_map.hpp>
@@ -358,6 +359,8 @@ int main()
 	const auto                 road_layer        = std::make_shared<trok::RoadLayer>();
 	const auto                 terrain_generator = std::make_shared<trok::TerrainGenerator>(biomes, climate, elevation, world_storage->getInfo().seed, road_layer);
 	const auto                 region_planner    = std::make_shared<const trok::RegionPlanner>(world_storage->getInfo().generatorVersion, world_storage->getInfo().seed, biomes, climate, elevation);
+
+	terrain_generator->addShaper(std::make_shared<const trok::RiverShaper>());
 
 	terrain_generator->addDresser(std::make_shared<const trok::SeaDresser>(elevation.seaLevel));
 	terrain_generator->addDresser(std::make_shared<const trok::RiverWaterDresser>());

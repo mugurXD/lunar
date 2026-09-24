@@ -54,7 +54,6 @@ namespace trok
 	uint32_t                  BiomeCellsPerSide(const lunar::World::WorldSettings& settings);
 	double                    BiomeCellSize(const lunar::World::WorldSettings& settings);
 	std::optional<BiomeIndex> BiomeAt(const RegionContext& context, double x, double z);
-	float                     CarvedHeight(const RegionContext& context, double x, double z, float terrain_height);
 
 	class RegionPlanner final : public lunar::World::RegionPlanner<RegionPlan>
 	{

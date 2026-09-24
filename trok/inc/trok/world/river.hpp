@@ -2,6 +2,7 @@
 #include <trok/world/biome.hpp>
 #include <trok/world/climate.hpp>
 #include <trok/world/elevation.hpp>
+#include <lunar/world/terrain_shaping.hpp>
 
 #include <glm/glm.hpp>
 #include <nlohmann/json.hpp>
@@ -45,5 +46,5 @@ namespace trok
 	River TraceRiver(uint32_t id, const glm::dvec2& source, const ElevationCurve& elevation, const ClimateSampler& climate, const BiomeLibrary& biomes);
 	River ClipRiver(const River& river, const glm::dvec2& minimum, const glm::dvec2& maximum);
 
-	float CarvedHeight(const std::vector<River>& rivers, double x, double z, float terrain_height);
+	std::vector<lunar::World::ShapeDeclaration> RiverShapes(const River& river);
 }

@@ -30,7 +30,7 @@ namespace trok
 		~TerrainGenerator() noexcept override;
 
 		void      refresh();
-		float     sampleHeight(const RegionContext& context, double x, double z)                                       const override;
+		float     sampleBaseHeight(const RegionContext& context, double x, double z)                                   const override;
 		glm::vec3 sampleColor(const RegionContext& context, double x, double z, float height, const glm::vec3& normal) const override;
 
 	private:
