@@ -12,8 +12,7 @@ namespace lunar::World
 	namespace
 	{
 		constexpr std::string_view CHUNK_NAME_FORMAT      = "TerrainChunk {},{}";
-		constexpr std::string_view DECORATION_NAME_FORMAT = "TerrainDecoration {},{}";
-		constexpr std::string_view WATER_NAME_FORMAT      = "TerrainWater {},{}";
+		constexpr std::string_view DRESSING_NAME_FORMAT = "TerrainDressing {},{}";
 	}
 
 	TerrainWorld::TerrainWorld(Scene&                scene,
@@ -60,13 +59,13 @@ namespace lunar::World
 		return pendingCount;
 	}
 
-	const Render::MeshData* TerrainWorld::findDecoration(ChunkCoord coord) const
+	std::span<const DressedMesh> TerrainWorld::findSolids(ChunkCoord coord) const
 	{
 		const auto found = chunks.find(coord);
-		if (found == chunks.end() || found->second.decoration.vertices.empty())
-			return nullptr;
+		if (found == chunks.end())
+			return {};
 
-		return &found->second.decoration;
+		return found->second.solids;
 	}
 
 	const Heightmap* TerrainWorld::findHeightmap(ChunkCoord coord) const
@@ -137,21 +136,18 @@ namespace lunar::World
 		chunk.object->addComponent<MeshRenderer>(chunk.mesh);
 		chunk.object->addComponent<TerrainChunk>(coord);
 
-		if (!data.decoration.vertices.empty())
+		for (DressedMesh& dressed : data.dressing)
 		{
-			chunk.decorationMesh = meshes.create(data.decoration);
-			chunk.decoration     = std::move(data.decoration);
+			if (dressed.mesh.vertices.empty())
+				continue;
 
-			GameObject decoration = chunk.object->createChildObject(std::format(DECORATION_NAME_FORMAT, coord.x, coord.z));
-			decoration->addComponent<MeshRenderer>(chunk.decorationMesh);
-		}
+			chunk.dressingMeshes.push_back(meshes.create(dressed.mesh));
 
-		if (!data.water.vertices.empty())
-		{
-			chunk.waterMesh = meshes.create(data.water);
+			GameObject dressing = chunk.object->createChildObject(std::format(DRESSING_NAME_FORMAT, coord.x, coord.z));
+			dressing->addComponent<MeshRenderer>(chunk.dressingMeshes.back(), true, dressed.translucent);
 
-			GameObject water = chunk.object->createChildObject(std::format(WATER_NAME_FORMAT, coord.x, coord.z));
-			water->addComponent<MeshRenderer>(chunk.waterMesh, true, true);
+			if (dressed.colliderCategory != 0)
+				chunk.solids.push_back(std::move(dressed));
 		}
 
 		pendingCount--;
@@ -168,11 +164,8 @@ namespace lunar::World
 
 		meshes.destroy(chunk.mesh);
 
-		if (chunk.decorationMesh != Render::MeshHandle {})
-			meshes.destroy(chunk.decorationMesh);
-
-		if (chunk.waterMesh != Render::MeshHandle {})
-			meshes.destroy(chunk.waterMesh);
+		for (const Render::MeshHandle dressing : chunk.dressingMeshes)
+			meshes.destroy(dressing);
 
 		GameObject object = chunk.object;
 		object.destroy();

@@ -31,12 +31,20 @@ namespace lunar::World
 		bool operator==(const Heightmap&) const = default;
 	};
 
+	using HeightSampler = std::function<float(double, double)>;
+
+	struct LUNAR_API DressedMesh
+	{
+		Render::MeshData mesh             = {};
+		bool             translucent      = false;
+		uint16_t         colliderCategory = 0;
+	};
+
 	struct LUNAR_API ChunkData
 	{
-		Heightmap        heightmap  = {};
-		Render::MeshData mesh       = {};
-		Render::MeshData decoration = {};
-		Render::MeshData water      = {};
+		Heightmap                heightmap = {};
+		Render::MeshData         mesh      = {};
+		std::vector<DressedMesh> dressing  = {};
 	};
 
 	using ChunkWork = std::move_only_function<ChunkData()>;

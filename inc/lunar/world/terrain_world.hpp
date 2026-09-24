@@ -10,7 +10,9 @@
 #include <glm/glm.hpp>
 
 #include <cstddef>
+#include <span>
 #include <unordered_map>
+#include <vector>
 
 namespace lunar::World
 {
@@ -31,19 +33,18 @@ namespace lunar::World
 		void   reload();
 		size_t           getLoadedChunkCount()          const;
 		size_t           getPendingChunkCount()         const;
-		const Heightmap*         findHeightmap(ChunkCoord coord)  const;
-		const Render::MeshData*  findDecoration(ChunkCoord coord) const;
+		const Heightmap*             findHeightmap(ChunkCoord coord) const;
+		std::span<const DressedMesh> findSolids(ChunkCoord coord)    const;
 
 	private:
 		struct LoadedChunk
 		{
-			JobHandle          job            = {};
-			GameObject         object         = nullptr;
-			Render::MeshHandle mesh           = {};
-			Render::MeshHandle decorationMesh = {};
-			Render::MeshHandle waterMesh      = {};
-			Render::MeshData   decoration     = {};
-			Heightmap          heightmap      = {};
+			JobHandle                       job            = {};
+			GameObject                      object         = nullptr;
+			Render::MeshHandle              mesh           = {};
+			std::vector<Render::MeshHandle> dressingMeshes = {};
+			std::vector<DressedMesh>        solids         = {};
+			Heightmap                       heightmap      = {};
 		};
 
 		void unloadDistantChunks(ChunkCoord center);

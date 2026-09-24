@@ -10,9 +10,28 @@
 
 #include <memory>
 #include <optional>
+#include <span>
+#include <vector>
 
 namespace lunar::World
 {
+	template<typename Plan>
+	class TerrainDresser
+	{
+	public:
+		TerrainDresser()          noexcept = default;
+		virtual ~TerrainDresser() noexcept = default;
+
+		TerrainDresser(const TerrainDresser&)            = delete;
+		TerrainDresser& operator=(const TerrainDresser&) = delete;
+
+		virtual void dress(const RegionContext<Plan>& context,
+		                   ChunkCoord                 coord,
+		                   const WorldSettings&       settings,
+		                   const HeightSampler&       ground,
+		                   std::vector<DressedMesh>&  output) const = 0;
+	};
+
 	template<typename Plan>
 	class TerrainGenerator
 	{
@@ -26,13 +45,18 @@ namespace lunar::World
 		virtual float     sampleHeight(const RegionContext<Plan>& context, double x, double z)                                         const = 0;
 		virtual glm::vec3 sampleColor(const RegionContext<Plan>& context, double x, double z, float height, const glm::vec3& normal) const = 0;
 
-		virtual void buildDecorations(const RegionContext<Plan>&, ChunkCoord, const WorldSettings&, Render::MeshData&) const
+		void addDresser(std::shared_ptr<const TerrainDresser<Plan>> dresser)
 		{
+			dressers.push_back(std::move(dresser));
 		}
 
-		virtual void buildWater(const RegionContext<Plan>&, ChunkCoord, const WorldSettings&, Render::MeshData&) const
+		std::span<const std::shared_ptr<const TerrainDresser<Plan>>> getDressers() const
 		{
+			return dressers;
 		}
+
+	private:
+		std::vector<std::shared_ptr<const TerrainDresser<Plan>>> dressers;
 	};
 
 	template<typename Plan>
@@ -56,13 +80,12 @@ namespace lunar::World
 			return generator.sampleColor(context, x, z, height, normal);
 		}, coord, settings);
 
-		Render::MeshData decoration;
-		generator.buildDecorations(context, coord, settings, decoration);
+		const HeightSampler      ground = [&](double x, double z) { return generator.sampleHeight(context, x, z); };
+		std::vector<DressedMesh> dressing;
+		for (const std::shared_ptr<const TerrainDresser<Plan>>& dresser : generator.getDressers())
+			dresser->dress(context, coord, settings, ground, dressing);
 
-		Render::MeshData water;
-		generator.buildWater(context, coord, settings, water);
-
-		return ChunkData { std::move(*heightmap), std::move(mesh), std::move(decoration), std::move(water) };
+		return ChunkData { std::move(*heightmap), std::move(mesh), std::move(dressing) };
 	}
 
 	template<IsJsonSerializable Plan>
