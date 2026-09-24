@@ -45,7 +45,8 @@
                 "heightOffset": 0.0,
                 "octaves": 3,
                 "ridged": false
-            }
+            },
+            "habitable": true
         },
         {
             "climate": {
@@ -92,7 +93,8 @@
                 "heightOffset": 3.0,
                 "octaves": 4,
                 "ridged": false
-            }
+            },
+            "habitable": true
         },
         {
             "climate": {
@@ -139,7 +141,8 @@
                 "heightOffset": -2.0,
                 "octaves": 3,
                 "ridged": false
-            }
+            },
+            "habitable": true
         },
         {
             "climate": {
@@ -186,7 +189,8 @@
                 "heightOffset": 0.0,
                 "octaves": 3,
                 "ridged": false
-            }
+            },
+            "habitable": true
         },
         {
             "climate": {
@@ -233,7 +237,8 @@
                 "heightOffset": 12.0,
                 "octaves": 4,
                 "ridged": false
-            }
+            },
+            "habitable": true
         },
         {
             "climate": {
@@ -280,7 +285,8 @@
                 "heightOffset": 20.0,
                 "octaves": 4,
                 "ridged": false
-            }
+            },
+            "habitable": true
         },
         {
             "climate": {
@@ -327,7 +333,8 @@
                 "heightOffset": 200.0,
                 "octaves": 4,
                 "ridged": true
-            }
+            },
+            "habitable": false
         },
         {
             "climate": {
@@ -374,7 +381,8 @@
                 "heightOffset": 25.0,
                 "octaves": 5,
                 "ridged": true
-            }
+            },
+            "habitable": false
         }
     ],
     "default": "core:plains",

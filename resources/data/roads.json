@@ -5,7 +5,7 @@
     "laneWidth": 8,
     "shoulderWidth": 1.0,
     "minCurveRadius": 60.0,
-    "maxGrade": 0.15,
+    "maxGrade": 0.05,
     "slopePenalty": 8.0,
     "turnPenalty": 0.15,
     "embankmentSpread": 0.0,
