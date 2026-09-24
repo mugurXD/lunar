@@ -253,4 +253,14 @@ namespace trok
 
 		return nearest;
 	}
+
+	void RoadLayer::set(std::shared_ptr<const RoadNetwork> replacement)
+	{
+		network = std::move(replacement);
+	}
+
+	const RoadNetwork* RoadLayer::get() const
+	{
+		return network.get();
+	}
 }

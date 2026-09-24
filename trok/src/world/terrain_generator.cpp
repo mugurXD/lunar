@@ -5,19 +5,12 @@
 
 #include <algorithm>
 #include <cmath>
-#include <limits>
 
 namespace trok
 {
 	namespace
 	{
-		constexpr double CELL_CENTER     = 0.5;
-		constexpr float  EMBANKMENT_SINK = 0.1f;
-		constexpr float  EMBANKMENT_STEP = 1.f;
-		constexpr float  WATER_ALPHA     = 0.55f;
-		constexpr uint32_t OCEAN_PROBES  = 4;
-
-		const glm::vec3  WATER_COLOR     = { 0.13f, 0.28f, 0.42f };
+		constexpr double CELL_CENTER = 0.5;
 
 		std::unique_ptr<FastNoiseLite> MakeNoise(int32_t seed, const BiomeTerrain& terrain)
 		{
@@ -33,123 +26,15 @@ namespace trok
 	TerrainGenerator::TerrainGenerator(std::shared_ptr<const BiomeLibrary>   biomes,
 	                                   std::shared_ptr<const ClimateSampler> climate,
 	                                   ElevationCurve                        elevation,
-	                                   int32_t                               seed) noexcept
+	                                   int32_t                               seed,
+	                                   std::shared_ptr<const RoadLayer>      roads) noexcept
 		: biomes(std::move(biomes)),
 		seed(seed),
 		climate(std::move(climate)),
+		roads(std::move(roads)),
 		elevation(std::move(elevation))
 	{
 		refresh();
-	}
-
-	void TerrainGenerator::setRoads(std::shared_ptr<const RoadNetwork> network)
-	{
-		roads = std::move(network);
-	}
-
-	void TerrainGenerator::appendQuad(lunar::Render::MeshData& mesh, const std::array<glm::vec3, QUAD_CORNERS>& corners, const glm::vec3& origin, const glm::vec3& color, float alpha)
-	{
-		const auto      first  = static_cast<uint32_t>(mesh.vertices.size());
-		const glm::vec3 facing = glm::normalize(glm::cross(corners[2] - corners[0], corners[1] - corners[0]));
-		const glm::vec3 normal = facing.y < 0.f ? -facing : facing;
-
-		for (const glm::vec3& corner : corners)
-			mesh.vertices.push_back({ .position = corner - origin, .normal = normal, .color = glm::vec4(color, alpha) });
-
-		for (const uint32_t index : { 0u, 2u, 1u, 1u, 2u, 3u })
-			mesh.indices.push_back(first + index);
-	}
-
-	glm::vec3 TerrainGenerator::baseEdge(const RegionContext& context, const glm::vec3& top, const glm::vec3& outward) const
-	{
-		const RoadClass& road_class = roads->getRoadClass();
-		const glm::vec3  direction  = outward / road_class.halfWidth();
-		const float      spread     = road_class.embankmentSpread;
-		const float      widest     = road_class.maxGradingWidth - road_class.halfWidth();
-		const float      deepest    = std::max(spread > 0.f ? std::min(road_class.maxFillHeight, widest / spread) : road_class.maxFillHeight,
-		                                       road_class.edgeDepth);
-
-		float drop      = road_class.edgeDepth;
-		float closest   = std::numeric_limits<float>::max();
-		float best_drop = drop;
-
-		while (true)
-		{
-			const glm::vec3 point = top + direction * (drop * spread);
-			const float     gap   = top.y - drop - sampleHeight(context, point.x, point.z);
-
-			if (gap <= 0.f)
-				return { point.x, top.y - drop - EMBANKMENT_SINK, point.z };
-
-			if (gap < closest)
-			{
-				closest   = gap;
-				best_drop = drop;
-			}
-
-			if (drop >= deepest)
-				break;
-
-			drop = std::min(drop + EMBANKMENT_STEP, deepest);
-		}
-
-		const glm::vec3 base = top + direction * (best_drop * spread);
-		return { base.x, sampleHeight(context, base.x, base.z) - EMBANKMENT_SINK, base.z };
-	}
-
-	void TerrainGenerator::buildDecorations(const RegionContext& context, lunar::World::ChunkCoord coord, const lunar::World::WorldSettings& settings, lunar::Render::MeshData& mesh) const
-	{
-		if (roads == nullptr)
-			return;
-
-		const glm::vec3                  origin     = lunar::World::ChunkOrigin(coord, settings);
-		const glm::vec2                  minimum    = { origin.x, origin.z };
-		const glm::vec2                  maximum    = minimum + glm::vec2(settings.getChunkSize());
-		const RoadClass&                 road_class = roads->getRoadClass();
-		const std::span<const glm::vec3> centreline = roads->getCentreline();
-		const glm::vec3                  lift       = { 0.f, road_class.surfaceOffset, 0.f };
-
-		for (const uint32_t segment : roads->segmentsWithin(minimum, maximum))
-		{
-			const glm::vec3 from_side  = roads->sideAt(segment);
-			const glm::vec3 to_side    = roads->sideAt(segment + 1);
-			const glm::vec3 from_left  = centreline[segment] + lift + from_side;
-			const glm::vec3 from_right = centreline[segment] + lift - from_side;
-			const glm::vec3 to_left    = centreline[segment + 1] + lift + to_side;
-			const glm::vec3 to_right   = centreline[segment + 1] + lift - to_side;
-
-			appendQuad(mesh, { from_left, from_right, to_left, to_right }, origin, road_class.color);
-			appendQuad(mesh, { baseEdge(context, from_left, from_side), from_left, baseEdge(context, to_left, to_side), to_left }, origin, road_class.color);
-			appendQuad(mesh, { from_right, baseEdge(context, from_right, -from_side), to_right, baseEdge(context, to_right, -to_side) }, origin, road_class.color);
-		}
-	}
-
-	void TerrainGenerator::buildWater(const RegionContext& context, lunar::World::ChunkCoord coord, const lunar::World::WorldSettings& settings, lunar::Render::MeshData& mesh) const
-	{
-		const RegionPlan* plan = context.findRegion(lunar::World::RegionAt(coord, settings));
-		if (plan == nullptr)
-			return;
-
-		const glm::vec3 origin  = lunar::World::ChunkOrigin(coord, settings);
-		const glm::vec2 minimum = { origin.x, origin.z };
-		const glm::vec2 maximum = minimum + glm::vec2(settings.getChunkSize());
-
-		const float chunk_size = settings.getChunkSize();
-		bool        submerged  = false;
-
-		for (uint32_t z = 0; z <= OCEAN_PROBES && !submerged; z++)
-			for (uint32_t x = 0; x <= OCEAN_PROBES && !submerged; x++)
-				submerged = sampleHeight(context, origin.x + chunk_size * x / OCEAN_PROBES,
-				                                  origin.z + chunk_size * z / OCEAN_PROBES) < elevation.seaLevel;
-
-		if (submerged)
-		{
-			const float sea = elevation.seaLevel;
-
-			appendQuad(mesh, { glm::vec3(origin.x, sea, origin.z),              glm::vec3(origin.x + chunk_size, sea, origin.z),
-			                   glm::vec3(origin.x, sea, origin.z + chunk_size), glm::vec3(origin.x + chunk_size, sea, origin.z + chunk_size) },
-			           origin, WATER_COLOR, WATER_ALPHA);
-		}
 	}
 
 	void TerrainGenerator::refresh()
@@ -170,8 +55,10 @@ namespace trok
 			if (blend.weights[corner] > 0.f)
 				height += blend.weights[corner] * biomeHeight(blend.indices[corner], x, z);
 
-		const float carved = CarvedHeight(context, x, z, height);
-		return roads == nullptr ? carved : roads->gradedHeight(x, z, carved);
+		const float        carved  = CarvedHeight(context, x, z, height);
+		const RoadNetwork* network = roads == nullptr ? nullptr : roads->get();
+
+		return network == nullptr ? carved : network->gradedHeight(x, z, carved);
 	}
 
 	glm::vec3 TerrainGenerator::sampleColor(const RegionContext& context, double x, double z, float height, const glm::vec3& normal) const

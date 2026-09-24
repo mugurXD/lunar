@@ -5,6 +5,7 @@
 #include <trok/world/climate.hpp>
 #include <trok/world/elevation.hpp>
 #include <trok/world/region_plan.hpp>
+#include <trok/world/dressers.hpp>
 #include <trok/world/terrain_generator.hpp>
 #include <trok/world/world_map.hpp>
 #include <trok/vehicle/chase_camera.hpp>
@@ -354,8 +355,13 @@ int main()
 	const auto                 biomes            = std::make_shared<trok::BiomeLibrary>(std::move(*loaded_biomes));
 	const auto                 climate           = std::make_shared<const trok::ClimateSampler>(world_storage->getInfo().seed);
 	const trok::ElevationCurve elevation         = std::move(*loaded_elevation);
-	const auto                 terrain_generator = std::make_shared<trok::TerrainGenerator>(biomes, climate, elevation, world_storage->getInfo().seed);
+	const auto                 road_layer        = std::make_shared<trok::RoadLayer>();
+	const auto                 terrain_generator = std::make_shared<trok::TerrainGenerator>(biomes, climate, elevation, world_storage->getInfo().seed, road_layer);
 	const auto                 region_planner    = std::make_shared<const trok::RegionPlanner>(world_storage->getInfo().generatorVersion, world_storage->getInfo().seed, biomes, climate, elevation);
+
+	terrain_generator->addDresser(std::make_shared<const trok::SeaDresser>(elevation.seaLevel));
+	terrain_generator->addDresser(std::make_shared<const trok::RiverWaterDresser>());
+	terrain_generator->addDresser(std::make_shared<const trok::RoadDresser>(road_layer));
 
 	World::RegionStore<trok::RegionPlan>       regions(engine.getJobSystem(), world_storage, region_planner, world_settings);
 	World::RegionChunkSource<trok::RegionPlan> chunk_source(regions, terrain_generator, chunk_storage, world_settings);
@@ -429,7 +435,7 @@ int main()
 
 		engine.getJobSystem().submit(
 			[planner = region_planner, generator = terrain_generator, settings = world_settings, shape = *road_class,
-			 centre = World::RegionAt(CAMERA_START_POSITION, world_settings)] {
+			 sea_level = elevation.seaLevel, centre = World::RegionAt(CAMERA_START_POSITION, world_settings)] {
 				const TownSurvey          survey = SurveyTowns(*planner, settings, centre, TOWN_SURVEY_RADIUS);
 				const trok::RegionContext context(settings, survey.regions);
 
@@ -438,7 +444,7 @@ int main()
 				{
 					const std::optional<std::vector<glm::vec3>> road = trok::PlanRoad(link.from, link.to, shape, [&](double x, double z) {
 						return generator->sampleHeight(context, x, z);
-					});
+					}, { .seaLevel = sea_level });
 
 					if (road.has_value())
 						centrelines.push_back(*road);
@@ -479,10 +485,10 @@ int main()
 			return;
 		}
 
-		terrain_generator->setRoads(nullptr);
+		road_layer->set(nullptr);
 		const std::optional<std::vector<glm::vec3>> centreline = trok::PlanRoad(*road_start, *road_end, *road_class, [&](double x, double z) {
 			return terrain_generator->sampleHeight(*context, x, z);
-		});
+		}, { .seaLevel = elevation.seaLevel });
 
 		if (!centreline.has_value())
 			return;
@@ -492,7 +498,7 @@ int main()
 			road_markers.push_back(PlaceMarker(scene, node_marker_mesh, point, NODE_MARKER_SIZE));
 
 		road_network = std::make_shared<const trok::RoadNetwork>(*centreline, *road_class);
-		terrain_generator->setRoads(road_network);
+		road_layer->set(road_network);
 		roads_planned = true;
 		regenerate_chunks();
 	};
@@ -545,7 +551,7 @@ int main()
 				engine.getJobSystem().processCompleted();
 
 				road_network = std::make_shared<const trok::RoadNetwork>(std::move(planned_roads), *road_class);
-				terrain_generator->setRoads(road_network);
+				road_layer->set(road_network);
 				roads_planned = true;
 				regenerate_chunks();
 			}

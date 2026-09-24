@@ -5,6 +5,7 @@
 #include <nlohmann/json.hpp>
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
@@ -72,5 +73,15 @@ namespace trok
 		std::vector<uint32_t>                                             roadStarts;
 		RoadClass                                                         roadClass;
 		std::unordered_map<Cell, std::vector<uint32_t>, lunar::World::GridCoordHash> cells;
+	};
+
+	class RoadLayer
+	{
+	public:
+		void               set(std::shared_ptr<const RoadNetwork> network);
+		const RoadNetwork* get() const;
+
+	private:
+		std::shared_ptr<const RoadNetwork> network;
 	};
 }

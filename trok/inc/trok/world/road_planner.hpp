@@ -1,16 +1,17 @@
 #pragma once
 #include <trok/world/road.hpp>
+#include <lunar/world/terrain.hpp>
 
 #include <glm/glm.hpp>
 
 #include <cstddef>
-#include <functional>
+#include <limits>
 #include <optional>
 #include <vector>
 
 namespace trok
 {
-	using HeightSampler = std::function<float(double, double)>;
+	using HeightSampler = lunar::World::HeightSampler;
 
 	struct RoadPlannerSettings
 	{
@@ -23,6 +24,8 @@ namespace trok
 		float  maxRefinementStep   = 2.f;
 		int    profilePasses       = 24;
 		float  groundWeight        = 0.35f;
+		float  seaLevel            = -std::numeric_limits<float>::infinity();
+		float  waterPenalty        = 5.f;
 		float  searchMargin        = 600.f;
 		size_t maxNodes            = 1500000;
 	};

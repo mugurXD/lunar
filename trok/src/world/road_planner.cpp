@@ -76,6 +76,11 @@ namespace trok
 			};
 		}
 
+		float WaterCost(float height, const RoadPlannerSettings& settings)
+		{
+			return std::max(settings.seaLevel - height, 0.f) * settings.waterPenalty;
+		}
+
 		float GradeCost(const glm::vec2& from, float from_height, const glm::vec2& to, float to_height, const RoadClass& road_class)
 		{
 			const float run = glm::distance(from, to);
@@ -120,7 +125,8 @@ namespace trok
 
 						return GradeCost(previous, previous_height, candidate, height, road_class)
 						     + GradeCost(candidate, height, next, next_height, road_class)
-						     + TurnCost(previous, candidate, next, road_class);
+						     + TurnCost(previous, candidate, next, road_class)
+						     + WaterCost(height, settings);
 					};
 
 					const glm::vec2 along_x  = { GRADIENT_EPSILON, 0.f };
@@ -289,9 +295,12 @@ namespace trok
 				if (position.x < minimum.x || position.x > maximum.x || position.y < minimum.y || position.y > maximum.y)
 					continue;
 
-				const float slope  = std::abs(sample_height(position.x, position.y) - current_height) / settings.step;
+				const float height = sample_height(position.x, position.y);
+				const float slope  = std::abs(height - current_height) / settings.step;
 				const float excess = std::max(slope - road_class.maxGrade, 0.f) / road_class.maxGrade;
-				const float cost   = current.cost + settings.step * (1.f + road_class.slopePenalty * excess * excess + road_class.turnPenalty * std::abs(static_cast<float>(turn)));
+				const float cost   = current.cost + settings.step * (1.f + WaterCost(height, settings)
+				                                                        + road_class.slopePenalty * excess * excess
+				                                                        + road_class.turnPenalty * std::abs(static_cast<float>(turn)));
 
 				const VisitedKey key   = KeyOf(position, heading, settings.step);
 				const auto       found = visited.find(key);
