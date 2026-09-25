@@ -10,8 +10,6 @@ namespace trok
 {
 	namespace
 	{
-		constexpr double CELL_CENTER = 0.5;
-
 		std::unique_ptr<FastNoiseLite> MakeNoise(int32_t seed, const BiomeTerrain& terrain)
 		{
 			auto noise = std::make_unique<FastNoiseLite>(seed);
@@ -44,63 +42,29 @@ namespace trok
 
 	TerrainGenerator::~TerrainGenerator() noexcept = default;
 
-	float TerrainGenerator::sampleBaseHeight(const RegionContext& context, double x, double z) const
+	float TerrainGenerator::sampleBaseHeight(const RegionContext&, double x, double z) const
 	{
-		const Blend blend = gatherBlend(context, x, z);
+		const Climate    climate_here = climate->sample(x, z);
+		const BiomeBlend blend        = biomes->blendAt(climate_here);
 
-		float height = elevationAt(x, z);
-		for (size_t corner = 0; corner < BIOME_BLEND_CELLS; corner++)
-			if (blend.weights[corner] > 0.f)
-				height += blend.weights[corner] * biomeHeight(blend.indices[corner], x, z);
+		float height = elevation.heightAt(climate_here.continentalness);
+		for (size_t slot = 0; slot < blend.count; slot++)
+			height += blend.weights[slot] * biomeHeight(blend.indices[slot], x, z);
 
 		return height;
 	}
 
-	glm::vec3 TerrainGenerator::sampleColor(const RegionContext& context, double x, double z, float height, const glm::vec3& normal) const
+	glm::vec3 TerrainGenerator::sampleColor(const RegionContext&, double x, double z, float height, const glm::vec3& normal) const
 	{
-		const Blend blend        = gatherBlend(context, x, z);
-		const float local_height = height - elevationAt(x, z);
+		const Climate    climate_here = climate->sample(x, z);
+		const BiomeBlend blend        = biomes->blendAt(climate_here);
+		const float      local_height = height - elevation.heightAt(climate_here.continentalness);
 
 		glm::vec3 color = {};
-		for (size_t corner = 0; corner < BIOME_BLEND_CELLS; corner++)
-			if (blend.weights[corner] > 0.f)
-				color += blend.weights[corner] * biomeColor(blend.indices[corner], local_height, normal);
+		for (size_t slot = 0; slot < blend.count; slot++)
+			color += blend.weights[slot] * biomeColor(blend.indices[slot], local_height, normal);
 
 		return color;
-	}
-
-	TerrainGenerator::Blend TerrainGenerator::gatherBlend(const RegionContext& context, double x, double z) const
-	{
-		const double cell_size  = BiomeCellSize(context.getSettings());
-		const double grid_x     = x / cell_size - CELL_CENTER;
-		const double grid_z     = z / cell_size - CELL_CENTER;
-		const double base_x     = std::floor(grid_x);
-		const double base_z     = std::floor(grid_z);
-		const float  fraction_x = static_cast<float>(grid_x - base_x);
-		const float  fraction_z = static_cast<float>(grid_z - base_z);
-
-		Blend blend = {};
-		for (size_t corner = 0; corner < BIOME_BLEND_CELLS; corner++)
-		{
-			const size_t                    offset_x = corner % 2;
-			const size_t                    offset_z = corner / 2;
-			const std::optional<BiomeIndex> biome    = BiomeAt(context, (base_x + offset_x + CELL_CENTER) * cell_size,
-			                                                            (base_z + offset_z + CELL_CENTER) * cell_size);
-
-			const BiomeIndex index  = biome.value_or(biomes->getDefault());
-			const float      weight = (offset_x == 0 ? 1.f - fraction_x : fraction_x) * (offset_z == 0 ? 1.f - fraction_z : fraction_z);
-			const auto       first  = std::ranges::find(blend.indices.begin(), blend.indices.begin() + corner, index);
-
-			blend.indices[corner] = index;
-			blend.weights[static_cast<size_t>(first - blend.indices.begin())] += weight;
-		}
-
-		return blend;
-	}
-
-	float TerrainGenerator::elevationAt(double x, double z) const
-	{
-		return elevation.heightAt(climate->sampleContinentalness(x, z));
 	}
 
 	float TerrainGenerator::biomeHeight(BiomeIndex biome, double x, double z) const

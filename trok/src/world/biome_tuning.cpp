@@ -18,6 +18,8 @@ namespace trok
 		constexpr int   MAX_OCTAVES          = 8;
 		constexpr float MIN_SLOPE            = 0.f;
 		constexpr float MAX_SLOPE            = 1.f;
+		constexpr float MIN_BLEND_WIDTH      = 0.01f;
+		constexpr float MAX_BLEND_WIDTH      = 0.5f;
 
 		struct TerrainSetting
 		{
@@ -79,6 +81,10 @@ namespace trok
 
 		if (ImGui::Begin(WINDOW_TITLE, nullptr, ImGuiWindowFlags_AlwaysAutoResize))
 		{
+			float blend_width = biomes->getBlendWidth();
+			if (ImGui::SliderFloat("Blend width", &blend_width, MIN_BLEND_WIDTH, MAX_BLEND_WIDTH, SLIDER_FORMAT))
+				biomes->setBlendWidth(blend_width);
+
 			for (size_t index = 0; index < biomes->getBiomes().size(); index++)
 				drawBiome(static_cast<BiomeIndex>(index));
 

@@ -4,6 +4,8 @@
 #include <lunar/file/json_file.hpp>
 
 #include <glm/glm.hpp>
+
+#include <array>
 #include <nlohmann/json.hpp>
 
 #include <cstddef>
@@ -75,9 +77,20 @@ namespace trok
 		static std::optional<Biome> Deserialize(const nlohmann::json& json);
 	};
 
+	constexpr size_t MAX_BLENDED_BIOMES = 4;
+
+	struct BiomeBlend
+	{
+		std::array<BiomeIndex, MAX_BLENDED_BIOMES> indices = {};
+		std::array<float,      MAX_BLENDED_BIOMES> weights = {};
+		size_t                                     count   = 0;
+	};
+
 	class BiomeLibrary
 	{
 	public:
+		static constexpr float DEFAULT_BLEND_WIDTH = 0.15f;
+
 		const std::vector<Biome>& getBiomes()                                          const;
 		std::vector<std::string>  getNames()                                           const;
 		const Biome&              get(BiomeIndex index)                                const;
@@ -85,16 +98,21 @@ namespace trok
 		BiomeIndex                getDefault()                                         const;
 		std::optional<BiomeIndex> indexOf(std::string_view name)                       const;
 		BiomeIndex                select(const Climate& climate, uint64_t tie_breaker) const;
-		float                     heightOffsetAt(const Climate& climate)                  const;
+		BiomeBlend                blendAt(const Climate& climate)                      const;
+		BiomeTerrain              terrainAt(const Climate& climate)                    const;
+		float                     heightOffsetAt(const Climate& climate)               const;
+		float                     getBlendWidth()                                      const;
+		void                      setBlendWidth(float width);
 
 		bool operator==(const BiomeLibrary&) const = default;
 
-		static std::optional<BiomeLibrary> Create(std::vector<Biome> biomes, std::string_view default_biome);
+		static std::optional<BiomeLibrary> Create(std::vector<Biome> biomes, std::string_view default_biome, float blend_width = DEFAULT_BLEND_WIDTH);
 		static nlohmann::json              Serialize(const BiomeLibrary& library);
 		static std::optional<BiomeLibrary> Deserialize(const nlohmann::json& json);
 
 	private:
 		std::vector<Biome> biomes       = { Biome {} };
 		BiomeIndex         defaultBiome = 0;
+		float              blendWidth   = DEFAULT_BLEND_WIDTH;
 	};
 }

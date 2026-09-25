@@ -2,7 +2,9 @@
 #include <trok/json_math.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <iterator>
+#include <numeric>
 #include <ranges>
 #include <string_view>
 
@@ -10,8 +12,8 @@ namespace trok
 {
 	namespace
 	{
-		constexpr uint32_t BIOME_FORMAT_VERSION = 3;
-		constexpr float    BLEND_SOFTNESS       = 0.05f;
+		constexpr uint32_t BIOME_FORMAT_VERSION = 4;
+		constexpr float    MIN_BLEND_WEIGHT     = 0.01f;
 
 		constexpr std::string_view TEMPERATURE_KEY     = "temperature";
 		constexpr std::string_view MOISTURE_KEY        = "moisture";
@@ -109,6 +111,25 @@ namespace trok
 				.rockSlopeEnd   = json.at("rockSlopeEnd").get<float>()
 			};
 		}
+
+		void KeepHeaviest(BiomeBlend& blend, BiomeIndex biome, float weight)
+		{
+			if (blend.count < MAX_BLENDED_BIOMES)
+			{
+				blend.indices[blend.count] = biome;
+				blend.weights[blend.count] = weight;
+				blend.count++;
+				return;
+			}
+
+			const auto lightest = std::ranges::min_element(blend.weights);
+			if (*lightest >= weight)
+				return;
+
+			const auto slot     = static_cast<size_t>(lightest - blend.weights.begin());
+			blend.indices[slot] = biome;
+			blend.weights[slot] = weight;
+		}
 	}
 
 	float ClimateRange::distanceTo(float value) const
@@ -196,21 +217,54 @@ namespace trok
 		return static_cast<BiomeIndex>(found - biomes.begin());
 	}
 
-	float BiomeLibrary::heightOffsetAt(const Climate& climate) const
+	BiomeBlend BiomeLibrary::blendAt(const Climate& climate) const
 	{
-		float offset = 0.f;
-		float total  = 0.f;
+		const auto  distance_to = [&climate](const Biome& biome) { return biome.distanceTo(climate); };
+		const float nearest     = std::ranges::min(biomes | std::views::transform(distance_to));
 
-		for (const Biome& biome : biomes)
+		BiomeBlend blend;
+		for (size_t index = 0; index < biomes.size(); index++)
 		{
-			const float distance  = biome.distanceTo(climate);
-			const float closeness = 1.f / (distance * distance + BLEND_SOFTNESS);
-
-			offset += closeness * biome.terrain.heightOffset;
-			total  += closeness;
+			const float weight = std::exp((nearest - distance_to(biomes[index])) / (blendWidth * blendWidth)) - MIN_BLEND_WEIGHT;
+			if (weight > 0.f)
+				KeepHeaviest(blend, static_cast<BiomeIndex>(index), weight);
 		}
 
-		return total > 0.f ? offset / total : 0.f;
+		const float total = std::accumulate(blend.weights.begin(), blend.weights.begin() + blend.count, 0.f);
+		for (size_t slot = 0; slot < blend.count; slot++)
+			blend.weights[slot] /= total;
+
+		return blend;
+	}
+
+	BiomeTerrain BiomeLibrary::terrainAt(const Climate& climate) const
+	{
+		const BiomeBlend blend = blendAt(climate);
+		BiomeTerrain     terrain = { .amplitude = 0.f };
+
+		for (size_t slot = 0; slot < blend.count; slot++)
+		{
+			const BiomeTerrain& biome = biomes[blend.indices[slot]].terrain;
+			terrain.heightOffset += blend.weights[slot] * biome.heightOffset;
+			terrain.amplitude    += blend.weights[slot] * biome.amplitude;
+		}
+
+		return terrain;
+	}
+
+	float BiomeLibrary::heightOffsetAt(const Climate& climate) const
+	{
+		return terrainAt(climate).heightOffset;
+	}
+
+	float BiomeLibrary::getBlendWidth() const
+	{
+		return blendWidth;
+	}
+
+	void BiomeLibrary::setBlendWidth(float width)
+	{
+		blendWidth = width;
 	}
 
 	BiomeIndex BiomeLibrary::select(const Climate& climate, uint64_t tie_breaker) const
@@ -225,8 +279,14 @@ namespace trok
 		return static_cast<BiomeIndex>(*std::ranges::next(candidates.begin(), static_cast<std::ptrdiff_t>(tie_breaker % candidate_count)));
 	}
 
-	std::optional<BiomeLibrary> BiomeLibrary::Create(std::vector<Biome> biomes, std::string_view default_biome)
+	std::optional<BiomeLibrary> BiomeLibrary::Create(std::vector<Biome> biomes, std::string_view default_biome, float blend_width)
 	{
+		if (blend_width <= 0.f)
+		{
+			Fs::ReportMalformedJson("the biome blend width must be positive");
+			return std::nullopt;
+		}
+
 		std::vector<std::string_view> names;
 		for (const Biome& biome : biomes)
 			names.push_back(biome.name);
@@ -239,7 +299,8 @@ namespace trok
 		}
 
 		BiomeLibrary library;
-		library.biomes = std::move(biomes);
+		library.biomes     = std::move(biomes);
+		library.blendWidth = blend_width;
 
 		const std::optional<BiomeIndex> default_index = library.indexOf(default_biome);
 		if (!default_index.has_value())
@@ -262,6 +323,7 @@ namespace trok
 		{
 			{ "formatVersion", BIOME_FORMAT_VERSION },
 			{ "default",       library.get(library.defaultBiome).name },
+			{ "blendWidth",    library.blendWidth },
 			{ "biomes",        std::move(biomes) }
 		};
 	}
@@ -281,6 +343,6 @@ namespace trok
 			biomes.push_back(*biome);
 		}
 
-		return Create(std::move(biomes), json.at("default").get<std::string>());
+		return Create(std::move(biomes), json.at("default").get<std::string>(), json.at("blendWidth").get<float>());
 	}
 }

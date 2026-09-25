@@ -6,7 +6,6 @@
 
 #include <glm/glm.hpp>
 
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -16,8 +15,6 @@ class FastNoiseLite;
 
 namespace trok
 {
-	constexpr size_t BIOME_BLEND_CELLS = 4;
-
 	class TerrainGenerator final : public lunar::World::TerrainGenerator<RegionPlan>
 	{
 	public:
@@ -32,14 +29,6 @@ namespace trok
 		glm::vec3 sampleColor(const RegionContext& context, double x, double z, float height, const glm::vec3& normal) const override;
 
 	private:
-		struct Blend
-		{
-			std::array<BiomeIndex, BIOME_BLEND_CELLS> indices = {};
-			std::array<float,      BIOME_BLEND_CELLS> weights = {};
-		};
-
-		Blend     gatherBlend(const RegionContext& context, double x, double z)             const;
-		float     elevationAt(double x, double z)                                           const;
 		float     biomeHeight(BiomeIndex biome, double x, double z)                         const;
 		glm::vec3 biomeColor(BiomeIndex biome, float local_height, const glm::vec3& normal) const;
 

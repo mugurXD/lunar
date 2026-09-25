@@ -248,9 +248,9 @@ namespace trok
 		};
 
 		const auto may_flood = [&](const glm::dvec2& point) {
-			const BiomeTerrain& terrain = biome_at(point).terrain;
-			const float         lowest  = elevation.heightAt(climate->sampleContinentalness(point.x, point.y)) + terrain.heightOffset - terrain.amplitude;
-			return lowest <= elevation.seaLevel;
+			const Climate      local   = climate->sample(point.x, point.y);
+			const BiomeTerrain terrain = biomes->terrainAt(local);
+			return elevation.heightAt(local.continentalness) + terrain.heightOffset - terrain.amplitude <= elevation.seaLevel;
 		};
 
 		if (!biome_at(center).habitable || may_flood(center))
