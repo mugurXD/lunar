@@ -357,10 +357,11 @@ int main()
 	const auto                 climate           = std::make_shared<const trok::ClimateSampler>(world_storage->getInfo().seed);
 	const trok::ElevationCurve elevation         = std::move(*loaded_elevation);
 	const auto                 road_layer        = std::make_shared<trok::RoadLayer>();
-	const auto                 terrain_generator = std::make_shared<trok::TerrainGenerator>(biomes, climate, elevation, world_storage->getInfo().seed, road_layer);
+	const auto                 terrain_generator = std::make_shared<trok::TerrainGenerator>(biomes, climate, elevation, world_storage->getInfo().seed);
 	const auto                 region_planner    = std::make_shared<const trok::RegionPlanner>(world_storage->getInfo().generatorVersion, world_storage->getInfo().seed, biomes, climate, elevation);
 
 	terrain_generator->addShaper(std::make_shared<const trok::RiverShaper>());
+	terrain_generator->addShaper(std::make_shared<const trok::RoadShaper>(road_layer));
 
 	terrain_generator->addDresser(std::make_shared<const trok::SeaDresser>(elevation.seaLevel));
 	terrain_generator->addDresser(std::make_shared<const trok::RiverWaterDresser>());
@@ -446,7 +447,7 @@ int main()
 				for (const TownLink& link : survey.links)
 				{
 					const std::optional<std::vector<glm::vec3>> road = trok::PlanRoad(link.from, link.to, shape, [&](double x, double z) {
-						return generator->sampleHeight(context, x, z);
+						return generator->sampleBaseHeight(context, x, z);
 					}, { .seaLevel = sea_level });
 
 					if (road.has_value())
@@ -488,9 +489,8 @@ int main()
 			return;
 		}
 
-		road_layer->set(nullptr);
 		const std::optional<std::vector<glm::vec3>> centreline = trok::PlanRoad(*road_start, *road_end, *road_class, [&](double x, double z) {
-			return terrain_generator->sampleHeight(*context, x, z);
+			return terrain_generator->sampleBaseHeight(*context, x, z);
 		}, { .seaLevel = elevation.seaLevel });
 
 		if (!centreline.has_value())

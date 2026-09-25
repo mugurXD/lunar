@@ -2,6 +2,7 @@
 #include <lunar/utils/geometry.hpp>
 
 #include <algorithm>
+#include <limits>
 
 namespace lunar::World
 {
@@ -15,7 +16,9 @@ namespace lunar::World
 
 		float ApplyShape(const ShapeDeclaration& declaration, const glm::dvec2& point, float height)
 		{
-			double carved = height;
+			double nearest = std::numeric_limits<double>::max();
+			double amount  = 0.0;
+			size_t segment = 0;
 
 			for (size_t index = 0; index + 1 < declaration.points.size(); index++)
 			{
@@ -24,22 +27,32 @@ namespace lunar::World
 				if (OutOfReach(point, from, to, declaration.reach))
 					continue;
 
-				double       amount   = 0.0;
-				const double distance = DistanceToSegment(point, from.position, to.position, amount);
-				const double target   = glm::mix(from.height, to.height, amount);
-				if (height <= target)
-					continue;
-
-				const double core  = glm::mix(from.core, to.core, amount);
-				const double blend = std::min(glm::mix(from.blend, to.blend, amount) + (height - target) * declaration.spread, declaration.reach - core);
-				if (distance > core + std::max(blend, 0.0))
-					continue;
-
-				const double across = distance <= core || blend <= 0.0 ? 0.0 : (distance - core) / blend;
-				carved = std::min(carved, glm::mix(target, static_cast<double>(height), glm::smoothstep(0.0, 1.0, across)));
+				double       along    = 0.0;
+				const double distance = DistanceToSegment(point, from.position, to.position, along);
+				if (distance < nearest)
+				{
+					nearest = distance;
+					amount  = along;
+					segment = index;
+				}
 			}
 
-			return static_cast<float>(carved);
+			if (nearest > declaration.reach)
+				return height;
+
+			const ShapePoint& from   = declaration.points[segment];
+			const ShapePoint& to     = declaration.points[segment + 1];
+			const double      target = glm::mix(from.height, to.height, amount);
+			if (height <= target)
+				return height;
+
+			const double core  = glm::mix(from.core, to.core, amount);
+			const double blend = std::min(glm::mix(from.blend, to.blend, amount) + (height - target) * declaration.spread, declaration.reach - core);
+			if (nearest > core + std::max(blend, 0.0))
+				return height;
+
+			const double across = nearest <= core || blend <= 0.0 ? 0.0 : (nearest - core) / blend;
+			return static_cast<float>(glm::mix(target, static_cast<double>(height), glm::smoothstep(0.0, 1.0, across)));
 		}
 	}
 

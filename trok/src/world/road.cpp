@@ -12,7 +12,7 @@ namespace trok
 {
 	namespace
 	{
-		constexpr uint32_t ROAD_FORMAT_VERSION = 1;
+		constexpr uint32_t ROAD_FORMAT_VERSION = 2;
 		constexpr float    CELL_SIZE           = 64.f;
 		constexpr float    HALF                = 0.5f;
 		constexpr float    MIN_MITRE_SCALE     = 0.5f;
@@ -35,9 +35,19 @@ namespace trok
 
 		float GradingReach(const RoadClass& road_class)
 		{
-			return std::max(road_class.maxGradingWidth, FlatWidth(road_class));
+			return FlatWidth(road_class) + road_class.maxCutDepth * road_class.cutSpread;
 		}
 
+		bool Reaches(const glm::vec3& from, const glm::vec3& to, const glm::vec2& minimum, const glm::vec2& maximum, float reach)
+		{
+			return std::max(from.x, to.x) + reach >= minimum.x && std::min(from.x, to.x) - reach <= maximum.x &&
+			       std::max(from.z, to.z) + reach >= minimum.y && std::min(from.z, to.z) - reach <= maximum.y;
+		}
+
+		lunar::World::ShapePoint ShapePointOf(const glm::vec3& point, float core)
+		{
+			return { .position = { point.x, point.z }, .height = point.y, .core = core };
+		}
 	}
 
 	float RoadClass::halfWidth() const
@@ -56,12 +66,18 @@ namespace trok
 			{ "shoulderWidth",   road_class.shoulderWidth },
 			{ "minCurveRadius",  road_class.minCurveRadius },
 			{ "maxGrade",        road_class.maxGrade },
-			{ "slopePenalty",    road_class.slopePenalty },
+			{ "limitPenalty",    road_class.limitPenalty },
 			{ "turnPenalty",     road_class.turnPenalty },
-			{ "embankmentSpread", road_class.embankmentSpread },
-			{ "maxFillHeight",   road_class.maxFillHeight },
-			{ "maxGradingWidth", road_class.maxGradingWidth },
+			{ "climbCost",       road_class.climbCost },
+			{ "cutCost",         road_class.cutCost },
+			{ "fillCost",        road_class.fillCost },
+			{ "bridgeCost",      road_class.bridgeCost },
+			{ "bridgeHeight",    road_class.bridgeHeight },
+			{ "maxCutDepth",     road_class.maxCutDepth },
+			{ "cutSpread",       road_class.cutSpread },
 			{ "gradingMargin",   road_class.gradingMargin },
+			{ "pillarSpacing",   road_class.pillarSpacing },
+			{ "pillarWidth",     road_class.pillarWidth },
 			{ "surfaceOffset",   road_class.surfaceOffset },
 			{ "edgeDepth",       road_class.edgeDepth },
 			{ "color",           SerializeVec3(road_class.color) }
@@ -81,20 +97,27 @@ namespace trok
 			.shoulderWidth   = json.at("shoulderWidth").get<float>(),
 			.minCurveRadius  = json.at("minCurveRadius").get<float>(),
 			.maxGrade        = json.at("maxGrade").get<float>(),
-			.slopePenalty    = json.at("slopePenalty").get<float>(),
+			.limitPenalty    = json.at("limitPenalty").get<float>(),
 			.turnPenalty     = json.at("turnPenalty").get<float>(),
-			.embankmentSpread = json.at("embankmentSpread").get<float>(),
-			.maxGradingWidth = json.at("maxGradingWidth").get<float>(),
+			.climbCost       = json.at("climbCost").get<float>(),
+			.cutCost         = json.at("cutCost").get<float>(),
+			.fillCost        = json.at("fillCost").get<float>(),
+			.bridgeCost      = json.at("bridgeCost").get<float>(),
+			.bridgeHeight    = json.at("bridgeHeight").get<float>(),
+			.maxCutDepth     = json.at("maxCutDepth").get<float>(),
+			.cutSpread       = json.at("cutSpread").get<float>(),
 			.gradingMargin   = json.at("gradingMargin").get<float>(),
-			.maxFillHeight   = json.at("maxFillHeight").get<float>(),
+			.pillarSpacing   = json.at("pillarSpacing").get<float>(),
+			.pillarWidth     = json.at("pillarWidth").get<float>(),
 			.surfaceOffset   = json.at("surfaceOffset").get<float>(),
 			.edgeDepth       = json.at("edgeDepth").get<float>(),
 			.color           = DeserializeVec3(json.at("color"))
 		};
 
-		if (road_class.lanes <= 0 || road_class.laneWidth <= 0.f || road_class.maxGrade <= 0.f || road_class.embankmentSpread < 0.f || road_class.maxFillHeight <= 0.f)
+		if (road_class.lanes <= 0 || road_class.laneWidth <= 0.f || road_class.maxGrade <= 0.f || road_class.minCurveRadius <= 0.f ||
+		    road_class.pillarSpacing <= 0.f || road_class.maxCutDepth <= 0.f || road_class.cutSpread < 0.f)
 		{
-			Fs::ReportMalformedJson("a road class needs positive lanes, lane width, grade and fill height, and a non-negative embankment spread");
+			Fs::ReportMalformedJson("a road class needs positive lanes, lane width, grade, curve radius, cut depth and pillar spacing, and a non-negative cut spread");
 			return std::nullopt;
 		}
 
@@ -114,6 +137,7 @@ namespace trok
 			roadStarts.push_back(static_cast<uint32_t>(points.size()));
 			for (const glm::vec3& point : road)
 			{
+				distances.push_back(points.size() == roadStarts.back() ? 0.f : distances.back() + glm::distance(points.back(), point));
 				roadOf.push_back(static_cast<uint32_t>(roadStarts.size() - 1));
 				points.push_back(point);
 			}
@@ -159,23 +183,30 @@ namespace trok
 		return roadStarts.empty() ? 0 : roadStarts.size() - 1;
 	}
 
-	float RoadNetwork::gradedHeight(double x, double z, float terrain_height) const
+	std::vector<lunar::World::ShapeDeclaration> RoadNetwork::shapesReaching(const glm::vec2& minimum, const glm::vec2& maximum) const
 	{
-		const Nearest nearest = nearestPoint(x, z);
-		if (!nearest.found || terrain_height <= nearest.height)
-			return terrain_height;
+		const float core  = FlatWidth(roadClass);
+		const float reach = GradingReach(roadClass);
 
-		const float flat_width = FlatWidth(roadClass);
-		if (nearest.distance <= flat_width)
-			return nearest.height;
+		std::vector<lunar::World::ShapeDeclaration> shapes;
+		uint32_t                                    previous = 0;
 
-		const float cut           = terrain_height - nearest.height;
-		const float grading_width = std::min(flat_width + cut * roadClass.embankmentSpread, GradingReach(roadClass));
-		if (nearest.distance >= grading_width)
-			return terrain_height;
+		for (const uint32_t segment : candidatesWithin(minimum, maximum))
+		{
+			const glm::vec3& from = points[segment];
+			const glm::vec3& to   = points[segment + 1];
+			if (!Reaches(from, to, minimum, maximum, reach))
+				continue;
 
-		const float amount = (nearest.distance - flat_width) / (grading_width - flat_width);
-		return glm::mix(nearest.height, terrain_height, glm::smoothstep(0.f, 1.f, amount));
+			const bool continues = !shapes.empty() && segment == previous + 1;
+			if (!continues)
+				shapes.push_back({ .points = { ShapePointOf(from, core) }, .spread = roadClass.cutSpread, .reach = reach });
+
+			shapes.back().points.push_back(ShapePointOf(to, core));
+			previous = segment;
+		}
+
+		return shapes;
 	}
 
 	glm::vec3 RoadNetwork::sideAt(size_t point) const
@@ -189,7 +220,24 @@ namespace trok
 		return mitre * (roadClass.halfWidth() / std::max(glm::dot(mitre, after), MIN_MITRE_SCALE));
 	}
 
+	float RoadNetwork::distanceAt(size_t point) const
+	{
+		return distances[point];
+	}
+
 	std::vector<uint32_t> RoadNetwork::segmentsWithin(const glm::vec2& minimum, const glm::vec2& maximum) const
+	{
+		std::vector<uint32_t> found = candidatesWithin(minimum, maximum);
+
+		std::erase_if(found, [&](uint32_t segment) {
+			const glm::vec3 middle = (points[segment] + points[segment + 1]) * HALF;
+			return middle.x < minimum.x || middle.x >= maximum.x || middle.z < minimum.y || middle.z >= maximum.y;
+		});
+
+		return found;
+	}
+
+	std::vector<uint32_t> RoadNetwork::candidatesWithin(const glm::vec2& minimum, const glm::vec2& maximum) const
 	{
 		const Cell lowest  = CellAt(minimum.x, minimum.y);
 		const Cell highest = CellAt(maximum.x, maximum.y);
@@ -204,12 +252,7 @@ namespace trok
 				if (cell == cells.end())
 					continue;
 
-				for (const uint32_t segment : cell->second)
-				{
-					const glm::vec3 middle = (points[segment] + points[segment + 1]) * HALF;
-					if (middle.x >= minimum.x && middle.x < maximum.x && middle.z >= minimum.y && middle.z < maximum.y)
-						found.push_back(segment);
-				}
+				found.insert(found.end(), cell->second.begin(), cell->second.end());
 			}
 		}
 
@@ -227,31 +270,6 @@ namespace trok
 	const RoadClass& RoadNetwork::getRoadClass() const
 	{
 		return roadClass;
-	}
-
-	RoadNetwork::Nearest RoadNetwork::nearestPoint(double x, double z) const
-	{
-		const auto found = cells.find(CellAt(static_cast<float>(x), static_cast<float>(z)));
-		if (found == cells.end())
-			return {};
-
-		const glm::vec2 point = { static_cast<float>(x), static_cast<float>(z) };
-		Nearest         nearest = { .distance = GradingReach(roadClass) };
-
-		for (const uint32_t segment : found->second)
-		{
-			const glm::vec3& from     = points[segment];
-			const glm::vec3& to       = points[segment + 1];
-			float            amount   = 0.f;
-			const float      distance = lunar::DistanceToSegment(point, { from.x, from.z }, { to.x, to.z }, amount);
-
-			if (distance >= nearest.distance)
-				continue;
-
-			nearest = { .distance = distance, .height = glm::mix(from.y, to.y, amount), .found = true };
-		}
-
-		return nearest;
 	}
 
 	void RoadLayer::set(std::shared_ptr<const RoadNetwork> replacement)

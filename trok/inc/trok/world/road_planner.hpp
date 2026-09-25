@@ -15,19 +15,13 @@ namespace trok
 
 	struct RoadPlannerSettings
 	{
-		float  step                = 12.f;
-		int    headings            = 16;
-		float  pointSpacing        = 6.f;
-		int    refinementPasses    = 40;
-		float  smoothingWeight     = 0.25f;
-		float  terrainWeight       = 0.05f;
-		float  maxRefinementStep   = 2.f;
-		int    profilePasses       = 24;
-		float  groundWeight        = 0.35f;
-		float  seaLevel            = -std::numeric_limits<float>::infinity();
-		float  waterPenalty        = 5.f;
-		float  searchMargin        = 600.f;
-		size_t maxNodes            = 1500000;
+		int    headings        = 16;
+		float  heightStep      = 1.f;
+		float  heuristicWeight = 1.5f;
+		float  pointSpacing    = 6.f;
+		float  seaLevel        = -std::numeric_limits<float>::infinity();
+		float  searchMargin    = 600.f;
+		size_t maxNodes        = 1500000;
 	};
 
 	std::optional<std::vector<glm::vec3>> PlanRoad(const glm::vec2&           start,

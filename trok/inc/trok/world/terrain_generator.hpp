@@ -2,7 +2,6 @@
 #include <trok/world/climate.hpp>
 #include <trok/world/elevation.hpp>
 #include <trok/world/region_plan.hpp>
-#include <trok/world/road.hpp>
 #include <lunar/world/terrain_generator.hpp>
 
 #include <glm/glm.hpp>
@@ -25,8 +24,7 @@ namespace trok
 		TerrainGenerator(std::shared_ptr<const BiomeLibrary>   biomes,
 		                 std::shared_ptr<const ClimateSampler> climate,
 		                 ElevationCurve                        elevation,
-		                 int32_t                               seed,
-		                 std::shared_ptr<const RoadLayer>      roads = nullptr) noexcept;
+		                 int32_t                               seed) noexcept;
 		~TerrainGenerator() noexcept override;
 
 		void      refresh();
@@ -48,7 +46,6 @@ namespace trok
 		std::shared_ptr<const BiomeLibrary>         biomes;
 		int32_t                                     seed = 0;
 		std::shared_ptr<const ClimateSampler>       climate;
-		std::shared_ptr<const RoadLayer>            roads;
 		ElevationCurve                              elevation;
 		std::vector<std::unique_ptr<FastNoiseLite>> noises;
 	};

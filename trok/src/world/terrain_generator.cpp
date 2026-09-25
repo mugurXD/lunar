@@ -26,12 +26,10 @@ namespace trok
 	TerrainGenerator::TerrainGenerator(std::shared_ptr<const BiomeLibrary>   biomes,
 	                                   std::shared_ptr<const ClimateSampler> climate,
 	                                   ElevationCurve                        elevation,
-	                                   int32_t                               seed,
-	                                   std::shared_ptr<const RoadLayer>      roads) noexcept
+	                                   int32_t                               seed) noexcept
 		: biomes(std::move(biomes)),
 		seed(seed),
 		climate(std::move(climate)),
-		roads(std::move(roads)),
 		elevation(std::move(elevation))
 	{
 		refresh();
@@ -55,8 +53,7 @@ namespace trok
 			if (blend.weights[corner] > 0.f)
 				height += blend.weights[corner] * biomeHeight(blend.indices[corner], x, z);
 
-		const RoadNetwork* network = roads == nullptr ? nullptr : roads->get();
-		return network == nullptr ? height : network->gradedHeight(x, z, height);
+		return height;
 	}
 
 	glm::vec3 TerrainGenerator::sampleColor(const RegionContext& context, double x, double z, float height, const glm::vec3& normal) const

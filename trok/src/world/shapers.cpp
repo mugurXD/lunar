@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <iterator>
+#include <utility>
 
 namespace trok
 {
@@ -38,5 +39,20 @@ namespace trok
 						std::ranges::move(RiverShapes(river), std::back_inserter(output));
 			}
 		}
+	}
+
+	RoadShaper::RoadShaper(std::shared_ptr<const RoadLayer> roads) noexcept
+		: roads(std::move(roads))
+	{
+	}
+
+	void RoadShaper::declare(const RegionContext&,
+	                         const glm::dvec2&                            minimum,
+	                         const glm::dvec2&                            maximum,
+	                         std::vector<lunar::World::ShapeDeclaration>& output) const
+	{
+		const RoadNetwork* network = roads->get();
+		if (network != nullptr)
+			std::ranges::move(network->shapesReaching(glm::vec2(minimum), glm::vec2(maximum)), std::back_inserter(output));
 	}
 }
