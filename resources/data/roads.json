@@ -1,16 +1,13 @@
 {
-    "formatVersion": 1,
+    "formatVersion": 2,
     "name": "core:national",
     "lanes": 2,
     "laneWidth": 8,
     "shoulderWidth": 1.0,
     "minCurveRadius": 60.0,
     "maxGrade": 0.05,
-    "slopePenalty": 8.0,
+    "limitPenalty": 8.0,
     "turnPenalty": 0.15,
-    "embankmentSpread": 0.0,
-    "maxFillHeight": 2.0,
-    "maxGradingWidth": 24.0,
     "gradingMargin": 3.0,
     "surfaceOffset": 0.35,
     "color": [
@@ -18,5 +15,14 @@
         0.16,
         0.17
     ],
-    "edgeDepth": 0.5
+    "edgeDepth": 0.5,
+    "cutCost": 0.3,
+    "fillCost": 0.3,
+    "bridgeCost": 3.0,
+    "bridgeHeight": 5.0,
+    "maxCutDepth": 12.0,
+    "cutSpread": 1.5,
+    "pillarSpacing": 30.0,
+    "pillarWidth": 2.0,
+    "climbCost": 1.0
 }
