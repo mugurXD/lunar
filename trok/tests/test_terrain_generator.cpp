@@ -3,6 +3,7 @@
 #include <trok/world/dressers.hpp>
 #include <trok/world/terrain_generator.hpp>
 #include <trok/world/road.hpp>
+#include <trok/world/road_service.hpp>
 #include <trok/world/shapers.hpp>
 #include <lunar/physics/rigid_body.hpp>
 #include <lunar/world/terrain.hpp>
@@ -311,6 +312,45 @@ TEST(TrokTerrain, CurvedRoadsFormAContinuousStrip)
 		EXPECT_EQ(mesh.vertices[current + 2].position, mesh.vertices[next].position)     << "gap on the left side of segment " << segment;
 		EXPECT_EQ(mesh.vertices[current + 3].position, mesh.vertices[next + 1].position) << "gap on the right side of segment " << segment;
 	}
+}
+
+TEST(RoadService, PlansInTheBackgroundAndKeepsEveryRoad)
+{
+	constexpr size_t WORKERS         = 2;
+	constexpr int    MAX_ROUNDS      = 100;
+	constexpr float  SHORT_ROAD      = 150.f;
+	constexpr float  ROAD_SEPARATION = 400.f;
+
+	lunar::JobSystem          jobs(WORKERS);
+	const auto                generator = std::make_shared<trok::TerrainGenerator>(ONLY_FLAT, CLIMATE, FLAT_LAND, WORLD_SEED);
+	trok::RoadService         roads(jobs, generator, trok::RoadClass {}, {});
+	const trok::RegionContext context = ContextOf(FLAT_BIOME, FLAT_BIOME);
+
+	const auto finish = [&] {
+		for (int round = 0; round < MAX_ROUNDS; round++)
+		{
+			if (roads.update())
+				return true;
+
+			jobs.waitIdle();
+			jobs.processCompleted();
+		}
+
+		return false;
+	};
+
+	const trok::RoadLink first  = { { 0.f, 0.f }, { SHORT_ROAD, 0.f } };
+	const trok::RoadLink second = { { 0.f, ROAD_SEPARATION }, { SHORT_ROAD, ROAD_SEPARATION } };
+
+	roads.plan(std::span(&first, 1), context);
+	EXPECT_EQ(roads.getNetwork(), nullptr) << "nothing is published until the planning jobs finish";
+	ASSERT_TRUE(finish());
+	ASSERT_NE(roads.getNetwork(), nullptr);
+	EXPECT_EQ(roads.getNetwork()->getRoadCount(), 1u);
+
+	roads.plan(std::span(&second, 1), context);
+	ASSERT_TRUE(finish());
+	EXPECT_EQ(roads.getNetwork()->getRoadCount(), 2u) << "a new road is added to the network instead of replacing it";
 }
 
 TEST(TrokTerrain, WithoutARoadTheRoadDresserAddsNothing)

@@ -147,7 +147,7 @@ namespace trok
 	                        const lunar::World::HeightSampler&      ground,
 	                        std::vector<lunar::World::DressedMesh>& output) const
 	{
-		const RoadNetwork* network = roads->get();
+		const std::shared_ptr<const RoadNetwork> network = roads->get();
 		if (network == nullptr)
 			return;
 

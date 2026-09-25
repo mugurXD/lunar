@@ -25,8 +25,10 @@ add_library(trok_core STATIC
     "inc/trok/world/road.hpp"
     "inc/trok/world/shapers.hpp"
     "inc/trok/world/road_planner.hpp"
+    "inc/trok/world/road_service.hpp"
     "inc/trok/world/stable_hash.hpp"
     "inc/trok/world/terrain_generator.hpp"
+    "inc/trok/world/towns.hpp"
     "inc/trok/world/world_map.hpp"
     "src/json_math.cpp"
     "src/vehicle/chase_camera.cpp"
@@ -42,7 +44,9 @@ add_library(trok_core STATIC
     "src/world/road.cpp"
     "src/world/shapers.cpp"
     "src/world/road_planner.cpp"
+    "src/world/road_service.cpp"
     "src/world/terrain_generator.cpp"
+    "src/world/towns.cpp"
     "src/world/world_map.cpp"
 )
 

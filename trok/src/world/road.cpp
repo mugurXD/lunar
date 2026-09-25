@@ -274,11 +274,13 @@ namespace trok
 
 	void RoadLayer::set(std::shared_ptr<const RoadNetwork> replacement)
 	{
+		const std::lock_guard lock(mutex);
 		network = std::move(replacement);
 	}
 
-	const RoadNetwork* RoadLayer::get() const
+	std::shared_ptr<const RoadNetwork> RoadLayer::get() const
 	{
-		return network.get();
+		const std::lock_guard lock(mutex);
+		return network;
 	}
 }

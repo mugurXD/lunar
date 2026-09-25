@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <span>
 #include <string>
@@ -77,13 +78,20 @@ namespace trok
 		std::unordered_map<Cell, std::vector<uint32_t>, lunar::World::GridCoordHash> cells;
 	};
 
+	struct RoadLink
+	{
+		glm::vec2 from = {};
+		glm::vec2 to   = {};
+	};
+
 	class RoadLayer
 	{
 	public:
-		void               set(std::shared_ptr<const RoadNetwork> network);
-		const RoadNetwork* get() const;
+		void                               set(std::shared_ptr<const RoadNetwork> network);
+		std::shared_ptr<const RoadNetwork> get() const;
 
 	private:
+		mutable std::mutex                 mutex;
 		std::shared_ptr<const RoadNetwork> network;
 	};
 }

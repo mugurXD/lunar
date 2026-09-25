@@ -51,7 +51,7 @@ namespace trok
 	                         const glm::dvec2&                            maximum,
 	                         std::vector<lunar::World::ShapeDeclaration>& output) const
 	{
-		const RoadNetwork* network = roads->get();
+		const std::shared_ptr<const RoadNetwork> network = roads->get();
 		if (network != nullptr)
 			std::ranges::move(network->shapesReaching(glm::vec2(minimum), glm::vec2(maximum)), std::back_inserter(output));
 	}
