@@ -1,7 +1,10 @@
 #include "test_biomes.hpp"
 
+#include <trok/world/dressers.hpp>
 #include <trok/world/terrain_generator.hpp>
 #include <trok/world/road.hpp>
+#include <trok/world/shapers.hpp>
+#include <lunar/physics/rigid_body.hpp>
 #include <lunar/world/terrain.hpp>
 #include <gtest/gtest.h>
 
@@ -21,18 +24,29 @@ namespace
 	constexpr double  CENTRE_CELL      = 4.0;
 	constexpr float   RAISED_ELEVATION     = 100.f;
 	constexpr size_t  VERTICES_PER_SEGMENT = trok::QUAD_CORNERS * 3;
+	constexpr size_t  QUAD_TOP_LEFT        = 0;
 
 	const lunar::World::WorldSettings SETTINGS  = { .sampleReachChunks = trok::BIOME_SAMPLE_REACH_CHUNKS };
 	const auto                        BIOMES    = std::make_shared<const trok::BiomeLibrary>(TestBiomes());
 	const auto                        CLIMATE   = std::make_shared<const trok::ClimateSampler>(WORLD_SEED);
-	const trok::ElevationCurve        FLAT_LAND = {};
-	const trok::ElevationCurve        HIGHLAND  = { .points = { { -1.f, RAISED_ELEVATION }, { 1.f, RAISED_ELEVATION } } };
+	const trok::ElevationCurve        FLAT_LAND = { .seaLevel = -1000.f };
+	const trok::ElevationCurve        HIGHLAND  = { .points = { { -1.f, RAISED_ELEVATION }, { 1.f, RAISED_ELEVATION } }, .seaLevel = -1000.f };
 	const glm::vec3                   UP        = { 0.f, 1.f, 0.f };
 	const glm::vec3                   CLIFF     = { 1.f, 0.f, 0.f };
 
 	trok::TerrainGenerator MakeGenerator(int32_t seed, const trok::ElevationCurve& elevation = FLAT_LAND)
 	{
 		return trok::TerrainGenerator(BIOMES, CLIMATE, elevation, seed);
+	}
+
+	std::vector<lunar::World::DressedMesh> Dress(const trok::TerrainDresser&   dresser,
+	                                             const trok::TerrainGenerator& generator,
+	                                             const trok::RegionContext&    context,
+	                                             lunar::World::ChunkCoord      coord)
+	{
+		std::vector<lunar::World::DressedMesh> output;
+		dresser.dress(context, coord, SETTINGS, [&](double x, double z) { return generator.sampleHeight(context, x, z); }, output);
+		return output;
 	}
 
 	std::shared_ptr<const trok::RegionPlan> PlanOf(trok::BiomeIndex west, trok::BiomeIndex east)
@@ -163,14 +177,17 @@ TEST(TrokTerrain, RoadsGradeTheTerrainAndAddAsphalt)
 	constexpr float ROAD_HEIGHT   = -80.f;
 	constexpr float FAR_FROM_ROAD = 400.f;
 
-	const trok::RoadClass     road_class = {};
-	const trok::RegionContext context    = ContextOf(FLAT_BIOME, FLAT_BIOME);
-	const double              centre     = CellCentre(CENTRE_CELL);
-	trok::TerrainGenerator    generator  = MakeGenerator(WORLD_SEED);
+	const trok::RoadClass        road_class = {};
+	const trok::RegionContext    context    = ContextOf(FLAT_BIOME, FLAT_BIOME);
+	const double                 centre     = CellCentre(CENTRE_CELL);
+	const auto                   roads      = std::make_shared<trok::RoadLayer>();
+	trok::TerrainGenerator       generator  = MakeGenerator(WORLD_SEED);
+
+	generator.addShaper(std::make_shared<const trok::RoadShaper>(roads));
 
 	const float natural      = generator.sampleHeight(context, centre, centre);
 	const float natural_away = generator.sampleHeight(context, centre, centre + FAR_FROM_ROAD);
-	generator.setRoads(std::make_shared<const trok::RoadNetwork>(
+	roads->set(std::make_shared<const trok::RoadNetwork>(
 		std::vector<glm::vec3> { { centre - FAR_FROM_ROAD, ROAD_HEIGHT, centre }, { centre + FAR_FROM_ROAD, ROAD_HEIGHT, centre } },
 		road_class));
 
@@ -178,9 +195,12 @@ TEST(TrokTerrain, RoadsGradeTheTerrainAndAddAsphalt)
 	EXPECT_FLOAT_EQ(generator.sampleHeight(context, centre, centre + FAR_FROM_ROAD), natural_away);
 	EXPECT_NE(natural, ROAD_HEIGHT);
 
-	lunar::Render::MeshData mesh;
-	generator.buildDecorations(context, lunar::World::ChunkAt(glm::vec3(centre, 0.f, centre), SETTINGS), SETTINGS, mesh);
+	const std::vector<lunar::World::DressedMesh> dressing = Dress(trok::RoadDresser(roads), generator, context, lunar::World::ChunkAt(glm::vec3(centre, 0.f, centre), SETTINGS));
+	ASSERT_EQ(dressing.size(), 1u);
+	EXPECT_EQ(dressing.front().colliderCategory, lunar::Physics::ROAD_CATEGORY) << "asphalt must collide as road for the grip to apply";
+	EXPECT_FALSE(dressing.front().translucent);
 
+	const lunar::Render::MeshData& mesh = dressing.front().mesh;
 	EXPECT_FALSE(mesh.vertices.empty());
 	EXPECT_EQ(mesh.indices.size(), mesh.vertices.size() / trok::QUAD_CORNERS * 6);
 	EXPECT_EQ(mesh.vertices.size() % VERTICES_PER_SEGMENT, 0u);
@@ -198,43 +218,79 @@ TEST(TrokTerrain, RoadsGradeTheTerrainAndAddAsphalt)
 	}
 }
 
-TEST(TrokTerrain, FillIsLeftToTheRoadGeometry)
+TEST(TrokTerrain, LowFillDropsStraightDownToTheGround)
 {
-	constexpr float ROAD_HEIGHT   = 80.f;
+	constexpr float FILL_HEIGHT   = 2.f;
 	constexpr float FAR_FROM_ROAD = 400.f;
+	constexpr float POINT_SPACING = 8.f;
 
 	const trok::RegionContext context   = ContextOf(FLAT_BIOME, FLAT_BIOME);
 	const double              centre    = CellCentre(CENTRE_CELL);
+	const auto                roads     = std::make_shared<trok::RoadLayer>();
 	trok::TerrainGenerator    generator = MakeGenerator(WORLD_SEED);
+	generator.addShaper(std::make_shared<const trok::RoadShaper>(roads));
+
+	std::vector<glm::vec3> following;
+	for (double along = -FAR_FROM_ROAD; along <= FAR_FROM_ROAD; along += POINT_SPACING)
+		following.emplace_back(centre + along, generator.sampleHeight(context, centre + along, centre) + FILL_HEIGHT, centre);
 
 	const float natural = generator.sampleHeight(context, centre, centre);
-	generator.setRoads(std::make_shared<const trok::RoadNetwork>(
-		std::vector<glm::vec3> { { centre - FAR_FROM_ROAD, ROAD_HEIGHT, centre }, { centre + FAR_FROM_ROAD, ROAD_HEIGHT, centre } },
-		trok::RoadClass {}));
+	roads->set(std::make_shared<const trok::RoadNetwork>(std::move(following), trok::RoadClass {}));
 
-	EXPECT_FLOAT_EQ(generator.sampleHeight(context, centre, centre), natural);
+	EXPECT_FLOAT_EQ(generator.sampleHeight(context, centre, centre), natural) << "roads never raise the terrain";
 
-	lunar::Render::MeshData mesh;
-	generator.buildDecorations(context, lunar::World::ChunkAt(glm::vec3(centre, 0.f, centre), SETTINGS), SETTINGS, mesh);
+	const std::vector<lunar::World::DressedMesh> dressing = Dress(trok::RoadDresser(roads), generator, context, lunar::World::ChunkAt(glm::vec3(centre, 0.f, centre), SETTINGS));
+	ASSERT_EQ(dressing.size(), 1u);
 
-	ASSERT_GE(mesh.vertices.size(), VERTICES_PER_SEGMENT);
+	const lunar::Render::MeshData& mesh = dressing.front().mesh;
+	ASSERT_EQ(mesh.vertices.size() % VERTICES_PER_SEGMENT, 0u) << "low fill must not grow bridge geometry";
 
-	const glm::vec3 top  = mesh.vertices[0].position;
+	const glm::vec3 top  = mesh.vertices[QUAD_TOP_LEFT].position;
 	const glm::vec3 base = mesh.vertices[trok::QUAD_CORNERS].position;
 
-	EXPECT_LT(base.y, top.y - 1.f) << "the embankment should reach down towards the natural ground";
-	EXPECT_GT(glm::distance(glm::vec2(base.x, base.z), glm::vec2(top.x, top.z)), 1.f) << "the embankment should flare outwards";
+	EXPECT_LT(base.y, top.y - 1.f) << "the side should reach down to the natural ground";
+	EXPECT_NEAR(glm::distance(glm::vec2(base.x, base.z), glm::vec2(top.x, top.z)), 0.f, 0.001f) << "the side should drop straight down";
+}
+
+TEST(TrokTerrain, HighRoadsBecomeBridgesOnPillars)
+{
+	constexpr float BRIDGE_HEIGHT = 80.f;
+	constexpr float FAR_FROM_ROAD = 400.f;
+
+	const trok::RoadClass     road_class = {};
+	const trok::RegionContext context    = ContextOf(FLAT_BIOME, FLAT_BIOME);
+	const double              centre     = CellCentre(CENTRE_CELL);
+	const auto                roads      = std::make_shared<trok::RoadLayer>();
+	trok::TerrainGenerator    generator  = MakeGenerator(WORLD_SEED);
+	generator.addShaper(std::make_shared<const trok::RoadShaper>(roads));
+
+	const float natural = generator.sampleHeight(context, centre, centre);
+	roads->set(std::make_shared<const trok::RoadNetwork>(
+		std::vector<glm::vec3> { { centre - FAR_FROM_ROAD, natural + BRIDGE_HEIGHT, centre }, { centre + FAR_FROM_ROAD, natural + BRIDGE_HEIGHT, centre } },
+		road_class));
+
+	const std::vector<lunar::World::DressedMesh> dressing = Dress(trok::RoadDresser(roads), generator, context, lunar::World::ChunkAt(glm::vec3(centre, 0.f, centre), SETTINGS));
+	ASSERT_EQ(dressing.size(), 1u);
+
+	const lunar::Render::MeshData& mesh    = dressing.front().mesh;
+	const float                    surface = natural + BRIDGE_HEIGHT + road_class.surfaceOffset;
+
+	EXPECT_NEAR(mesh.vertices[trok::QUAD_CORNERS].position.y, surface - road_class.edgeDepth, 0.001f) << "a bridge deck should only be as thick as its edge";
+
+	const auto lowest = std::ranges::min_element(mesh.vertices, {}, [](const lunar::Render::Vertex& vertex) { return vertex.position.y; });
+	EXPECT_LT(lowest->position.y, natural) << "pillars should reach the ground";
 }
 
 TEST(TrokTerrain, CurvedRoadsFormAContinuousStrip)
 {
-	constexpr float ROAD_HEIGHT = 40.f;
+	constexpr float ROAD_HEIGHT = -40.f;
 	constexpr float ARC_RADIUS  = 120.f;
 	constexpr int   ARC_POINTS  = 24;
 
-	const trok::RegionContext context   = ContextOf(FLAT_BIOME, FLAT_BIOME);
-	const double              centre    = CellCentre(CENTRE_CELL);
-	trok::TerrainGenerator    generator = MakeGenerator(WORLD_SEED);
+	const trok::RegionContext    context   = ContextOf(FLAT_BIOME, FLAT_BIOME);
+	const double                 centre    = CellCentre(CENTRE_CELL);
+	const auto                   roads     = std::make_shared<trok::RoadLayer>();
+	trok::TerrainGenerator       generator = MakeGenerator(WORLD_SEED);
 
 	std::vector<glm::vec3> arc;
 	for (int index = 0; index < ARC_POINTS; index++)
@@ -244,19 +300,88 @@ TEST(TrokTerrain, CurvedRoadsFormAContinuousStrip)
 	}
 
 	const glm::vec3 on_the_arc = arc[ARC_POINTS / 2];
-	generator.setRoads(std::make_shared<const trok::RoadNetwork>(std::move(arc), trok::RoadClass {}));
+	roads->set(std::make_shared<const trok::RoadNetwork>(std::move(arc), trok::RoadClass {}));
 
-	lunar::Render::MeshData mesh;
-	generator.buildDecorations(context, lunar::World::ChunkAt(on_the_arc, SETTINGS), SETTINGS, mesh);
+	const std::vector<lunar::World::DressedMesh> dressing = Dress(trok::RoadDresser(roads), generator, context, lunar::World::ChunkAt(on_the_arc, SETTINGS));
+	ASSERT_EQ(dressing.size(), 1u);
 
+	const lunar::Render::MeshData& mesh = dressing.front().mesh;
 	ASSERT_GE(mesh.vertices.size(), VERTICES_PER_SEGMENT * 2);
 	for (size_t segment = 0; segment + 1 < mesh.vertices.size() / VERTICES_PER_SEGMENT; segment++)
 	{
 		const size_t current = segment * VERTICES_PER_SEGMENT;
 		const size_t next    = current + VERTICES_PER_SEGMENT;
 
-		EXPECT_EQ(mesh.vertices[current + 2].position, mesh.vertices[next].position)         << "gap on the left side of segment " << segment;
-		EXPECT_EQ(mesh.vertices[current + 3].position, mesh.vertices[next + 1].position)     << "gap on the right side of segment " << segment;
+		EXPECT_EQ(mesh.vertices[current + 2].position, mesh.vertices[next].position)     << "gap on the left side of segment " << segment;
+		EXPECT_EQ(mesh.vertices[current + 3].position, mesh.vertices[next + 1].position) << "gap on the right side of segment " << segment;
 	}
 }
 
+TEST(TrokTerrain, WithoutARoadTheRoadDresserAddsNothing)
+{
+	const trok::RegionContext    context   = ContextOf(FLAT_BIOME, FLAT_BIOME);
+	const double                 centre    = CellCentre(CENTRE_CELL);
+	const auto                   roads     = std::make_shared<trok::RoadLayer>();
+	trok::TerrainGenerator       generator = MakeGenerator(WORLD_SEED);
+
+	EXPECT_TRUE(Dress(trok::RoadDresser(roads), generator, context, lunar::World::ChunkAt(glm::vec3(centre, 0.f, centre), SETTINGS)).empty());
+}
+
+TEST(TrokTerrain, WaterSurfaceSitsOnTheRiverAndIsTranslucent)
+{
+	constexpr double RIVER_BED     = -5.0;
+	constexpr double RIVER_WIDTH   = 12.0;
+	constexpr double RIVER_SPACING = 20.0;
+	constexpr int    RIVER_SPAN    = 4;
+
+	const double centre = CellCentre(CENTRE_CELL);
+
+	trok::River river = { .id = 1 };
+	for (int step = -RIVER_SPAN; step <= RIVER_SPAN; step++)
+		river.points.push_back({ .position = { centre + step * RIVER_SPACING, centre }, .width = RIVER_WIDTH, .bed = RIVER_BED });
+
+	river.minimum = river.points.front().position;
+	river.maximum = river.points.back().position;
+
+	trok::RegionPlan plan = *PlanOf(FLAT_BIOME, FLAT_BIOME);
+	plan.rivers.push_back(river);
+
+	const trok::RegionContext    context(SETTINGS, { { { 0, 0 }, std::make_shared<const trok::RegionPlan>(std::move(plan)) } });
+	const trok::TerrainGenerator generator = MakeGenerator(WORLD_SEED);
+
+	const std::vector<lunar::World::DressedMesh> dressing = Dress(trok::RiverWaterDresser(), generator, context, lunar::World::ChunkAt(glm::vec3(centre, 0.f, centre), SETTINGS));
+	ASSERT_EQ(dressing.size(), 1u);
+	EXPECT_TRUE(dressing.front().translucent);
+	EXPECT_EQ(dressing.front().colliderCategory, 0u) << "water must not become a collider";
+
+	const lunar::Render::MeshData& mesh = dressing.front().mesh;
+	ASSERT_FALSE(mesh.vertices.empty());
+
+	const float level = static_cast<float>(RIVER_BED + trok::RiverDepth(RIVER_WIDTH));
+	for (const lunar::Render::Vertex& vertex : mesh.vertices)
+	{
+		EXPECT_NEAR(vertex.position.y, level, 0.001f) << "the surface should sit one depth above the bed";
+		EXPECT_LT(vertex.color.a, 1.f) << "water should be translucent";
+	}
+}
+
+TEST(TrokTerrain, SeaCoversOnlySubmergedChunks)
+{
+	constexpr float HIGH_TIDE = 1000.f;
+	constexpr float LOW_TIDE  = -1000.f;
+
+	const trok::RegionContext      context   = ContextOf(FLAT_BIOME, FLAT_BIOME);
+	const double                   centre    = CellCentre(CENTRE_CELL);
+	const trok::TerrainGenerator   generator = MakeGenerator(WORLD_SEED);
+	const lunar::World::ChunkCoord chunk     = lunar::World::ChunkAt(glm::vec3(centre, 0.f, centre), SETTINGS);
+
+	EXPECT_TRUE(Dress(trok::SeaDresser(LOW_TIDE), generator, context, chunk).empty()) << "dry land should get no sea";
+
+	const std::vector<lunar::World::DressedMesh> flooded = Dress(trok::SeaDresser(HIGH_TIDE), generator, context, chunk);
+	ASSERT_EQ(flooded.size(), 1u);
+	EXPECT_TRUE(flooded.front().translucent);
+	EXPECT_EQ(flooded.front().colliderCategory, 0u);
+
+	for (const lunar::Render::Vertex& vertex : flooded.front().mesh.vertices)
+		EXPECT_FLOAT_EQ(vertex.position.y, HIGH_TIDE);
+}

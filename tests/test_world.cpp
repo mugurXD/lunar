@@ -378,3 +378,188 @@ TEST(TerrainPersistence, GeneratedChunksAreStoredAndReusedWithoutGenerating)
 	EXPECT_EQ(loaded.mesh.vertices.size(), generated.mesh.vertices.size());
 	EXPECT_EQ(loaded.mesh.indices,         generated.mesh.indices);
 }
+
+namespace
+{
+	class ProbeDresser final : public TerrainDresser<TestPlan>
+	{
+	public:
+		ProbeDresser(bool translucent, uint16_t category) noexcept
+			: translucent(translucent),
+			category(category)
+		{
+		}
+
+		void dress(const RegionContext<TestPlan>&, ChunkCoord coord, const WorldSettings& settings, const HeightSampler& ground, std::vector<DressedMesh>& output) const override
+		{
+			const glm::vec3         origin = ChunkOrigin(coord, settings);
+			lunar::Render::MeshData mesh;
+			mesh.vertices.push_back({ .position = { origin.x, ground(origin.x, origin.z), origin.z } });
+
+			output.push_back({ .mesh = std::move(mesh), .translucent = translucent, .colliderCategory = category });
+		}
+
+	private:
+		bool     translucent = false;
+		uint16_t category    = 0;
+	};
+}
+
+TEST(TerrainDressing, DressersRunInOrderOverTheFinalGround)
+{
+	constexpr uint16_t SOLID_CATEGORY = 1 << 3;
+
+	const TemporaryDirectory      directory;
+	const ChunkStorage            storage(directory.getPath(), SETTINGS);
+	const RegionContext<TestPlan> context(SETTINGS, {});
+	const ChunkCoord              coord = { 2, 5 };
+
+	WaveGenerator generator;
+	generator.addDresser(std::make_shared<const ProbeDresser>(true, 0));
+	generator.addDresser(std::make_shared<const ProbeDresser>(false, SOLID_CATEGORY));
+
+	const ChunkData chunk  = LoadOrGenerateChunk(generator, storage, context, coord, SETTINGS);
+	const glm::vec3 origin = ChunkOrigin(coord, SETTINGS);
+
+	ASSERT_EQ(chunk.dressing.size(), 2u);
+	EXPECT_TRUE(chunk.dressing[0].translucent);
+	EXPECT_EQ(chunk.dressing[0].colliderCategory, 0u);
+	EXPECT_FALSE(chunk.dressing[1].translucent);
+	EXPECT_EQ(chunk.dressing[1].colliderCategory, SOLID_CATEGORY);
+
+	for (const DressedMesh& dressed : chunk.dressing)
+		EXPECT_FLOAT_EQ(dressed.mesh.vertices.front().position.y, generator.sampleHeight(context, origin.x, origin.z))
+			<< "dressers should read the same ground the heightmap was built from";
+}
+
+namespace
+{
+	constexpr double CORRIDOR_LENGTH = 200.0;
+	constexpr double CORRIDOR_HEIGHT = -5.0;
+	constexpr double CORRIDOR_CORE   = 4.0;
+	constexpr double CORRIDOR_BLEND  = 20.0;
+	constexpr float  HIGH_GROUND     = 30.f;
+	constexpr float  LOW_GROUND      = -40.f;
+
+	ShapeDeclaration Corridor(double z, double height, double spread = 0.0)
+	{
+		return ShapeDeclaration
+		{
+			.points =
+			{
+				{ .position = { 0.0,             z }, .height = height, .core = CORRIDOR_CORE, .blend = CORRIDOR_BLEND },
+				{ .position = { CORRIDOR_LENGTH, z }, .height = height, .core = CORRIDOR_CORE, .blend = CORRIDOR_BLEND }
+			},
+			.spread = spread,
+			.reach  = CORRIDOR_CORE + CORRIDOR_BLEND * 4.0
+		};
+	}
+
+	class CorridorShaper final : public TerrainShaper<TestPlan>
+	{
+	public:
+		void declare(const RegionContext<TestPlan>&, const glm::dvec2&, const glm::dvec2&, std::vector<ShapeDeclaration>& output) const override
+		{
+			output.push_back(Corridor(ChunkOrigin({ 0, 0 }, SETTINGS).z + SETTINGS.getChunkSize() * 0.5, CORRIDOR_HEIGHT));
+		}
+	};
+}
+
+TEST(TerrainShaping, CarvesHoldTheCoreAndEaseBackToTheGround)
+{
+	const ShapeDeclaration corridor = Corridor(0.0, CORRIDOR_HEIGHT);
+	const double           middle   = CORRIDOR_LENGTH * 0.5;
+
+	EXPECT_FLOAT_EQ(ApplyShapes(std::span(&corridor, 1), middle, CORRIDOR_CORE * 0.5, HIGH_GROUND), static_cast<float>(CORRIDOR_HEIGHT));
+	EXPECT_FLOAT_EQ(ApplyShapes(std::span(&corridor, 1), middle, 0.0, LOW_GROUND), LOW_GROUND) << "a carve must never raise the ground";
+	EXPECT_FLOAT_EQ(ApplyShapes(std::span(&corridor, 1), middle, CORRIDOR_CORE + CORRIDOR_BLEND + 1.0, HIGH_GROUND), HIGH_GROUND);
+
+	float previous = static_cast<float>(CORRIDOR_HEIGHT);
+	for (double offset = CORRIDOR_CORE; offset <= CORRIDOR_CORE + CORRIDOR_BLEND; offset += 1.0)
+	{
+		const float here = ApplyShapes(std::span(&corridor, 1), middle, offset, HIGH_GROUND);
+		EXPECT_GE(here, previous) << "the side should rise steadily at " << offset << " m";
+		previous = here;
+	}
+}
+
+TEST(TerrainShaping, ASlopingCorridorCarvesOnlyAlongItsNearestSegment)
+{
+	constexpr double SEGMENT_LENGTH = CORRIDOR_CORE;
+	constexpr double DROP           = 1.0;
+
+	const ShapeDeclaration descending =
+	{
+		.points =
+		{
+			{ .position = { 0.0, 0.0 },                  .height = CORRIDOR_HEIGHT,        .core = CORRIDOR_CORE, .blend = CORRIDOR_BLEND },
+			{ .position = { SEGMENT_LENGTH, 0.0 },       .height = CORRIDOR_HEIGHT - DROP, .core = CORRIDOR_CORE, .blend = CORRIDOR_BLEND },
+			{ .position = { SEGMENT_LENGTH * 2.0, 0.0 }, .height = CORRIDOR_HEIGHT - DROP * 2.0, .core = CORRIDOR_CORE, .blend = CORRIDOR_BLEND }
+		},
+		.reach = CORRIDOR_CORE + CORRIDOR_BLEND
+	};
+
+	EXPECT_FLOAT_EQ(ApplyShapes(std::span(&descending, 1), SEGMENT_LENGTH * 0.5, 0.0, HIGH_GROUND), static_cast<float>(CORRIDOR_HEIGHT - DROP * 0.5))
+		<< "the lower segment ahead must not trench the ground below the corridor";
+}
+
+TEST(TerrainShaping, SpreadWidensTheSidesOfDeeperCuts)
+{
+	constexpr double SPREAD = 2.0;
+
+	const ShapeDeclaration fixed   = Corridor(0.0, CORRIDOR_HEIGHT);
+	const ShapeDeclaration widened = Corridor(0.0, CORRIDOR_HEIGHT, SPREAD);
+	const double           beyond  = CORRIDOR_CORE + CORRIDOR_BLEND + 1.0;
+
+	EXPECT_FLOAT_EQ(ApplyShapes(std::span(&fixed, 1), CORRIDOR_LENGTH * 0.5, beyond, HIGH_GROUND), HIGH_GROUND);
+	EXPECT_LT(ApplyShapes(std::span(&widened, 1), CORRIDOR_LENGTH * 0.5, beyond, HIGH_GROUND), HIGH_GROUND);
+}
+
+TEST(TerrainShaping, CarvesAreOrderIndependentAndDuplicatesAreHarmless)
+{
+	const ShapeDeclaration near_side = Corridor(0.0, CORRIDOR_HEIGHT);
+	const ShapeDeclaration far_side  = Corridor(CORRIDOR_BLEND, CORRIDOR_HEIGHT + 3.0);
+
+	const std::vector<ShapeDeclaration> forward   = { near_side, far_side };
+	const std::vector<ShapeDeclaration> backward  = { far_side, near_side };
+	const std::vector<ShapeDeclaration> doubled   = { near_side, near_side };
+	const std::vector<ShapeDeclaration> single    = { near_side };
+
+	for (double offset = 0.0; offset <= CORRIDOR_BLEND * 2.0; offset += 2.5)
+	{
+		EXPECT_FLOAT_EQ(ApplyShapes(forward, CORRIDOR_LENGTH * 0.5, offset, HIGH_GROUND), ApplyShapes(backward, CORRIDOR_LENGTH * 0.5, offset, HIGH_GROUND));
+		EXPECT_FLOAT_EQ(ApplyShapes(doubled, CORRIDOR_LENGTH * 0.5, offset, HIGH_GROUND), ApplyShapes(single, CORRIDOR_LENGTH * 0.5, offset, HIGH_GROUND))
+			<< "a feature listed by two regions must not carve twice";
+	}
+}
+
+TEST(TerrainShaping, ChunkHeightsMatchSinglePointSampling)
+{
+	const TemporaryDirectory      directory;
+	const ChunkStorage            storage(directory.getPath(), SETTINGS);
+	const RegionContext<TestPlan> context(SETTINGS, {});
+	const ChunkCoord              coord = { 0, 0 };
+
+	WaveGenerator generator;
+	generator.addShaper(std::make_shared<const CorridorShaper>());
+
+	const ChunkData chunk = LoadOrGenerateChunk(generator, storage, context, coord, SETTINGS, false);
+	const int32_t   last  = static_cast<int32_t>(SETTINGS.chunkQuads);
+	bool            cut   = false;
+
+	for (int32_t z = 0; z <= last; z++)
+	{
+		for (int32_t x = 0; x <= last; x++)
+		{
+			const double sample_x = SampleCoordinate(coord.x, x, SETTINGS);
+			const double sample_z = SampleCoordinate(coord.z, z, SETTINGS);
+
+			EXPECT_FLOAT_EQ(chunk.heightmap.sample(x, z), generator.sampleHeight(context, sample_x, sample_z))
+				<< "a chunk and a single-point query disagree at (" << x << ", " << z << "), which would show as a seam";
+
+			cut = cut || chunk.heightmap.sample(x, z) < generator.sampleBaseHeight(context, sample_x, sample_z);
+		}
+	}
+
+	EXPECT_TRUE(cut) << "the shaper never touched the chunk";
+}

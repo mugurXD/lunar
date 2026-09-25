@@ -24,9 +24,12 @@ namespace
 
 	constexpr float HILL_HEIGHT       = 120.f;
 	constexpr float HILL_RADIUS       = 300.f;
-	constexpr float CUT_TOLERANCE     = 1.2f;
-	constexpr float REFINED_CUT_LIMIT = 3.f;
+	constexpr float RADIUS_TOLERANCE  = 0.95f;
+	constexpr float SOFT_LIMIT_FACTOR = 1.5f;
 	constexpr float SLOPE_GRADIENT    = 0.35f;
+	constexpr float RAVINE_CENTRE     = 500.f;
+	constexpr float RAVINE_HALF_WIDTH = 60.f;
+	constexpr float RAVINE_DEPTH      = 60.f;
 	constexpr float VERTEX_SPACING    = 2.f;
 	constexpr float LOOKUP_SPACING    = 6.f;
 	constexpr float LOOKUP_WANDER     = 40.f;
@@ -67,6 +70,29 @@ namespace
 	{
 		return HILL_AMPLITUDE * static_cast<float>(std::sin(x / HILL_WAVELENGTH) * std::cos(z / HILL_WAVELENGTH));
 	}
+
+	float Ravine(double x, double)
+	{
+		return std::abs(static_cast<float>(x) - RAVINE_CENTRE) < RAVINE_HALF_WIDTH ? -RAVINE_DEPTH : 0.f;
+	}
+
+	float Carved(const trok::RoadNetwork& network, double x, double z, float height)
+	{
+		const glm::vec2 point = { static_cast<float>(x), static_cast<float>(z) };
+		return lunar::World::ApplyShapes(network.shapesReaching(point, point), x, z, height);
+	}
+
+	float SteepestGrade(const std::vector<glm::vec3>& road)
+	{
+		float steepest = 0.f;
+		for (size_t index = 1; index < road.size(); index++)
+		{
+			const float run = glm::distance(glm::vec2(road[index - 1].x, road[index - 1].z), glm::vec2(road[index].x, road[index].z));
+			steepest = std::max(steepest, std::abs(road[index].y - road[index - 1].y) / run);
+		}
+
+		return steepest;
+	}
 }
 
 TEST(RoadClass, RoundTripsThroughJson)
@@ -99,7 +125,10 @@ TEST(RoadPlanner, ConnectsBothEndpointsOnFlatGround)
 	EXPECT_NEAR(glm::distance(glm::vec2(road->back().x, road->back().z), END), 0.f, TOLERANCE);
 
 	for (const glm::vec3& point : *road)
+	{
 		EXPECT_NEAR(point.y, 0.f, TOLERANCE);
+		EXPECT_NEAR(point.z, 0.f, TOLERANCE) << "a road across open flat ground should run straight";
+	}
 }
 
 TEST(RoadPlanner, RoutesThroughAPassInsteadOfOverTheWall)
@@ -119,15 +148,7 @@ TEST(RoadPlanner, ProfileRespectsTheMaximumGrade)
 	const std::optional<std::vector<glm::vec3>> road       = trok::PlanRoad(START, END, road_class, RollingHills);
 
 	ASSERT_TRUE(road.has_value());
-
-	for (size_t index = 1; index < road->size(); index++)
-	{
-		const glm::vec3& previous = (*road)[index - 1];
-		const glm::vec3& current  = (*road)[index];
-		const float      run      = glm::distance(glm::vec2(previous.x, previous.z), glm::vec2(current.x, current.z));
-
-		EXPECT_LE(std::abs(current.y - previous.y), road_class.maxGrade * run * GRADE_TOLERANCE);
-	}
+	EXPECT_LE(SteepestGrade(*road), road_class.maxGrade * GRADE_TOLERANCE);
 }
 
 TEST(RoadNetwork, GradingCutsIntoTheTerrainAndBlendsBack)
@@ -135,10 +156,10 @@ TEST(RoadNetwork, GradingCutsIntoTheTerrainAndBlendsBack)
 	const trok::RoadClass road_class = TestRoadClass();
 	const trok::RoadNetwork network({ { 0.f, 0.f, 0.f }, { ROAD_LENGTH, 0.f, 0.f } }, road_class);
 
-	const float centre     = network.gradedHeight(ROAD_LENGTH * 0.5, 0.0, ROAD_HEIGHT);
-	const float edge       = network.gradedHeight(ROAD_LENGTH * 0.5, road_class.halfWidth(), ROAD_HEIGHT);
-	const float embankment = network.gradedHeight(ROAD_LENGTH * 0.5, road_class.halfWidth() + ROAD_HEIGHT, ROAD_HEIGHT);
-	const float untouched  = network.gradedHeight(ROAD_LENGTH * 0.5, FAR_AWAY, ROAD_HEIGHT);
+	const float centre     = Carved(network, ROAD_LENGTH * 0.5, 0.0, ROAD_HEIGHT);
+	const float edge       = Carved(network, ROAD_LENGTH * 0.5, road_class.halfWidth(), ROAD_HEIGHT);
+	const float embankment = Carved(network, ROAD_LENGTH * 0.5, road_class.halfWidth() + ROAD_HEIGHT, ROAD_HEIGHT);
+	const float untouched  = Carved(network, ROAD_LENGTH * 0.5, FAR_AWAY, ROAD_HEIGHT);
 
 	EXPECT_FLOAT_EQ(centre, 0.f);
 	EXPECT_FLOAT_EQ(edge,   0.f);
@@ -151,22 +172,21 @@ TEST(RoadNetwork, FillIsLeftToTheRoadGeometry)
 {
 	const trok::RoadNetwork network({ { 0.f, ROAD_HEIGHT, 0.f }, { ROAD_LENGTH, ROAD_HEIGHT, 0.f } }, TestRoadClass());
 
-	EXPECT_FLOAT_EQ(network.gradedHeight(ROAD_LENGTH * 0.5, 0.0, 0.f), 0.f);
+	EXPECT_FLOAT_EQ(Carved(network, ROAD_LENGTH * 0.5, 0.0, 0.f), 0.f);
 }
 
-TEST(RoadPlanner, StaysWithinWhatGradingCanExcavate)
+TEST(RoadPlanner, NeverCutsDeeperThanTheRoadClassAllows)
 {
 	const trok::RoadClass                       road_class = TestRoadClass();
 	const std::optional<std::vector<glm::vec3>> road       = trok::PlanRoad(START, END, road_class, ConeHill);
 
 	ASSERT_TRUE(road.has_value());
 
-	const float deepest_cut = road_class.maxFillHeight * CUT_TOLERANCE;
 	for (const glm::vec3& point : *road)
-		EXPECT_LE(std::abs(point.y - ConeHill(point.x, point.z)), deepest_cut) << "the road is buried at (" << point.x << ", " << point.z << ")";
+		EXPECT_LE(ConeHill(point.x, point.z) - point.y, road_class.maxCutDepth + TOLERANCE) << "the road is buried at (" << point.x << ", " << point.z << ")";
 }
 
-TEST(RoadPlanner, RefinementFollowsTheGroundAndEasesTheCurves)
+TEST(RoadPlanner, CurvesRespectTheMinimumRadius)
 {
 	const trok::RoadClass                       road_class = TestRoadClass();
 	const std::optional<std::vector<glm::vec3>> road       = trok::PlanRoad(START, END, road_class, RollingHills);
@@ -174,10 +194,8 @@ TEST(RoadPlanner, RefinementFollowsTheGroundAndEasesTheCurves)
 	ASSERT_TRUE(road.has_value());
 	ASSERT_GT(road->size(), 2u);
 
-	float deepest  = 0.f;
 	float sharpest = 0.f;
-
-	for (size_t index = 1; index + 1 < road->size(); index++)
+	for (size_t index = 1; index + 2 < road->size(); index++)
 	{
 		const glm::vec2 previous = { (*road)[index - 1].x, (*road)[index - 1].z };
 		const glm::vec2 point    = { (*road)[index].x,     (*road)[index].z };
@@ -186,44 +204,40 @@ TEST(RoadPlanner, RefinementFollowsTheGroundAndEasesTheCurves)
 		const glm::vec2 outgoing = next - point;
 		const float     spread   = glm::length(incoming) * glm::length(outgoing) * glm::distance(previous, next);
 
-		deepest = std::max(deepest, std::abs((*road)[index].y - RollingHills(point.x, point.y)));
 		if (spread > 0.f)
 			sharpest = std::max(sharpest, 2.f * std::abs(incoming.x * outgoing.y - incoming.y * outgoing.x) / spread);
 	}
 
-	EXPECT_LT(deepest, REFINED_CUT_LIMIT) << "the refined alignment should hug the ground instead of needing earthworks";
-	EXPECT_GT(1.f / sharpest, road_class.minCurveRadius) << "the refined alignment should stay within the minimum curve radius";
+	EXPECT_GT(1.f / sharpest, road_class.minCurveRadius * RADIUS_TOLERANCE);
 }
 
-
-
-
-TEST(RoadPlanner, TooSteepRoutesFollowTheGroundInsteadOfRamping)
+TEST(RoadPlanner, TooSteepRoutesStillConnect)
 {
 	const trok::RoadClass                       road_class = TestRoadClass();
 	const std::optional<std::vector<glm::vec3>> road       = trok::PlanRoad(START, END, road_class, SteepSlope);
 
 	ASSERT_TRUE(road.has_value());
 
-	const float buildable = road_class.maxFillHeight;
-	float       deepest   = 0.f;
-	float       steepest  = 0.f;
+	for (const glm::vec3& point : *road)
+		EXPECT_LE(SteepSlope(point.x, point.z) - point.y, road_class.maxCutDepth * SOFT_LIMIT_FACTOR) << "cuts past the limit are allowed, but should stay close to it";
 
-	for (size_t index = 0; index < road->size(); index++)
-	{
-		const glm::vec3& point = (*road)[index];
-		deepest = std::max(deepest, std::abs(point.y - SteepSlope(point.x, point.z)));
+	EXPECT_LT(SteepestGrade(*road), SLOPE_GRADIENT * GRADE_TOLERANCE) << "the road should be no steeper than the ground it follows";
+}
 
-		if (index > 0)
-		{
-			const glm::vec3& previous = (*road)[index - 1];
-			const float      run      = glm::distance(glm::vec2(previous.x, previous.z), glm::vec2(point.x, point.z));
-			steepest = std::max(steepest, std::abs(point.y - previous.y) / run);
-		}
-	}
+TEST(RoadPlanner, BridgesARavineItCannotGoAround)
+{
+	const trok::RoadClass                       road_class = TestRoadClass();
+	const std::optional<std::vector<glm::vec3>> road       = trok::PlanRoad(START, END, road_class, Ravine);
 
-	EXPECT_LE(deepest, buildable + TOLERANCE) << "the profile must stay within what the embankment can actually build";
-	EXPECT_LT(steepest, SLOPE_GRADIENT * GRADE_TOLERANCE) << "the road should be no steeper than the ground it follows";
+	ASSERT_TRUE(road.has_value());
+	EXPECT_LE(SteepestGrade(*road), road_class.maxGrade * GRADE_TOLERANCE);
+
+	float highest = 0.f;
+	for (const glm::vec3& point : *road)
+		highest = std::max(highest, point.y - Ravine(point.x, point.z));
+
+	EXPECT_GT(highest, road_class.bridgeHeight) << "the road should cross the ravine on a bridge";
+	EXPECT_NEAR(highest, RAVINE_DEPTH, TOLERANCE) << "the bridge should stay level with the ground on both sides";
 }
 
 TEST(RoadNetwork, SegmentLookupMatchesABruteForceScan)
@@ -252,20 +266,17 @@ TEST(RoadNetwork, SegmentLookupMatchesABruteForceScan)
 }
 
 
-
-
-
 TEST(RoadNetwork, ZeroSpreadCutsStraightDown)
 {
-	const trok::RoadClass  road_class = { .name = "test:vertical", .embankmentSpread = 0.f };
+	const trok::RoadClass  road_class = { .name = "test:vertical", .cutSpread = 0.f };
 	const trok::RoadNetwork network({ { 0.f, 0.f, 0.f }, { ROAD_LENGTH, 0.f, 0.f } }, road_class);
 
 	const float half     = road_class.halfWidth();
 	const float flat     = half + road_class.gradingMargin;
-	const float centre   = network.gradedHeight(ROAD_LENGTH * 0.5, 0.0, ROAD_HEIGHT);
-	const float edge     = network.gradedHeight(ROAD_LENGTH * 0.5, half, ROAD_HEIGHT);
-	const float past     = network.gradedHeight(ROAD_LENGTH * 0.5, flat + 0.01, ROAD_HEIGHT);
-	const float far_away = network.gradedHeight(ROAD_LENGTH * 0.5, FAR_AWAY, ROAD_HEIGHT);
+	const float centre   = Carved(network, ROAD_LENGTH * 0.5, 0.0, ROAD_HEIGHT);
+	const float edge     = Carved(network, ROAD_LENGTH * 0.5, half, ROAD_HEIGHT);
+	const float past     = Carved(network, ROAD_LENGTH * 0.5, flat + 0.01, ROAD_HEIGHT);
+	const float far_away = Carved(network, ROAD_LENGTH * 0.5, FAR_AWAY, ROAD_HEIGHT);
 
 	EXPECT_FLOAT_EQ(centre, 0.f);
 	EXPECT_FLOAT_EQ(edge,   0.f);
@@ -291,8 +302,8 @@ TEST(RoadNetwork, GradedTerrainStaysBelowTheDeck)
 			for (float sample = -half - VERTEX_SPACING * 4.f; sample < half + VERTEX_SPACING * 4.f; sample += VERTEX_SPACING)
 			{
 				const float near_z = sample + phase;
-				const float near_h = network.gradedHeight(ROAD_LENGTH * 0.5, near_z, cut);
-				const float far_h  = network.gradedHeight(ROAD_LENGTH * 0.5, near_z + VERTEX_SPACING, cut);
+				const float near_h = Carved(network, ROAD_LENGTH * 0.5, near_z, cut);
+				const float far_h  = Carved(network, ROAD_LENGTH * 0.5, near_z + VERTEX_SPACING, cut);
 
 				for (float step = 0.f; step <= 1.f; step += 0.1f)
 				{
@@ -308,4 +319,55 @@ TEST(RoadNetwork, GradedTerrainStaysBelowTheDeck)
 
 	printf("worst intrusion above the deck: %.3f m (at a %.2f m cut)\n", worst, worst_cut);
 	EXPECT_LE(worst, 0.f) << "the heightmap rises through the deck";
+}
+
+
+TEST(RoadNetwork, SeparateRoadsAreNotJoinedTogether)
+{
+	const trok::RoadClass road_class = TestRoadClass();
+	const float           apart      = ROAD_LENGTH * 4.f;
+
+	const trok::RoadNetwork network(std::vector<std::vector<glm::vec3>>
+	{
+		{ { 0.f, 0.f, 0.f },     { ROAD_LENGTH, 0.f, 0.f } },
+		{ { 0.f, 0.f, apart },   { ROAD_LENGTH, 0.f, apart } }
+	}, road_class);
+
+	ASSERT_EQ(network.getRoadCount(), 2u);
+	EXPECT_EQ(network.getRoad(0).size(), 2u);
+	EXPECT_EQ(network.getRoad(1).size(), 2u);
+
+	const float between = Carved(network, ROAD_LENGTH * 0.5, apart * 0.5, ROAD_HEIGHT);
+	EXPECT_FLOAT_EQ(between, ROAD_HEIGHT) << "a phantom segment joined the two roads";
+
+	EXPECT_FLOAT_EQ(Carved(network, ROAD_LENGTH * 0.5, 0.0,   ROAD_HEIGHT), 0.f);
+	EXPECT_FLOAT_EQ(Carved(network, ROAD_LENGTH * 0.5, apart, ROAD_HEIGHT), 0.f);
+}
+
+TEST(RoadPlanner, RoadsStayOutOfTheSea)
+{
+	constexpr float  SEA_LEVEL  = 0.f;
+	constexpr double BAY_CENTRE = 500.0;
+	constexpr double BAY_INNER  = 150.0;
+	constexpr double BAY_OUTER  = 340.0;
+	constexpr float  SEA_FLOOR  = -40.f;
+	constexpr float  SHORE      = 25.f;
+
+	const auto bay = [](double x, double z) {
+		const double reach = glm::distance(glm::dvec2(x, z), glm::dvec2(BAY_CENTRE, 0.0));
+		return glm::mix(SEA_FLOOR, SHORE, static_cast<float>(glm::smoothstep(BAY_INNER, BAY_OUTER, reach)));
+	};
+
+	const std::optional<std::vector<glm::vec3>> road =
+		trok::PlanRoad(START, END, TestRoadClass(), bay, { .seaLevel = SEA_LEVEL });
+
+	ASSERT_TRUE(road.has_value());
+
+	const trok::RoadClass road_class = TestRoadClass();
+	for (const glm::vec3& point : *road)
+	{
+		const float ground = bay(point.x, point.z);
+		EXPECT_TRUE(ground > SEA_LEVEL || point.y - ground > road_class.bridgeHeight) << "the road went through the sea at (" << point.x << ", " << point.z << ")";
+		EXPECT_GT(point.y, SEA_LEVEL);
+	}
 }

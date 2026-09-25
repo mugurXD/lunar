@@ -1,5 +1,6 @@
 #include <lunar/core/scene.hpp>
 #include <lunar/physics/conversions.hpp>
+#include <lunar/physics/raycast.hpp>
 #include <lunar/physics/raycast_vehicle.hpp>
 #include <lunar/physics/rigid_body.hpp>
 #include <gtest/gtest.h>
@@ -8,6 +9,7 @@
 
 #include <algorithm>
 #include <array>
+#include <optional>
 
 using namespace lunar::Physics;
 
@@ -214,4 +216,35 @@ TEST(RigidBody, HeightfieldsLineUpWithTheirSamples)
 			EXPECT_NEAR(info.worldPoint.y, height(x, z), HEIGHT_TOLERANCE);
 		}
 	}
+}
+
+TEST(RigidBody, TriangleMeshCollidersAreHitAndReportTheirCategory)
+{
+	constexpr float SLAB_HEIGHT = 4.f;
+	constexpr float SLAB_EXTENT = 10.f;
+
+	const glm::vec3                origin  = { 5.f, 0.f, -5.f };
+	const std::array<glm::vec3, 4> corners =
+	{
+		glm::vec3 { -SLAB_EXTENT, SLAB_HEIGHT, -SLAB_EXTENT },
+		glm::vec3 {  SLAB_EXTENT, SLAB_HEIGHT, -SLAB_EXTENT },
+		glm::vec3 { -SLAB_EXTENT, SLAB_HEIGHT,  SLAB_EXTENT },
+		glm::vec3 {  SLAB_EXTENT, SLAB_HEIGHT,  SLAB_EXTENT }
+	};
+
+	const std::array<uint32_t, 6> indices = { 0, 2, 1, 1, 2, 3 };
+
+	lunar::Scene scene;
+	RigidBody    ground(scene, glm::vec3(0.f), IDENTITY, BodyType::eStatic);
+	RigidBody    road(scene, origin, IDENTITY, BodyType::eStatic);
+
+	ground.addBox(GROUND_HALF_EXTENTS, GROUND_OFFSET, TERRAIN_CATEGORY);
+	ASSERT_NE(road.addTriangleMesh({ .vertices = corners, .indices = indices }, ROAD_CATEGORY), nullptr);
+
+	const glm::vec3                 above = origin + UP * RAY_START;
+	const std::optional<RaycastHit> hit   = CastRay(*scene.getPhysicsWorld(), above, above - UP * RAY_START * 2.f, static_cast<uint16_t>(~VEHICLE_CATEGORY));
+
+	ASSERT_TRUE(hit.has_value());
+	EXPECT_EQ(hit->category, ROAD_CATEGORY);
+	EXPECT_NEAR(hit->point.y, SLAB_HEIGHT, HEIGHT_TOLERANCE);
 }

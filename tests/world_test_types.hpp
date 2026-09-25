@@ -64,7 +64,7 @@ public:
 	static constexpr double WAVE_FREQUENCY = 0.05;
 	static constexpr double WAVE_AMPLITUDE = 10.0;
 
-	float sampleHeight(const lunar::World::RegionContext<TestPlan>&, double x, double z) const override
+	float sampleBaseHeight(const lunar::World::RegionContext<TestPlan>&, double x, double z) const override
 	{
 		sampleCount++;
 		return static_cast<float>(std::sin(x * WAVE_FREQUENCY) * WAVE_AMPLITUDE + std::cos(z * WAVE_FREQUENCY) * WAVE_AMPLITUDE);
