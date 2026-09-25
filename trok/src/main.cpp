@@ -61,7 +61,7 @@ namespace
 	constexpr std::string_view        TUNED_BIOME_FILE     = "biomes.tuned.json";
 	constexpr std::string_view        ROAD_FILE_NAME       = "roads.json";
 	constexpr float                   ROAD_PLANNING_MARGIN = 200.f;
-	constexpr int32_t                 TOWN_SURVEY_RADIUS   = 1;
+	constexpr int32_t                 TOWN_SURVEY_RADIUS   = 2;
 	constexpr int32_t                 TOWN_LINK_REACH      = 2;
 	constexpr int32_t                 COLLIDER_RADIUS      = 1;
 	constexpr float                   TRUCK_SPAWN_HEIGHT   = 1.5f;
@@ -178,6 +178,20 @@ namespace
 		glm::vec2 from = {};
 		glm::vec2 to   = {};
 	};
+
+	struct LinkProgress
+	{
+		std::vector<std::vector<glm::vec3>> pieces    = {};
+		size_t                              remaining = 0;
+		bool                                failed    = false;
+	};
+
+	trok::HeightSampler BaseHeight(std::shared_ptr<const trok::TerrainGenerator> generator, trok::RegionContext context)
+	{
+		return [generator = std::move(generator), context = std::move(context)](double x, double z) {
+			return generator->sampleBaseHeight(context, x, z);
+		};
+	}
 
 	struct TownSurvey
 	{
@@ -435,6 +449,55 @@ int main()
 		colliders.clear();
 	};
 
+	const trok::RoadPlannerSettings road_settings = { .seaLevel = elevation.seaLevel };
+
+	const auto finish_link = [&](size_t links) {
+		if (--pending_links > 0)
+			return;
+
+		DEBUG_LOG("Connected {} of {} town pairs", planned_roads.size(), links);
+		roads_ready = true;
+	};
+
+	const auto plan_segments = [&](std::vector<trok::RoadSegment> segments, const trok::HeightSampler& sampler, size_t links) {
+		const auto progress = std::make_shared<LinkProgress>(LinkProgress { .pieces = std::vector<std::vector<glm::vec3>>(segments.size()), .remaining = segments.size() });
+
+		for (size_t index = 0; index < segments.size(); index++)
+		{
+			engine.getJobSystem().submit(
+				[segment = std::move(segments[index]), sampler, shape = *road_class, settings = road_settings] {
+					return trok::PlanSegment(segment, shape, sampler, settings);
+				},
+				[&, progress, index, links](std::optional<std::vector<glm::vec3>> piece) {
+					if (piece.has_value())
+						progress->pieces[index] = std::move(*piece);
+					else
+						progress->failed = true;
+
+					if (--progress->remaining > 0)
+						return;
+
+					if (!progress->failed)
+						planned_roads.push_back(trok::JoinSegments(progress->pieces, road_settings));
+
+					finish_link(links);
+				});
+		}
+	};
+
+	const auto plan_link = [&](const TownLink& link, const trok::HeightSampler& sampler, size_t links) {
+		engine.getJobSystem().submit(
+			[link, sampler, shape = *road_class, settings = road_settings] {
+				return trok::SplitRoad(link.from, link.to, shape, sampler, settings);
+			},
+			[&, sampler, links](std::optional<std::vector<trok::RoadSegment>> segments) {
+				if (segments.has_value())
+					plan_segments(std::move(*segments), sampler, links);
+				else
+					finish_link(links);
+			});
+	};
+
 	const auto connect_towns = [&] {
 		roads_requested = true;
 
@@ -443,29 +506,14 @@ int main()
 				return SurveyTowns(*planner, settings, centre, TOWN_SURVEY_RADIUS);
 			},
 			[&](TownSurvey survey) {
-				const trok::RegionContext context(world_settings, survey.regions);
+				const trok::HeightSampler sampler = BaseHeight(terrain_generator, trok::RegionContext(world_settings, survey.regions));
+
+				DEBUG_LOG("Planning roads between {} town pairs", survey.links.size());
 				pending_links = survey.links.size();
 				roads_ready   = pending_links == 0;
 
 				for (const TownLink& link : survey.links)
-				{
-					engine.getJobSystem().submit(
-						[link, context, generator = terrain_generator, shape = *road_class, sea_level = elevation.seaLevel] {
-							return trok::PlanRoad(link.from, link.to, shape, [&](double x, double z) {
-								return generator->sampleBaseHeight(context, x, z);
-							}, { .seaLevel = sea_level });
-						},
-						[&, links = survey.links.size()](std::optional<std::vector<glm::vec3>> road) {
-							if (road.has_value())
-								planned_roads.push_back(std::move(*road));
-
-							if (--pending_links > 0)
-								return;
-
-							DEBUG_LOG("Connected {} of {} town pairs", planned_roads.size(), links);
-							roads_ready = true;
-						});
-				}
+					plan_link(link, sampler, survey.links.size());
 			});
 	};
 
@@ -495,9 +543,7 @@ int main()
 			return;
 		}
 
-		const std::optional<std::vector<glm::vec3>> centreline = trok::PlanRoad(*road_start, *road_end, *road_class, [&](double x, double z) {
-			return terrain_generator->sampleBaseHeight(*context, x, z);
-		}, { .seaLevel = elevation.seaLevel });
+		const std::optional<std::vector<glm::vec3>> centreline = trok::PlanRoad(*road_start, *road_end, *road_class, BaseHeight(terrain_generator, *context), road_settings);
 
 		if (!centreline.has_value())
 			return;

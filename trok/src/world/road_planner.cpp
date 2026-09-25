@@ -36,6 +36,13 @@ namespace trok
 			float     clearance = 0.f;
 		};
 
+		struct Lattice
+		{
+			float  step       = 0.f;
+			float  heightStep = 0.f;
+			size_t maxNodes   = 0;
+		};
+
 		struct Queued
 		{
 			float    estimate = 0.f;
@@ -195,12 +202,14 @@ namespace trok
 			return glm::mix(glm::mix(from, control, amount), glm::mix(control, to, amount), amount);
 		}
 
-		bool CanArriveAt(const Node& node, const glm::vec2& end, float remaining, float step, int headings)
+		bool CanArriveAt(const Node& node, const RoadWaypoint& end, float remaining, float step, int headings)
 		{
 			const glm::vec2 heading = HeadingDirection(node.heading, headings);
 			const float     cosine  = std::cos(glm::pi<float>() / static_cast<float>(headings));
 
-			return remaining >= step * HALF && remaining <= step * GOAL_TOLERANCE && glm::dot(heading, (end - node.position) / remaining) >= cosine;
+			return remaining >= step * HALF && remaining <= step * GOAL_TOLERANCE &&
+			       glm::dot(heading, (end.position - node.position) / remaining) >= cosine &&
+			       node.heading == end.heading.value_or(node.heading);
 		}
 
 		bool IsStraight(const glm::vec3& previous, const glm::vec3& point, const glm::vec3& next)
@@ -210,18 +219,53 @@ namespace trok
 			return glm::dot(incoming, outgoing) >= STRAIGHT_COSINE;
 		}
 
-		std::vector<glm::vec3> Trace(const std::vector<Node>& nodes, uint32_t last)
+		std::vector<Node> Trace(const std::vector<Node>& nodes, uint32_t last)
 		{
-			std::vector<glm::vec3> path;
+			std::vector<Node> path;
 			for (uint32_t index = last; ; index = nodes[index].parent)
 			{
-				path.emplace_back(nodes[index].position.x, nodes[index].height, nodes[index].position.y);
+				path.push_back(nodes[index]);
 				if (index == 0)
 					break;
 			}
 
 			std::ranges::reverse(path);
 			return path;
+		}
+
+		std::vector<size_t> Waypoints(const std::vector<Node>& route, float spacing)
+		{
+			std::vector<size_t> waypoints = { 0 };
+			float               travelled = 0.f;
+
+			for (size_t index = 1; index + 1 < route.size(); index++)
+			{
+				travelled += glm::distance(route[index - 1].position, route[index].position);
+				if (travelled < spacing || glm::distance(route[index].position, route.back().position) < spacing * HALF)
+					continue;
+
+				waypoints.push_back(index);
+				travelled = 0.f;
+			}
+
+			waypoints.push_back(route.size() - 1);
+			return waypoints;
+		}
+
+		RoadWaypoint WaypointAt(const std::vector<Node>& route, size_t index)
+		{
+			const Node& node     = route[index];
+			const bool  terminal = index == 0 || index + 1 == route.size();
+			return { node.position, node.height, terminal ? std::nullopt : std::optional<int>(node.heading) };
+		}
+
+		std::vector<glm::vec3> Points(std::span<const Node> nodes)
+		{
+			std::vector<glm::vec3> points;
+			for (const Node& node : nodes)
+				points.emplace_back(node.position.x, node.height, node.position.y);
+
+			return points;
 		}
 
 		std::vector<glm::vec3> Curve(const std::vector<glm::vec3>& path, float spacing)
@@ -248,6 +292,152 @@ namespace trok
 			centreline.push_back(path.back());
 			return centreline;
 		}
+
+		std::optional<std::vector<Node>> Search(const RoadWaypoint&              from,
+		                                        const RoadWaypoint&              to,
+		                                        const Lattice&             lattice,
+		                                        const RoadClass&           road_class,
+		                                        const HeightSampler&       sample_height,
+		                                        const RoadPlannerSettings& settings)
+		{
+			const glm::vec2 start   = from.position;
+			const glm::vec2 end     = to.position;
+			const glm::vec2 minimum = glm::min(start, end) - glm::vec2(settings.searchMargin);
+			const glm::vec2 maximum = glm::max(start, end) + glm::vec2(settings.searchMargin);
+			const float     step    = lattice.step;
+			const float     climb   = road_class.maxGrade * step;
+			const float     arrival = to.height;
+			const int       heading = from.heading.value_or(NearestHeading(end - start, settings.headings));
+
+			std::vector<Node>                                                      nodes = { { start, from.height, heading } };
+			std::unordered_map<VisitedKey, float, VisitedHash>                     visited;
+			std::priority_queue<Queued, std::vector<Queued>, std::greater<Queued>> open;
+
+			visited[KeyOf(start, heading, from.height - sample_height(start.x, start.y), step, lattice.heightStep)] = 0.f;
+			open.push({ Estimate(start, from.height, end, arrival, road_class), 0 });
+
+			while (!open.empty() && nodes.size() < lattice.maxNodes)
+			{
+				const uint32_t current_index = open.top().node;
+				const Node     current       = nodes[current_index];
+				open.pop();
+
+				if (current.goal)
+					return Trace(nodes, current_index);
+
+				const auto recorded = visited.find(KeyOf(current.position, current.heading, current.clearance, step, lattice.heightStep));
+				if (recorded != visited.end() && current.cost > recorded->second)
+					continue;
+
+				const float remaining = glm::distance(current.position, end);
+				if (CanArriveAt(current, to, remaining, step, settings.headings))
+				{
+					const StepGround           ground    = SampleStep(current.position, end, road_class.halfWidth(), sample_height);
+					const std::optional<float> last_step = StepCost(ground, current.height, arrival, 0, remaining, road_class, settings);
+
+					if (last_step.has_value())
+					{
+						nodes.push_back({ end, arrival, current.heading, current.cost + *last_step, current_index, true });
+						open.push({ nodes.back().cost, static_cast<uint32_t>(nodes.size() - 1) });
+					}
+				}
+
+				for (const int turn : TURN_OPTIONS)
+				{
+					const int       next     = (current.heading + turn + settings.headings) % settings.headings;
+					const glm::vec2 position = current.position + HeadingDirection(next, settings.headings) * step;
+					if (position.x < minimum.x || position.x > maximum.x || position.y < minimum.y || position.y > maximum.y)
+						continue;
+
+					const StepGround ground = SampleStep(current.position, position, road_class.halfWidth(), sample_height);
+
+					for (const float height : HeightOptions(current.height, ground.end[CENTRE], climb))
+					{
+						const std::optional<float> step_cost = StepCost(ground, current.height, height, turn, step, road_class, settings);
+						if (!step_cost.has_value())
+							continue;
+
+						const float      cost      = current.cost + *step_cost;
+						const float      clearance = height - ground.end[CENTRE];
+						const VisitedKey key       = KeyOf(position, next, clearance, step, lattice.heightStep);
+						const auto       found     = visited.find(key);
+						if (found != visited.end() && found->second <= cost)
+							continue;
+
+						visited[key] = cost;
+						nodes.push_back({ position, height, next, cost, current_index, false, clearance });
+						open.push({ cost + settings.heuristicWeight * Estimate(position, height, end, arrival, road_class), static_cast<uint32_t>(nodes.size() - 1) });
+					}
+				}
+			}
+
+			return std::nullopt;
+		}
+	}
+
+	std::optional<std::vector<RoadSegment>> SplitRoad(const glm::vec2&           start,
+	                                                  const glm::vec2&           end,
+	                                                  const RoadClass&           road_class,
+	                                                  const HeightSampler&       sample_height,
+	                                                  const RoadPlannerSettings& settings)
+	{
+		const RoadWaypoint                     origin   = { start, sample_height(start.x, start.y) };
+		const RoadWaypoint                     target   = { end, sample_height(end.x, end.y) };
+		const float                            distance = glm::distance(start, end);
+		const float                            step     = CurveStep(road_class.minCurveRadius, settings.headings) * settings.coarseScale;
+		const std::optional<std::vector<Node>> route    = distance < step ? std::nullopt
+		                                                : Search(origin, target, { step, settings.heightStep * settings.coarseScale, settings.coarseMaxNodes }, road_class, sample_height, settings);
+
+		if (distance <= settings.segmentThreshold)
+			return std::vector<RoadSegment> { { origin, target, route.has_value() ? Points(*route) : std::vector<glm::vec3> {} } };
+
+		if (!route.has_value())
+		{
+			DEBUG_ERROR("Could not find a route between ({:.0f}, {:.0f}) and ({:.0f}, {:.0f})", start.x, start.y, end.x, end.y);
+			return std::nullopt;
+		}
+
+		const std::vector<size_t> waypoints = Waypoints(*route, settings.segmentLength);
+		std::vector<RoadSegment>  segments;
+
+		for (size_t index = 0; index + 1 < waypoints.size(); index++)
+		{
+			const size_t from = waypoints[index];
+			const size_t to   = waypoints[index + 1];
+			segments.push_back({ WaypointAt(*route, from), WaypointAt(*route, to), Points(std::span(*route).subspan(from, to - from + 1)) });
+		}
+
+		return segments;
+	}
+
+	std::optional<std::vector<glm::vec3>> PlanSegment(const RoadSegment&         segment,
+	                                                  const RoadClass&           road_class,
+	                                                  const HeightSampler&       sample_height,
+	                                                  const RoadPlannerSettings& settings)
+	{
+		const Lattice                          fine = { CurveStep(road_class.minCurveRadius, settings.headings), settings.heightStep, settings.maxNodes };
+		const std::optional<std::vector<Node>> path = Search(segment.from, segment.to, fine, road_class, sample_height, settings);
+		if (path.has_value())
+			return Points(*path);
+
+		if (segment.fallback.empty())
+		{
+			DEBUG_ERROR("Could not plan a road between ({:.0f}, {:.0f}) and ({:.0f}, {:.0f})", segment.from.position.x, segment.from.position.y,
+			            segment.to.position.x, segment.to.position.y);
+			return std::nullopt;
+		}
+
+		DEBUG_LOG("The segment from ({:.0f}, {:.0f}) follows the coarse route instead", segment.from.position.x, segment.from.position.y);
+		return segment.fallback;
+	}
+
+	std::vector<glm::vec3> JoinSegments(std::span<const std::vector<glm::vec3>> pieces, const RoadPlannerSettings& settings)
+	{
+		std::vector<glm::vec3> path = { pieces.front().front() };
+		for (const std::vector<glm::vec3>& piece : pieces)
+			path.insert(path.end(), piece.begin() + 1, piece.end());
+
+		return Curve(path, settings.pointSpacing);
 	}
 
 	std::optional<std::vector<glm::vec3>> PlanRoad(const glm::vec2&           start,
@@ -256,75 +446,20 @@ namespace trok
 	                                               const HeightSampler&       sample_height,
 	                                               const RoadPlannerSettings& settings)
 	{
-		const glm::vec2 minimum = glm::min(start, end) - glm::vec2(settings.searchMargin);
-		const glm::vec2 maximum = glm::max(start, end) + glm::vec2(settings.searchMargin);
-		const float     step    = CurveStep(road_class.minCurveRadius, settings.headings);
-		const float     climb   = road_class.maxGrade * step;
-		const float     arrival = sample_height(end.x, end.y);
+		const std::optional<std::vector<RoadSegment>> segments = SplitRoad(start, end, road_class, sample_height, settings);
+		if (!segments.has_value())
+			return std::nullopt;
 
-		std::vector<Node>                                                      nodes = { { start, sample_height(start.x, start.y), NearestHeading(end - start, settings.headings) } };
-		std::unordered_map<VisitedKey, float, VisitedHash>                     visited;
-		std::priority_queue<Queued, std::vector<Queued>, std::greater<Queued>> open;
-
-		visited[KeyOf(start, nodes.front().heading, 0.f, step, settings.heightStep)] = 0.f;
-		open.push({ Estimate(start, nodes.front().height, end, arrival, road_class), 0 });
-
-		while (!open.empty() && nodes.size() < settings.maxNodes)
+		std::vector<std::vector<glm::vec3>> pieces;
+		for (const RoadSegment& segment : *segments)
 		{
-			const uint32_t current_index = open.top().node;
-			const Node     current       = nodes[current_index];
-			open.pop();
+			std::optional<std::vector<glm::vec3>> piece = PlanSegment(segment, road_class, sample_height, settings);
+			if (!piece.has_value())
+				return std::nullopt;
 
-			if (current.goal)
-				return Curve(Trace(nodes, current_index), settings.pointSpacing);
-
-			const auto recorded = visited.find(KeyOf(current.position, current.heading, current.clearance, step, settings.heightStep));
-			if (recorded != visited.end() && current.cost > recorded->second)
-				continue;
-
-			const float remaining = glm::distance(current.position, end);
-			if (CanArriveAt(current, end, remaining, step, settings.headings))
-			{
-				const StepGround           ground    = SampleStep(current.position, end, road_class.halfWidth(), sample_height);
-				const std::optional<float> last_step = StepCost(ground, current.height, arrival, 0, remaining, road_class, settings);
-
-				if (last_step.has_value())
-				{
-					nodes.push_back({ end, arrival, current.heading, current.cost + *last_step, current_index, true });
-					open.push({ nodes.back().cost, static_cast<uint32_t>(nodes.size() - 1) });
-				}
-			}
-
-			for (const int turn : TURN_OPTIONS)
-			{
-				const int       heading  = (current.heading + turn + settings.headings) % settings.headings;
-				const glm::vec2 position = current.position + HeadingDirection(heading, settings.headings) * step;
-				if (position.x < minimum.x || position.x > maximum.x || position.y < minimum.y || position.y > maximum.y)
-					continue;
-
-				const StepGround ground = SampleStep(current.position, position, road_class.halfWidth(), sample_height);
-
-				for (const float height : HeightOptions(current.height, ground.end[CENTRE], climb))
-				{
-					const std::optional<float> step_cost = StepCost(ground, current.height, height, turn, step, road_class, settings);
-					if (!step_cost.has_value())
-						continue;
-
-					const float      cost      = current.cost + *step_cost;
-					const float      clearance = height - ground.end[CENTRE];
-					const VisitedKey key       = KeyOf(position, heading, clearance, step, settings.heightStep);
-					const auto       found     = visited.find(key);
-					if (found != visited.end() && found->second <= cost)
-						continue;
-
-					visited[key] = cost;
-					nodes.push_back({ position, height, heading, cost, current_index, false, clearance });
-					open.push({ cost + settings.heuristicWeight * Estimate(position, height, end, arrival, road_class), static_cast<uint32_t>(nodes.size() - 1) });
-				}
-			}
+			pieces.push_back(std::move(*piece));
 		}
 
-		DEBUG_ERROR("Could not plan a road between ({:.0f}, {:.0f}) and ({:.0f}, {:.0f})", start.x, start.y, end.x, end.y);
-		return std::nullopt;
+		return JoinSegments(pieces, settings);
 	}
 }

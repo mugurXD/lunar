@@ -131,6 +131,23 @@ TEST(RoadPlanner, ConnectsBothEndpointsOnFlatGround)
 	}
 }
 
+TEST(RoadPlanner, LongRoadsArePlannedInSegmentsAndStillJoinUp)
+{
+	constexpr float LONG_ROAD = 5000.f;
+
+	const trok::RoadPlannerSettings             settings = {};
+	const glm::vec2                             far_end  = { LONG_ROAD, 0.f };
+	const std::optional<std::vector<glm::vec3>> road     = trok::PlanRoad(START, far_end, TestRoadClass(), FlatGround, settings);
+
+	ASSERT_GT(LONG_ROAD, settings.segmentThreshold) << "the road must be long enough to be split into segments";
+	ASSERT_TRUE(road.has_value());
+	EXPECT_NEAR(glm::distance(glm::vec2(road->front().x, road->front().z), START), 0.f, TOLERANCE);
+	EXPECT_NEAR(glm::distance(glm::vec2(road->back().x, road->back().z), far_end), 0.f, TOLERANCE);
+
+	for (const glm::vec3& point : *road)
+		EXPECT_NEAR(point.z, 0.f, TOLERANCE) << "segments should join into one straight road across flat ground";
+}
+
 TEST(RoadPlanner, RoutesThroughAPassInsteadOfOverTheWall)
 {
 	const std::optional<std::vector<glm::vec3>> road = trok::PlanRoad(START, END, TestRoadClass(), WallWithAPass);
