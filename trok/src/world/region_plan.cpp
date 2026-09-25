@@ -3,6 +3,8 @@
 
 #include <lunar/debug.hpp>
 
+#include <glm/gtc/constants.hpp>
+
 #include <algorithm>
 #include <cmath>
 #include <string_view>
@@ -19,6 +21,7 @@ namespace trok
 		constexpr uint64_t         SETTLEMENT_OFFSET_SALT = 1;
 		constexpr uint64_t         SETTLEMENT_RADIUS_SALT = 2;
 		constexpr std::string_view SETTLEMENT_TYPE        = "core:town";
+		constexpr int              SETTLEMENT_EDGE_PROBES = 8;
 
 		nlohmann::json SerializeSettlement(const Settlement& settlement)
 		{
@@ -236,21 +239,35 @@ namespace trok
 		const glm::dvec2 offset = { UnitFromHash(roll) - HALF, UnitFromHash(MixHash(roll, SETTLEMENT_OFFSET_SALT)) - HALF };
 		const glm::dvec2 center = origin + region_size * (glm::dvec2(HALF) + offset * SETTLEMENT_JITTER);
 
-		const double   cell_size = BiomeCellSize(settings);
-		const uint32_t cell_x    = static_cast<uint32_t>((center.x - origin.x) / cell_size);
-		const uint32_t cell_z    = static_cast<uint32_t>((center.y - origin.y) / cell_size);
+		const double cell_size = BiomeCellSize(settings);
+		const double radius    = glm::mix(SETTLEMENT_MIN_RADIUS, SETTLEMENT_MAX_RADIUS, UnitFromHash(MixHash(roll, SETTLEMENT_RADIUS_SALT)));
 
-		if (!biomes->get(plan.getBiome(cell_x, cell_z)).habitable)
+		const auto biome_at = [&](const glm::dvec2& point) -> const Biome& {
+			const glm::uvec2 cell = glm::min(glm::uvec2((point - origin) / cell_size), glm::uvec2(plan.biomeCellsPerSide - 1));
+			return biomes->get(plan.getBiome(cell.x, cell.y));
+		};
+
+		const auto may_flood = [&](const glm::dvec2& point) {
+			const BiomeTerrain& terrain = biome_at(point).terrain;
+			const float         lowest  = elevation.heightAt(climate->sampleContinentalness(point.x, point.y)) + terrain.heightOffset - terrain.amplitude;
+			return lowest <= elevation.seaLevel;
+		};
+
+		if (!biome_at(center).habitable || may_flood(center))
 			return;
 
-		if (elevation.heightAt(climate->sampleContinentalness(center.x, center.y)) <= elevation.seaLevel)
-			return;
+		for (int probe = 0; probe < SETTLEMENT_EDGE_PROBES; probe++)
+		{
+			const double angle = glm::two_pi<double>() * probe / SETTLEMENT_EDGE_PROBES;
+			if (may_flood(center + glm::dvec2(std::cos(angle), std::sin(angle)) * radius))
+				return;
+		}
 
 		plan.settlements.push_back({
 			.id     = static_cast<uint32_t>(roll),
 			.type   = std::string(SETTLEMENT_TYPE),
 			.center = center,
-			.radius = glm::mix(SETTLEMENT_MIN_RADIUS, SETTLEMENT_MAX_RADIUS, UnitFromHash(MixHash(roll, SETTLEMENT_RADIUS_SALT)))
+			.radius = radius
 		});
 	}
 

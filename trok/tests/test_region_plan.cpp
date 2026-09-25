@@ -2,8 +2,11 @@
 
 #include <trok/world/region_plan.hpp>
 #include <trok/world/shapers.hpp>
+#include <trok/world/terrain_generator.hpp>
 #include <lunar/file/json_file.hpp>
 #include <gtest/gtest.h>
+
+#include <glm/gtc/constants.hpp>
 
 #include <algorithm>
 #include <memory>
@@ -299,27 +302,38 @@ TEST(RegionPlanner, RiversAreDeterministic)
 
 TEST(RegionPlanner, TownsAreNeverFoundedBelowSeaLevel)
 {
-	const trok::ElevationCurve coastal = { .points = { { -1.f, 0.f }, { 1.f, 600.f } }, .seaLevel = COASTAL_SEA_LEVEL };
-	const trok::RegionPlanner  planner(GENERATOR_VERSION, WORLD_SEED, BIOMES, CLIMATE, coastal);
+	constexpr int FOOTPRINT_PROBES = 32;
 
-	int towns = 0;
+	const trok::ElevationCurve   coastal = { .points = { { -1.f, 0.f }, { 1.f, 600.f } }, .seaLevel = COASTAL_SEA_LEVEL };
+	const trok::RegionPlanner    planner(GENERATOR_VERSION, WORLD_SEED, BIOMES, CLIMATE, coastal);
+	const trok::TerrainGenerator generator(BIOMES, CLIMATE, coastal, WORLD_SEED);
 
+	std::vector<trok::RegionContext::Region> regions;
 	for (int32_t z = -SURVEY_RADIUS; z <= SURVEY_RADIUS; z++)
-	{
 		for (int32_t x = -SURVEY_RADIUS; x <= SURVEY_RADIUS; x++)
+			regions.push_back({ { x, z }, std::make_shared<const trok::RegionPlan>(planner.plan({ x, z }, SETTINGS)) });
+
+	const trok::RegionContext context(SETTINGS, regions);
+	int                       towns = 0;
+
+	for (const trok::RegionContext::Region& region : regions)
+	{
+		for (const trok::Settlement& settlement : region.plan->settlements)
 		{
-			for (const trok::Settlement& settlement : planner.plan({ x, z }, SETTINGS).settlements)
+			towns++;
+			EXPECT_GT(generator.sampleBaseHeight(context, settlement.center.x, settlement.center.y), COASTAL_SEA_LEVEL) << "a town was founded under water";
+
+			for (int probe = 0; probe < FOOTPRINT_PROBES; probe++)
 			{
-				towns++;
-				EXPECT_GT(coastal.heightAt(CLIMATE->sampleContinentalness(settlement.center.x, settlement.center.y)), COASTAL_SEA_LEVEL)
-					<< "a town was founded under water";
+				const double     angle = glm::two_pi<double>() * probe / FOOTPRINT_PROBES;
+				const glm::dvec2 edge  = settlement.center + glm::dvec2(std::cos(angle), std::sin(angle)) * settlement.radius;
+				EXPECT_GT(generator.sampleBaseHeight(context, edge.x, edge.y), COASTAL_SEA_LEVEL) << "a town reaches into the sea";
 			}
 		}
 	}
 
 	EXPECT_GT(towns, 0);
 }
-
 
 TEST(RiverShaper, DeclaresOnlyNearItsRivers)
 {
