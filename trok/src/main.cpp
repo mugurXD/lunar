@@ -418,6 +418,7 @@ int main()
 
 	std::shared_ptr<const trok::RoadNetwork> road_network;
 	std::vector<std::vector<glm::vec3>>      planned_roads;
+	size_t                                   pending_links   = 0;
 	bool                                     roads_ready     = false;
 	bool                                     roads_requested = false;
 	std::vector<GameObject>  road_markers;
@@ -438,28 +439,33 @@ int main()
 		roads_requested = true;
 
 		engine.getJobSystem().submit(
-			[planner = region_planner, generator = terrain_generator, settings = world_settings, shape = *road_class,
-			 sea_level = elevation.seaLevel, centre = World::RegionAt(CAMERA_START_POSITION, world_settings)] {
-				const TownSurvey          survey = SurveyTowns(*planner, settings, centre, TOWN_SURVEY_RADIUS);
-				const trok::RegionContext context(settings, survey.regions);
+			[planner = region_planner, settings = world_settings, centre = World::RegionAt(CAMERA_START_POSITION, world_settings)] {
+				return SurveyTowns(*planner, settings, centre, TOWN_SURVEY_RADIUS);
+			},
+			[&](TownSurvey survey) {
+				const trok::RegionContext context(world_settings, survey.regions);
+				pending_links = survey.links.size();
+				roads_ready   = pending_links == 0;
 
-				std::vector<std::vector<glm::vec3>> centrelines;
 				for (const TownLink& link : survey.links)
 				{
-					const std::optional<std::vector<glm::vec3>> road = trok::PlanRoad(link.from, link.to, shape, [&](double x, double z) {
-						return generator->sampleBaseHeight(context, x, z);
-					}, { .seaLevel = sea_level });
+					engine.getJobSystem().submit(
+						[link, context, generator = terrain_generator, shape = *road_class, sea_level = elevation.seaLevel] {
+							return trok::PlanRoad(link.from, link.to, shape, [&](double x, double z) {
+								return generator->sampleBaseHeight(context, x, z);
+							}, { .seaLevel = sea_level });
+						},
+						[&, links = survey.links.size()](std::optional<std::vector<glm::vec3>> road) {
+							if (road.has_value())
+								planned_roads.push_back(std::move(*road));
 
-					if (road.has_value())
-						centrelines.push_back(*road);
+							if (--pending_links > 0)
+								return;
+
+							DEBUG_LOG("Connected {} of {} town pairs", planned_roads.size(), links);
+							roads_ready = true;
+						});
 				}
-
-				DEBUG_LOG("Connected {} of {} town pairs", centrelines.size(), survey.links.size());
-				return centrelines;
-			},
-			[&](std::vector<std::vector<glm::vec3>> centrelines) {
-				planned_roads = std::move(centrelines);
-				roads_ready   = true;
 			});
 	};
 
