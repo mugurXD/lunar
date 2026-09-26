@@ -29,7 +29,10 @@ lunar_compile_shaders(lunar_test_shaders
 
 add_dependencies(lunar_render_tests lunar_test_shaders)
 target_link_libraries(lunar_render_tests PRIVATE lunar GTest::gtest_main)
-target_compile_definitions(lunar_render_tests PRIVATE LUNAR_TEST_SHADER_DIR="${CMAKE_CURRENT_BINARY_DIR}/shaders")
+target_compile_definitions(lunar_render_tests PRIVATE
+    LUNAR_TEST_SHADER_DIR="${CMAKE_CURRENT_BINARY_DIR}/shaders"
+    LUNAR_RESOURCES_DIR="${PROJECT_SOURCE_DIR}/resources"
+)
 
 include(GoogleTest)
 gtest_discover_tests(lunar_tests)

@@ -1,5 +1,6 @@
 #include <lunar/render/render_device.hpp>
 #include <lunar/render/mesh_registry.hpp>
+#include <lunar/ui/ui_layer.hpp>
 #include <lunar/core/jobs.hpp>
 #include <lunar/core/scene.hpp>
 #include <lunar/world/chunk_storage.hpp>
@@ -10,12 +11,15 @@
 #include <lunar/file/binary_file.hpp>
 #include <gtest/gtest.h>
 
+#include <RmlUi/Core.h>
+
 #include "temporary_directory.hpp"
 #include "world_test_types.hpp"
 
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -54,6 +58,42 @@ namespace
 	constexpr uint8_t  OPAQUE_WHITE    = 255;
 	constexpr Rect2D   UPDATED_REGION  = { .offset = { 1, 1 }, .extent = { 2, 1 } };
 	constexpr Rect2D   SCISSOR_REGION  = { .offset = { 8, 4 }, .extent = { 16, 8 } };
+	constexpr int      UI_FRAME_COUNT  = 2;
+
+	constexpr const char* CLIPPED_TRANSFORMED_DOCUMENT = R"(
+		<rml>
+			<head>
+				<style>
+					body  { width: 100%; height: 100%; }
+					div   { width: 50%; height: 50%; overflow: hidden; background-color: #ff880099; transform: rotate(10deg); }
+					span  { display: block; width: 200%; height: 8px; background-color: #ffffff; }
+					p     { font-family: rmlui-debugger-font; font-size: 12px; color: #202020; }
+				</style>
+			</head>
+			<body><div><span/></div><p>trok</p></body>
+		</rml>
+	)";
+
+	class ScopedWorkingDirectory
+	{
+	public:
+		explicit ScopedWorkingDirectory(const std::filesystem::path& path)
+			: previous(std::filesystem::current_path())
+		{
+			std::filesystem::current_path(path);
+		}
+
+		~ScopedWorkingDirectory()
+		{
+			std::filesystem::current_path(previous);
+		}
+
+		ScopedWorkingDirectory(const ScopedWorkingDirectory&)            = delete;
+		ScopedWorkingDirectory& operator=(const ScopedWorkingDirectory&) = delete;
+
+	private:
+		std::filesystem::path previous;
+	};
 
 	constexpr int32_t TERRAIN_VIEW_RADIUS      = 2;
 	constexpr size_t  CHUNKS_WITHIN_RADIUS     = 13;
@@ -862,6 +902,42 @@ TEST_F(RenderDeviceTest, ScissoredPremultipliedDrawsRecordCleanly)
 	device->endFrame(frame);
 
 	device->destroyPipeline(pipeline);
+	device->destroyImage(color);
+}
+
+TEST_F(RenderDeviceTest, UiDocumentsRenderAndReleaseCleanly)
+{
+	const ScopedWorkingDirectory resources(LUNAR_RESOURCES_DIR);
+	const Format                 color_format = Format::eRGBA8Srgb;
+	const ImageHandle            color        = device->createImage({ .extent = IMAGE_EXTENT, .format = color_format, .usage = ImageUsageFlags(ImageUsageFlagBits::eColorAttachment) });
+	const ColorAttachment        attachment   = { .image = color };
+
+	{
+		lunar::UI::UiLayer ui(*device, color_format);
+		ASSERT_NE(ui.getContext(), nullptr);
+
+		Rml::ElementDocument* document = ui.getContext()->LoadDocumentFromMemory(CLIPPED_TRANSFORMED_DOCUMENT);
+		ASSERT_NE(document, nullptr);
+		document->Show();
+
+		for (int frame_index = 0; frame_index < UI_FRAME_COUNT; frame_index++)
+		{
+			ui.update(IMAGE_EXTENT);
+
+			Frame&       frame    = device->beginFrame();
+			CommandList& commands = frame.commandList();
+
+			commands.beginRendering({ .colorAttachments = std::span(&attachment, 1) });
+			ui.record(commands, IMAGE_EXTENT);
+			commands.endRendering();
+			device->endFrame(frame);
+		}
+
+		EXPECT_GT(device->getStats().bufferCount, baseline.bufferCount) << "the document should have compiled geometry";
+		EXPECT_GT(device->getStats().imageCount,  baseline.imageCount + 1) << "the text should have generated a font texture";
+		document->Close();
+	}
+
 	device->destroyImage(color);
 }
 
