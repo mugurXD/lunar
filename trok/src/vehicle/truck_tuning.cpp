@@ -41,8 +41,12 @@ namespace trok
 
 		constexpr FloatSetting HANDLING_SETTINGS[] =
 		{
-			{ "Extra gravity", &VehicleSettings::extraGravity, 0.f, 30.f },
-			{ "Downforce",     &VehicleSettings::downforce,    0.f, 200.f }
+			{ "Extra gravity",  &VehicleSettings::extraGravity,      0.f, 30.f },
+			{ "Downforce",      &VehicleSettings::downforce,         0.f, 200.f },
+			{ "Air control",    &VehicleSettings::airControl,        0.f, 20.f },
+			{ "Air rate",       &VehicleSettings::airControlRate,    0.f, 6.f },
+			{ "Self-righting",  &VehicleSettings::selfRighting,      0.f, 60.f },
+			{ "Righting speed", &VehicleSettings::selfRightingSpeed, 0.f, 10.f }
 		};
 
 		constexpr FloatSetting ENGINE_SETTINGS[] =

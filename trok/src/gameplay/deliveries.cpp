@@ -2,6 +2,7 @@
 
 #include <lunar/debug.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <span>
@@ -87,6 +88,11 @@ namespace trok
 	int64_t Deliveries::getMoney() const
 	{
 		return money;
+	}
+
+	void Deliveries::charge(int64_t amount)
+	{
+		money = std::max<int64_t>(money - amount, 0);
 	}
 
 	std::optional<Delivery> Deliveries::offer(const Settlement& origin)

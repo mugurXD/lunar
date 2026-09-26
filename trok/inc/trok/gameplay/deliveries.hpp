@@ -45,6 +45,7 @@ namespace trok
 		const std::optional<Delivery>& getDelivery() const;
 		std::optional<glm::dvec2>      getTarget()   const;
 		int64_t                        getMoney()    const;
+		void                           charge(int64_t amount);
 
 	private:
 		std::optional<Delivery> offer(const Settlement& origin);

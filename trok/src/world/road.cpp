@@ -237,6 +237,31 @@ namespace trok
 		return found;
 	}
 
+	std::optional<RoadPoint> RoadNetwork::closestPoint(const glm::vec2& position, float max_distance) const
+	{
+		std::optional<RoadPoint> closest;
+		float                    shortest = max_distance;
+
+		for (const uint32_t segment : candidatesWithin(position - glm::vec2(max_distance), position + glm::vec2(max_distance)))
+		{
+			const glm::vec3& from   = points[segment];
+			const glm::vec3& to     = points[segment + 1];
+			const glm::vec2  course = glm::vec2(to.x - from.x, to.z - from.z);
+			if (course == glm::vec2(0.f))
+				continue;
+
+			float       amount   = 0.f;
+			const float distance = lunar::DistanceToSegment(position, { from.x, from.z }, { to.x, to.z }, amount);
+			if (distance > shortest)
+				continue;
+
+			shortest = distance;
+			closest  = RoadPoint { glm::mix(from, to, amount), glm::normalize(course) };
+		}
+
+		return closest;
+	}
+
 	std::vector<uint32_t> RoadNetwork::candidatesWithin(const glm::vec2& minimum, const glm::vec2& maximum) const
 	{
 		const Cell lowest  = CellAt(minimum.x, minimum.y);

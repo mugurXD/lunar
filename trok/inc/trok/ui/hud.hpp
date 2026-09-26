@@ -21,6 +21,7 @@ namespace trok
 		Hud& operator=(const Hud&) = delete;
 
 		void update(const Deliveries& deliveries, std::optional<int64_t> payout, float delta_time);
+		void flash();
 
 	private:
 		struct State
@@ -35,11 +36,13 @@ namespace trok
 			bool        late        = false;
 			int64_t     payout      = 0;
 			bool        showPayout  = false;
+			bool        flash       = false;
 		};
 
 		Rml::Context*        context     = nullptr;
 		Rml::DataModelHandle model       = {};
 		State                state       = {};
 		float                payoutTimer = 0.f;
+		float                flashTimer  = 0.f;
 	};
 }

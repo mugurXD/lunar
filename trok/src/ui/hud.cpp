@@ -14,6 +14,7 @@ namespace trok
 	{
 		constexpr const char*      MODEL_NAME             = "hud";
 		constexpr float            PAYOUT_DISPLAY_SECONDS = 2.5f;
+		constexpr float            FLASH_SECONDS          = 0.08f;
 		constexpr int              SECONDS_PER_MINUTE     = 60;
 		constexpr std::string_view PICKUP_TEXT            = "Pick up the cargo";
 		constexpr std::string_view DROPOFF_TEXT           = "Deliver the cargo";
@@ -45,6 +46,7 @@ namespace trok
 		constructor.Bind("late",        &state.late);
 		constructor.Bind("payout",      &state.payout);
 		constructor.Bind("showPayout",  &state.showPayout);
+		constructor.Bind("flash",       &state.flash);
 		model = constructor.GetModelHandle();
 
 		if (Rml::ElementDocument* loaded = ui.loadDocument(document))
@@ -57,6 +59,11 @@ namespace trok
 			context->RemoveDataModel(MODEL_NAME);
 	}
 
+	void Hud::flash()
+	{
+		flashTimer = FLASH_SECONDS;
+	}
+
 	void Hud::update(const Deliveries& deliveries, std::optional<int64_t> payout, float delta_time)
 	{
 		if (payout.has_value())
@@ -66,11 +73,13 @@ namespace trok
 		}
 
 		payoutTimer = std::max(payoutTimer - delta_time, 0.f);
+		flashTimer  = std::max(flashTimer - delta_time, 0.f);
 
 		const std::optional<Delivery>& delivery = deliveries.getDelivery();
 
 		state.money       = deliveries.getMoney();
 		state.showPayout  = payoutTimer > 0.f;
+		state.flash       = flashTimer > 0.f;
 		state.hasDelivery = delivery.has_value();
 
 		if (delivery.has_value())

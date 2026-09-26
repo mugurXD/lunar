@@ -49,6 +49,12 @@ namespace trok
 		static std::optional<RoadClass> Deserialize(const nlohmann::json& json);
 	};
 
+	struct RoadPoint
+	{
+		glm::vec3 position  = {};
+		glm::vec2 direction = {};
+	};
+
 	class RoadNetwork
 	{
 	public:
@@ -57,6 +63,7 @@ namespace trok
 
 		std::vector<lunar::World::ShapeDeclaration> shapesReaching(const glm::vec2& minimum, const glm::vec2& maximum) const;
 		std::vector<uint32_t>      segmentsWithin(const glm::vec2& minimum, const glm::vec2& maximum) const;
+		std::optional<RoadPoint>   closestPoint(const glm::vec2& position, float max_distance)           const;
 		glm::vec3                  sideAt(size_t point)                                   const;
 		float                      distanceAt(size_t point)                               const;
 		std::span<const glm::vec3> getCentreline()                                        const;

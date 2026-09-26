@@ -70,6 +70,9 @@ namespace
 	constexpr int32_t                 TOWN_SURVEY_RADIUS   = 2;
 	constexpr int32_t                 COLLIDER_RADIUS      = 1;
 	constexpr float                   TRUCK_SPAWN_HEIGHT   = 1.5f;
+	constexpr float                   RECOVER_HOLD_SECONDS = 0.5f;
+	constexpr float                   RECOVER_ROAD_REACH   = 400.f;
+	constexpr int64_t                 RECOVERY_FEE         = 100;
 	constexpr float                   GROUND_RAY_HEIGHT    = 2000.f;
 	constexpr uint16_t                GROUND_RAY_MASK      = Physics::TERRAIN_CATEGORY | Physics::ROAD_CATEGORY;
 	constexpr float                   REVERSE_THRESHOLD    = 1.f;
@@ -236,7 +239,8 @@ namespace
 		{
 			.throttle = opposing ? 0.f : pedal,
 			.brake    = braking ? 1.f : (opposing ? std::abs(pedal) : 0.f),
-			.steering = axis.x
+			.steering = axis.x,
+			.pitch    = axis.y
 		};
 	}
 
@@ -527,6 +531,35 @@ int main()
 		}
 	});
 
+	const auto reset_truck = [&] {
+		const glm::vec3                                stuck   = truck->getTransform().position;
+		const std::shared_ptr<const trok::RoadNetwork> network = roads.getNetwork();
+		const std::optional<trok::RoadPoint>           road    = network != nullptr ? network->closestPoint({ stuck.x, stuck.z }, RECOVER_ROAD_REACH) : std::nullopt;
+
+		if (road.has_value())
+		{
+			const glm::vec3 heading = truck->getTransform().rotation * glm::vec3(0.f, 0.f, -1.f);
+			const glm::vec2 facing  = glm::dot(road->direction, glm::vec2(heading.x, heading.z)) >= 0.f ? road->direction : -road->direction;
+
+			truck->recover(road->position + glm::vec3(0.f, network->getRoadClass().surfaceOffset + TRUCK_SPAWN_HEIGHT, 0.f), facing);
+		}
+		else if (const std::optional<float> ground = GroundHeight(scene, stuck.x, stuck.z))
+		{
+			truck->recover({ stuck.x, *ground + TRUCK_SPAWN_HEIGHT, stuck.z });
+		}
+		else
+		{
+			DEBUG_ERROR("There is no road or ground near the truck to recover onto");
+			return;
+		}
+
+		deliveries.charge(RECOVERY_FEE);
+		if (hud.has_value())
+			hud->flash();
+	};
+
+	float recover_held    = 0.f;
+	bool  recover_handled = false;
 	engine.addSystem(SystemPhase::eUpdate, [&](Scene&, const FrameTime& frame_time) {
 		if (!truck.has_value())
 		{
@@ -564,15 +597,12 @@ int main()
 			scene.setMainCamera(is_driving() ? player : chase_camera);
 		}
 
-		if (window.getActionDown("recover"))
+		recover_held    = window.getAction("recover") ? recover_held + frame_time.deltaTime : 0.f;
+		recover_handled = recover_handled && recover_held > 0.f;
+		if (recover_held >= RECOVER_HOLD_SECONDS && !recover_handled)
 		{
-			const glm::vec3            stuck  = truck->getTransform().position;
-			const std::optional<float> ground = GroundHeight(scene, stuck.x, stuck.z);
-
-			if (ground.has_value())
-				truck->recover({ stuck.x, *ground + TRUCK_SPAWN_HEIGHT, stuck.z });
-			else
-				DEBUG_ERROR("There is no ground under the truck to recover onto");
+			recover_handled = true;
+			reset_truck();
 		}
 
 		if (!is_driving())

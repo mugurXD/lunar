@@ -13,7 +13,7 @@ namespace trok
 {
 	namespace
 	{
-		constexpr uint32_t TRUCK_FORMAT_VERSION = 2;
+		constexpr uint32_t TRUCK_FORMAT_VERSION = 4;
 		constexpr float    HALF                 = 0.5f;
 
 		const glm::vec3    CHASSIS_FORWARD      = { 0.f, 0.f, -1.f };
@@ -108,8 +108,12 @@ namespace trok
 			},
 			{ "handling",
 				{
-					{ "extraGravity", vehicle.extraGravity },
-					{ "downforce",    vehicle.downforce }
+					{ "extraGravity",      vehicle.extraGravity },
+					{ "downforce",         vehicle.downforce },
+					{ "airControl",        vehicle.airControl },
+					{ "airControlRate",    vehicle.airControlRate },
+					{ "selfRighting",      vehicle.selfRighting },
+					{ "selfRightingSpeed", vehicle.selfRightingSpeed }
 				}
 			},
 			{ "engine",
@@ -181,7 +185,11 @@ namespace trok
 				.rollInfluence      = tyres.at("rollInfluence").get<float>(),
 				.antiRollStiffness  = suspension.at("antiRollStiffness").get<float>(),
 				.extraGravity       = handling.at("extraGravity").get<float>(),
-				.downforce          = handling.at("downforce").get<float>()
+				.downforce          = handling.at("downforce").get<float>(),
+				.airControl         = handling.at("airControl").get<float>(),
+				.airControlRate     = handling.at("airControlRate").get<float>(),
+				.selfRighting       = handling.at("selfRighting").get<float>(),
+				.selfRightingSpeed  = handling.at("selfRightingSpeed").get<float>()
 			}
 		};
 
@@ -249,11 +257,12 @@ namespace trok
 			vehicle.update(body, input, delta_time);
 	}
 
-	void Truck::recover(const glm::vec3& position)
+	void Truck::recover(const glm::vec3& position, std::optional<glm::vec2> facing)
 	{
 		lunar::Physics::RigidBody& body    = *chassis->getComponent<lunar::Physics::RigidBody>();
-		const glm::vec3            forward = getTransform().rotation * CHASSIS_FORWARD;
-		const glm::quat            upright = glm::angleAxis(std::atan2(forward.x, -forward.z), CHASSIS_UP);
+		const glm::vec3            current = getTransform().rotation * CHASSIS_FORWARD;
+		const glm::vec2            forward = facing.value_or(glm::vec2(current.x, current.z));
+		const glm::quat            upright = glm::angleAxis(std::atan2(forward.x, -forward.y), CHASSIS_UP);
 
 		body.getBody().setTransform(rp3d::Transform(lunar::Physics::ToPhysics(position), lunar::Physics::ToPhysics(upright)));
 		body.getBody().setLinearVelocity(rp3d::Vector3::zero());
