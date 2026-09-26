@@ -99,6 +99,38 @@ namespace
 	{
 		return ToGlm(body.getBody().getTransform().getOrientation());
 	}
+
+	float AverageCompression(const RaycastVehicle& vehicle)
+	{
+		float total = 0.f;
+		for (const WheelState& wheel : vehicle.getWheels())
+			total += wheel.compression;
+
+		return total / static_cast<float>(vehicle.getWheels().size());
+	}
+
+	float RollUnderASidePush(const VehicleSettings& settings)
+	{
+		constexpr float PUSH_FRACTION = 0.25f;
+		constexpr float PUSH_HEIGHT   = 1.f;
+		constexpr int   PUSH_STEPS    = 120;
+
+		lunar::Scene   scene;
+		RigidBody      ground  = CreateGround(scene);
+		RigidBody      chassis = CreateChassis(scene);
+		RaycastVehicle vehicle(settings);
+
+		Simulate(scene, vehicle, chassis, {}, SETTLE_STEPS);
+
+		const glm::vec3 push = glm::vec3(1.f, 0.f, 0.f) * TRUCK_MASS * GRAVITY * PUSH_FRACTION;
+		for (int step = 0; step < PUSH_STEPS; step++)
+		{
+			chassis.getBody().applyWorldForceAtWorldPosition(ToPhysics(push), ToPhysics(Position(chassis) + UP * PUSH_HEIGHT));
+			Simulate(scene, vehicle, chassis, { .brake = 1.f }, 1);
+		}
+
+		return std::abs((Rotation(chassis) * UP).x);
+	}
 }
 
 TEST(RaycastVehicle, SettlesOnItsSuspension)
@@ -247,4 +279,56 @@ TEST(RigidBody, TriangleMeshCollidersAreHitAndReportTheirCategory)
 	ASSERT_TRUE(hit.has_value());
 	EXPECT_EQ(hit->category, ROAD_CATEGORY);
 	EXPECT_NEAR(hit->point.y, SLAB_HEIGHT, HEIGHT_TOLERANCE);
+}
+
+TEST(RaycastVehicle, ExtraGravityPressesTheSuspensionHarder)
+{
+	VehicleSettings settings = TestTruck();
+	settings.extraGravity    = GRAVITY;
+
+	lunar::Scene   scene;
+	RigidBody      ground  = CreateGround(scene);
+	RigidBody      chassis = CreateChassis(scene);
+	RaycastVehicle vehicle(settings);
+
+	Simulate(scene, vehicle, chassis, {}, SETTLE_STEPS);
+
+	const float expected_compression = TRUCK_MASS * GRAVITY * 2.f / (settings.stiffness * static_cast<float>(vehicle.getWheels().size()));
+	EXPECT_NEAR(AverageCompression(vehicle), expected_compression, expected_compression * LOAD_TOLERANCE);
+}
+
+TEST(RaycastVehicle, AntiRollBarsResistBodyRoll)
+{
+	constexpr float ANTI_ROLL_STIFFNESS = 60000.f;
+	constexpr float ROLL_REDUCTION      = 0.7f;
+
+	VehicleSettings stiffened   = TestTruck();
+	stiffened.antiRollStiffness = ANTI_ROLL_STIFFNESS;
+
+	const float free_roll      = RollUnderASidePush(TestTruck());
+	const float stiffened_roll = RollUnderASidePush(stiffened);
+
+	EXPECT_GT(free_roll, 0.f);
+	EXPECT_LT(stiffened_roll, free_roll * ROLL_REDUCTION);
+}
+
+TEST(RaycastVehicle, DownforceGrowsWithSpeed)
+{
+	constexpr float DOWNFORCE = 200.f;
+
+	VehicleSettings pressed = TestTruck();
+	pressed.downforce       = DOWNFORCE;
+
+	const auto compression_at_speed = [](const VehicleSettings& settings) {
+		lunar::Scene   scene;
+		RigidBody      ground  = CreateGround(scene);
+		RigidBody      chassis = CreateChassis(scene);
+		RaycastVehicle vehicle(settings);
+
+		Simulate(scene, vehicle, chassis, {}, SETTLE_STEPS);
+		Simulate(scene, vehicle, chassis, { .throttle = 1.f }, DRIVE_STEPS);
+		return AverageCompression(vehicle);
+	};
+
+	EXPECT_GT(compression_at_speed(pressed), compression_at_speed(TestTruck()));
 }

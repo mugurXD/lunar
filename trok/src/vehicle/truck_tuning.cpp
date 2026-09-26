@@ -33,9 +33,16 @@ namespace trok
 
 		constexpr FloatSetting SUSPENSION_SETTINGS[] =
 		{
-			{ "Rest length", &VehicleSettings::restLength, 0.1f,  1.5f },
-			{ "Stiffness",   &VehicleSettings::stiffness,  1e4f,  4e5f },
-			{ "Damping",     &VehicleSettings::damping,    0.f,   6e4f }
+			{ "Rest length", &VehicleSettings::restLength,        0.1f, 1.5f },
+			{ "Stiffness",   &VehicleSettings::stiffness,         1e4f, 4e5f },
+			{ "Damping",     &VehicleSettings::damping,           0.f,  6e4f },
+			{ "Anti-roll",   &VehicleSettings::antiRollStiffness, 0.f,  3e5f }
+		};
+
+		constexpr FloatSetting HANDLING_SETTINGS[] =
+		{
+			{ "Extra gravity", &VehicleSettings::extraGravity, 0.f, 30.f },
+			{ "Downforce",     &VehicleSettings::downforce,    0.f, 200.f }
 		};
 
 		constexpr FloatSetting ENGINE_SETTINGS[] =
@@ -134,6 +141,7 @@ namespace trok
 		DrawSliders("Engine",     ENGINE_SETTINGS,     settings);
 		DrawSliders("Steering",   STEERING_SETTINGS,   settings);
 		DrawSliders("Tyres",      TYRE_SETTINGS,       settings);
+		DrawSliders("Handling",   HANDLING_SETTINGS,   settings);
 	}
 
 	void TruckTuningWindow::save(const VehicleSettings& settings)

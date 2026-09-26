@@ -13,19 +13,35 @@ namespace lunar::Physics
 		const glm::vec3 LOCAL_UP      = { 0.f, 1.f, 0.f };
 		const glm::vec3 LOCAL_FORWARD = { 0.f, 0.f, -1.f };
 		const glm::vec3 LOCAL_RIGHT   = { 1.f, 0.f, 0.f };
+		const glm::vec3 WORLD_UP      = { 0.f, 1.f, 0.f };
 
 		constexpr uint16_t WHEEL_RAY_MASK  = static_cast<uint16_t>(~VEHICLE_CATEGORY);
 		constexpr float    MIN_POWER_SPEED = 1.f;
+		constexpr float    AXLE_TOLERANCE  = 0.01f;
 
 		glm::vec3 ProjectOntoPlane(const glm::vec3& vector, const glm::vec3& normal)
 		{
 			return glm::normalize(vector - normal * glm::dot(vector, normal));
 		}
+
+		std::optional<size_t> AxlePartner(std::span<const WheelSettings> wheels, size_t wheel)
+		{
+			const glm::vec3& mount = wheels[wheel].mountPoint;
+			for (size_t other = 0; other < wheels.size(); other++)
+			{
+				const glm::vec3& candidate = wheels[other].mountPoint;
+				if (std::abs(candidate.z - mount.z) <= AXLE_TOLERANCE && candidate.x * mount.x < 0.f)
+					return other;
+			}
+
+			return std::nullopt;
+		}
 	}
 
 	RaycastVehicle::RaycastVehicle(VehicleSettings settings) noexcept
 		: settings(std::move(settings)),
-		wheels(this->settings.wheels.size())
+		wheels(this->settings.wheels.size()),
+		contacts(this->settings.wheels.size())
 	{
 	}
 
@@ -52,10 +68,17 @@ namespace lunar::Physics
 		updateSteering(input.steering, delta_time);
 
 		for (size_t wheel = 0; wheel < wheels.size(); wheel++)
-			updateWheel(wheel, chassis, state, input, delta_time);
+			contacts[wheel] = probeWheel(wheel, chassis, state, delta_time);
 
-		const glm::vec3 drag = -state.linearVelocity * glm::length(state.linearVelocity) * settings.dragCoefficient;
-		body.applyWorldForceAtCenterOfMass(ToPhysics(drag));
+		for (size_t wheel = 0; wheel < wheels.size(); wheel++)
+			if (contacts[wheel].has_value())
+				applyWheel(wheel, *contacts[wheel], chassis, state, input, delta_time);
+
+		const bool      grounded  = std::ranges::any_of(wheels, &WheelState::grounded);
+		const glm::vec3 drag      = -state.linearVelocity * glm::length(state.linearVelocity) * settings.dragCoefficient;
+		const glm::vec3 gravity   = -WORLD_UP * body.getMass() * settings.extraGravity;
+		const glm::vec3 downforce = grounded ? -state.up * settings.downforce * forwardSpeed * forwardSpeed : glm::vec3(0.f);
+		body.applyWorldForceAtCenterOfMass(ToPhysics(drag + gravity + downforce));
 	}
 
 	const VehicleSettings& RaycastVehicle::getSettings() const
@@ -113,7 +136,13 @@ namespace lunar::Physics
 		return std::clamp(throttle, -1.f, 1.f) * available;
 	}
 
-	void RaycastVehicle::updateWheel(size_t wheel, RigidBody& chassis, const ChassisState& state, const VehicleInput& input, float delta_time)
+	float RaycastVehicle::antiRollLoad(size_t wheel) const
+	{
+		const std::optional<size_t> partner = AxlePartner(settings.wheels, wheel);
+		return partner.has_value() ? settings.antiRollStiffness * (wheels[wheel].compression - wheels[*partner].compression) : 0.f;
+	}
+
+	std::optional<RaycastVehicle::Contact> RaycastVehicle::probeWheel(size_t wheel, RigidBody& chassis, const ChassisState& state, float delta_time)
 	{
 		const WheelSettings& wheel_settings = settings.wheels[wheel];
 		WheelState&          wheel_state    = wheels[wheel];
@@ -127,15 +156,22 @@ namespace lunar::Physics
 		wheel_state.compression = hit.has_value() ? std::max(settings.restLength - (hit->fraction * ray_length - wheel_settings.radius), 0.f) : 0.f;
 		wheel_state.spinAngle  += forwardSpeed / wheel_settings.radius * delta_time;
 		if (!hit.has_value())
-			return;
+			return std::nullopt;
 
-		const float compression_speed = (wheel_state.compression - previous_compression) / delta_time;
-		const float load              = std::max(settings.stiffness * wheel_state.compression + settings.damping * compression_speed, 0.f);
+		return Contact { .hit = *hit, .compressionSpeed = (wheel_state.compression - previous_compression) / delta_time };
+	}
+
+	void RaycastVehicle::applyWheel(size_t wheel, const Contact& contact, RigidBody& chassis, const ChassisState& state, const VehicleInput& input, float delta_time)
+	{
+		const WheelSettings& wheel_settings = settings.wheels[wheel];
+		const RaycastHit&    hit            = contact.hit;
+		const float          spring         = settings.stiffness * wheels[wheel].compression + settings.damping * contact.compressionSpeed;
+		const float          load           = std::max(spring + antiRollLoad(wheel), 0.f);
 
 		const float     steer          = wheel_settings.steered ? steerAngle : 0.f;
-		const glm::vec3 wheel_forward  = ProjectOntoPlane(state.rotation * (glm::angleAxis(-steer, LOCAL_UP) * LOCAL_FORWARD), hit->normal);
-		const glm::vec3 wheel_side     = glm::normalize(glm::cross(wheel_forward, hit->normal));
-		const glm::vec3 point_velocity = state.linearVelocity + glm::cross(state.angularVelocity, hit->point - state.centerOfMass);
+		const glm::vec3 wheel_forward  = ProjectOntoPlane(state.rotation * (glm::angleAxis(-steer, LOCAL_UP) * LOCAL_FORWARD), hit.normal);
+		const glm::vec3 wheel_side     = glm::normalize(glm::cross(wheel_forward, hit.normal));
+		const glm::vec3 point_velocity = state.linearVelocity + glm::cross(state.angularVelocity, hit.point - state.centerOfMass);
 		const float     forward_slip   = glm::dot(point_velocity, wheel_forward);
 		const float     side_slip      = glm::dot(point_velocity, wheel_side);
 		const float     stopping_force = state.massPerWheel / delta_time;
@@ -149,17 +185,17 @@ namespace lunar::Physics
 
 		const float lateral   = -side_slip * std::min(settings.corneringStiffness, stopping_force);
 		glm::vec3   traction  = wheel_forward * longitudinal + wheel_side * lateral;
-		const float surface   = (hit->category & ROAD_CATEGORY) != 0 ? settings.roadGrip : 1.f;
+		const float surface   = (hit.category & ROAD_CATEGORY) != 0 ? settings.roadGrip : 1.f;
 		const float max_grip  = settings.tyreFriction * surface * load;
 		const float magnitude = glm::length(traction);
 		if (magnitude > max_grip)
 			traction *= max_grip / magnitude;
 
-		const float     height_to_mass = glm::dot(state.centerOfMass - hit->point, state.up);
-		const glm::vec3 traction_point = hit->point + state.up * height_to_mass * (1.f - settings.rollInfluence);
+		const float     height_to_mass = glm::dot(state.centerOfMass - hit.point, state.up);
+		const glm::vec3 traction_point = hit.point + state.up * height_to_mass * (1.f - settings.rollInfluence);
 
 		rp3d::RigidBody& body = chassis.getBody();
-		body.applyWorldForceAtWorldPosition(ToPhysics(state.up * load), ToPhysics(hit->point));
+		body.applyWorldForceAtWorldPosition(ToPhysics(state.up * load), ToPhysics(hit.point));
 		body.applyWorldForceAtWorldPosition(ToPhysics(traction), ToPhysics(traction_point));
 	}
 }

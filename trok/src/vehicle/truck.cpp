@@ -13,7 +13,7 @@ namespace trok
 {
 	namespace
 	{
-		constexpr uint32_t TRUCK_FORMAT_VERSION = 1;
+		constexpr uint32_t TRUCK_FORMAT_VERSION = 2;
 		constexpr float    HALF                 = 0.5f;
 
 		const glm::vec3    CHASSIS_FORWARD      = { 0.f, 0.f, -1.f };
@@ -100,9 +100,16 @@ namespace trok
 			},
 			{ "suspension",
 				{
-					{ "restLength", vehicle.restLength },
-					{ "stiffness",  vehicle.stiffness },
-					{ "damping",    vehicle.damping }
+					{ "restLength",        vehicle.restLength },
+					{ "stiffness",         vehicle.stiffness },
+					{ "damping",           vehicle.damping },
+					{ "antiRollStiffness", vehicle.antiRollStiffness }
+				}
+			},
+			{ "handling",
+				{
+					{ "extraGravity", vehicle.extraGravity },
+					{ "downforce",    vehicle.downforce }
 				}
 			},
 			{ "engine",
@@ -144,6 +151,7 @@ namespace trok
 		const nlohmann::json& engine     = json.at("engine");
 		const nlohmann::json& steering   = json.at("steering");
 		const nlohmann::json& tyres      = json.at("tyres");
+		const nlohmann::json& handling   = json.at("handling");
 
 		TruckDefinition definition =
 		{
@@ -170,7 +178,10 @@ namespace trok
 				.roadGrip           = tyres.at("roadGrip").get<float>(),
 				.rollingResistance  = engine.at("rollingResistance").get<float>(),
 				.dragCoefficient    = engine.at("dragCoefficient").get<float>(),
-				.rollInfluence      = tyres.at("rollInfluence").get<float>()
+				.rollInfluence      = tyres.at("rollInfluence").get<float>(),
+				.antiRollStiffness  = suspension.at("antiRollStiffness").get<float>(),
+				.extraGravity       = handling.at("extraGravity").get<float>(),
+				.downforce          = handling.at("downforce").get<float>()
 			}
 		};
 

@@ -1,5 +1,6 @@
 #pragma once
 #include <lunar/api.hpp>
+#include <lunar/physics/raycast.hpp>
 #include <lunar/physics/rigid_body.hpp>
 
 #include <glm/glm.hpp>
@@ -7,6 +8,7 @@
 
 #include <cstddef>
 #include <limits>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -40,6 +42,9 @@ namespace lunar::Physics
 		float                      rollingResistance  = 0.f;
 		float                      dragCoefficient    = 0.f;
 		float                      rollInfluence      = 0.3f;
+		float                      antiRollStiffness  = 0.f;
+		float                      extraGravity       = 0.f;
+		float                      downforce          = 0.f;
 
 		bool operator==(const VehicleSettings&) const = default;
 	};
@@ -87,12 +92,21 @@ namespace lunar::Physics
 			size_t    drivenWheels    = 0;
 		};
 
-		void  updateSteering(float steering, float delta_time);
-		float totalDriveForce(float throttle) const;
-		void updateWheel(size_t wheel, RigidBody& chassis, const ChassisState& state, const VehicleInput& input, float delta_time);
+		struct Contact
+		{
+			RaycastHit hit              = {};
+			float      compressionSpeed = 0.f;
+		};
 
-		VehicleSettings         settings     = {};
-		std::vector<WheelState> wheels       = {};
+		void                   updateSteering(float steering, float delta_time);
+		float                  totalDriveForce(float throttle)                                                             const;
+		float                  antiRollLoad(size_t wheel)                                                                  const;
+		std::optional<Contact> probeWheel(size_t wheel, RigidBody& chassis, const ChassisState& state, float delta_time);
+		void                   applyWheel(size_t wheel, const Contact& contact, RigidBody& chassis, const ChassisState& state, const VehicleInput& input, float delta_time);
+
+		VehicleSettings                     settings     = {};
+		std::vector<WheelState>             wheels       = {};
+		std::vector<std::optional<Contact>> contacts     = {};
 		float                   forwardSpeed = 0.f;
 		float                   steerAngle   = 0.f;
 	};
