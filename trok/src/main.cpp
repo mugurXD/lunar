@@ -223,14 +223,16 @@ namespace
 	Physics::VehicleInput ReadDrivingInput(float forward_speed)
 	{
 		const glm::vec2 axis     = Input::GetAxis();
-		const bool      opposing = axis.y * forward_speed < 0.f && std::abs(forward_speed) > REVERSE_THRESHOLD;
-		const bool      holding  = axis.y == 0.f && std::abs(forward_speed) < AUTO_HOLD_SPEED;
+		const glm::vec2 triggers = Input::GetTriggers();
+		const float     pedal    = glm::clamp(axis.y + triggers.y - triggers.x, -1.f, 1.f);
+		const bool      opposing = pedal * forward_speed < 0.f && std::abs(forward_speed) > REVERSE_THRESHOLD;
+		const bool      holding  = pedal == 0.f && std::abs(forward_speed) < AUTO_HOLD_SPEED;
 		const bool      braking  = Input::GetAction("brake") || holding;
 
 		return Physics::VehicleInput
 		{
-			.throttle = opposing ? 0.f : axis.y,
-			.brake    = braking ? 1.f : (opposing ? std::abs(axis.y) : 0.f),
+			.throttle = opposing ? 0.f : pedal,
+			.brake    = braking ? 1.f : (opposing ? std::abs(pedal) : 0.f),
 			.steering = axis.x
 		};
 	}
@@ -348,13 +350,13 @@ int main()
 	sky->addComponent<DistanceFog>(SKY_COLOR, view_distance * FOG_START_FRACTION, view_distance * FOG_END_FRACTION);
 
 	window.registerAction("toggle_menu",    { { "keyboard.esc" } });
-	window.registerAction("sprint",         { { "keyboard.shift" } });
-	window.registerAction("brake",          { { "keyboard.space" } });
-	window.registerAction("toggle_camera",  { { "keyboard.f" } });
+	window.registerAction("sprint",         { { "keyboard.shift" }, { "gamepad.ls" } });
+	window.registerAction("brake",          { { "keyboard.space" }, { "gamepad.a" } });
+	window.registerAction("toggle_camera",  { { "keyboard.f" },     { "gamepad.y" } });
 	window.registerAction("road_point",     { { "keyboard.f5" }, { "mouse.right_button" } });
 	window.registerAction("road_build",     { { "keyboard.f6" }, { "mouse.middle_button" } });
 	window.registerAction("toggle_terrain", { { "keyboard.f7" } });
-	window.registerAction("recover",        { { "keyboard.i" } });
+	window.registerAction("recover",        { { "keyboard.i" },     { "gamepad.back" } });
 
 	const auto is_driving = [&scene, &chase_camera] { return scene.getMainCamera() == chase_camera->getComponent<Camera>(); };
 
