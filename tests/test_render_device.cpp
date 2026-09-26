@@ -45,6 +45,16 @@ namespace
 
 	constexpr uint32_t TRANSIENT_ALLOCATIONS_PER_FRAME = 10000;
 
+	constexpr Extent2D TEXTURE_EXTENT  = { 4, 2 };
+	constexpr uint32_t TEXEL_COUNT     = TEXTURE_EXTENT.width * TEXTURE_EXTENT.height;
+	constexpr size_t   TEXEL_BYTES     = 4;
+	constexpr float    UNORM_MAX       = 255.f;
+	constexpr float    TEXEL_TOLERANCE = 0.5f / UNORM_MAX;
+	constexpr uint8_t  PIXEL_SEED      = 10;
+	constexpr uint8_t  OPAQUE_WHITE    = 255;
+	constexpr Rect2D   UPDATED_REGION  = { .offset = { 1, 1 }, .extent = { 2, 1 } };
+	constexpr Rect2D   SCISSOR_REGION  = { .offset = { 8, 4 }, .extent = { 16, 8 } };
+
 	constexpr int32_t TERRAIN_VIEW_RADIUS      = 2;
 	constexpr size_t  CHUNKS_WITHIN_RADIUS     = 13;
 	constexpr size_t  TERRAIN_WORKERS          = 2;
@@ -132,6 +142,28 @@ namespace
 		return (count + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
 	}
 
+	struct TexelConstants
+	{
+		uint64_t destination = 0;
+		uint32_t texture     = 0;
+		uint32_t width       = 0;
+		uint32_t count       = 0;
+	};
+
+	ImageDesc SampledImage()
+	{
+		return { .extent = TEXTURE_EXTENT, .format = Format::eRGBA8Unorm, .usage = ImageUsageFlags(ImageUsageFlagBits::eSampled) };
+	}
+
+	std::vector<uint8_t> Pixels(uint32_t texel_count, uint8_t seed)
+	{
+		std::vector<uint8_t> pixels(texel_count * TEXEL_BYTES);
+		for (size_t index = 0; index < pixels.size(); index++)
+			pixels[index] = static_cast<uint8_t>(seed + index);
+
+		return pixels;
+	}
+
 	ImageDesc DepthImage()
 	{
 		return { .extent = IMAGE_EXTENT, .format = Format::eD32Float, .usage = ImageUsageFlags(ImageUsageFlagBits::eDepthAttachment) };
@@ -216,6 +248,34 @@ protected:
 		device->destroyBuffer(readback);
 		device->destroyPipeline(copy);
 		return values;
+	}
+
+	std::vector<glm::vec4> fetchTexels(ImageHandle image)
+	{
+		const PipelineHandle fetch    = createCompute("fetch_texels.comp");
+		const BufferHandle   readback = device->createBuffer({ TEXEL_COUNT * sizeof(glm::vec4), BufferUsageFlags(BufferUsageFlagBits::eStorage), MemoryLocation::eReadback }, {});
+
+		Frame&       frame    = device->beginFrame();
+		CommandList& commands = frame.commandList();
+
+		commands.bindPipeline(fetch);
+		commands.pushConstants(TexelConstants {
+			.destination = device->getBufferAddress(readback),
+			.texture     = device->getTextureIndex(image),
+			.width       = TEXTURE_EXTENT.width,
+			.count       = TEXEL_COUNT
+		});
+		commands.dispatch(GroupCount(TEXEL_COUNT));
+		device->endFrame(frame);
+		device->waitIdle();
+
+		const std::span<const std::byte> bytes = device->readBuffer(readback);
+		std::vector<glm::vec4>           texels(TEXEL_COUNT);
+		std::memcpy(texels.data(), bytes.data(), texels.size() * sizeof(glm::vec4));
+
+		device->destroyBuffer(readback);
+		device->destroyPipeline(fetch);
+		return texels;
 	}
 
 	static inline std::unique_ptr<RenderDevice> device;
@@ -692,6 +752,117 @@ TEST_F(RenderDeviceTest, TerrainReloadsStoredChunks)
 	}
 
 	EXPECT_EQ(generator->sampleCount, 0);
+}
+
+TEST_F(RenderDeviceTest, SampledImagesGetDistinctTextureIndices)
+{
+	const ImageHandle first  = device->createImage(SampledImage());
+	const ImageHandle second = device->createImage(SampledImage());
+	const ImageHandle depth  = device->createImage(DepthImage());
+
+	EXPECT_NE(device->getTextureIndex(first),  INVALID_TEXTURE_INDEX);
+	EXPECT_NE(device->getTextureIndex(second), INVALID_TEXTURE_INDEX);
+	EXPECT_NE(device->getTextureIndex(first),  device->getTextureIndex(second));
+	EXPECT_EQ(device->getTextureIndex(depth),  INVALID_TEXTURE_INDEX) << "only sampled images join the texture table";
+
+	device->destroyImage(depth);
+	device->destroyImage(second);
+	device->destroyImage(first);
+}
+
+TEST_F(RenderDeviceTest, TextureIndicesAreReusedOnceTheGpuIsDone)
+{
+	const ImageHandle first = device->createImage(SampledImage());
+	const uint32_t    index = device->getTextureIndex(first);
+
+	device->destroyImage(first);
+	device->waitIdle();
+
+	const ImageHandle second = device->createImage(SampledImage());
+	EXPECT_EQ(device->getTextureIndex(second), index);
+
+	device->destroyImage(second);
+}
+
+TEST_F(RenderDeviceTest, UploadedPixelsCanBeSampledInShaders)
+{
+	const ImageHandle          image  = device->createImage(SampledImage());
+	const std::vector<uint8_t> pixels = Pixels(TEXEL_COUNT, PIXEL_SEED);
+
+	EXPECT_NE(device->uploadImage(image, std::as_bytes(std::span(pixels))).value, 0u);
+
+	const std::vector<glm::vec4> texels = fetchTexels(image);
+	for (uint32_t texel = 0; texel < TEXEL_COUNT; texel++)
+		for (uint32_t channel = 0; channel < TEXEL_BYTES; channel++)
+			EXPECT_NEAR(texels[texel][channel], pixels[texel * TEXEL_BYTES + channel] / UNORM_MAX, TEXEL_TOLERANCE) << "texel " << texel << ", channel " << channel;
+
+	device->destroyImage(image);
+}
+
+TEST_F(RenderDeviceTest, RegionUploadsOnlyChangeTheirRegion)
+{
+	const ImageHandle          image  = device->createImage(SampledImage());
+	const std::vector<uint8_t> black  = std::vector<uint8_t>(TEXEL_COUNT * TEXEL_BYTES, 0);
+	const std::vector<uint8_t> white  = std::vector<uint8_t>(UPDATED_REGION.extent.width * UPDATED_REGION.extent.height * TEXEL_BYTES, OPAQUE_WHITE);
+
+	device->uploadImage(image, std::as_bytes(std::span(black)));
+	device->uploadImage(image, UPDATED_REGION, std::as_bytes(std::span(white)));
+
+	const std::vector<glm::vec4> texels = fetchTexels(image);
+	for (uint32_t texel = 0; texel < TEXEL_COUNT; texel++)
+	{
+		const int32_t x       = static_cast<int32_t>(texel % TEXTURE_EXTENT.width);
+		const int32_t y       = static_cast<int32_t>(texel / TEXTURE_EXTENT.width);
+		const bool    updated = y == UPDATED_REGION.offset.y && x >= UPDATED_REGION.offset.x && x < UPDATED_REGION.offset.x + static_cast<int32_t>(UPDATED_REGION.extent.width);
+
+		EXPECT_NEAR(texels[texel].r, updated ? 1.f : 0.f, TEXEL_TOLERANCE) << "texel (" << x << ", " << y << ")";
+	}
+
+	device->destroyImage(image);
+}
+
+TEST_F(RenderDeviceTest, InvalidImageUploadsAreRejected)
+{
+	const ImageHandle          image      = device->createImage(SampledImage());
+	const std::vector<uint8_t> too_small  = Pixels(TEXEL_COUNT - 1, PIXEL_SEED);
+	const std::vector<uint8_t> one_texel  = Pixels(1, PIXEL_SEED);
+	const Rect2D               off_bounds = { .offset = { static_cast<int32_t>(TEXTURE_EXTENT.width), 0 }, .extent = { 1, 1 } };
+
+	EXPECT_EQ(device->uploadImage(image, std::as_bytes(std::span(too_small))).value, 0u);
+	EXPECT_EQ(device->uploadImage(image, off_bounds, std::as_bytes(std::span(one_texel))).value, 0u);
+
+	device->destroyImage(image);
+}
+
+TEST_F(RenderDeviceTest, ScissoredPremultipliedDrawsRecordCleanly)
+{
+	const std::vector<char> vertex_shader   = LoadShader("triangle.vert");
+	const std::vector<char> fragment_shader = LoadShader("white.frag");
+	const Format            color_format    = Format::eRGBA8Unorm;
+
+	const ImageHandle    color    = device->createImage({ .extent = IMAGE_EXTENT, .format = color_format, .usage = ImageUsageFlags(ImageUsageFlagBits::eColorAttachment) });
+	const PipelineHandle pipeline = device->createGraphicsPipeline({
+		.vertexShader   = std::as_bytes(std::span(vertex_shader)),
+		.fragmentShader = std::as_bytes(std::span(fragment_shader)),
+		.colorFormats   = std::span(&color_format, 1),
+		.blendMode      = BlendMode::ePremultipliedAlpha
+	});
+	ASSERT_NE(pipeline, PipelineHandle {});
+
+	const ColorAttachment color_attachment = { .image = color };
+
+	Frame&       frame    = device->beginFrame();
+	CommandList& commands = frame.commandList();
+
+	commands.beginRendering({ .colorAttachments = std::span(&color_attachment, 1) });
+	commands.bindPipeline(pipeline);
+	commands.setScissor(SCISSOR_REGION);
+	commands.draw(TRIANGLE_VERTICES);
+	commands.endRendering();
+	device->endFrame(frame);
+
+	device->destroyPipeline(pipeline);
+	device->destroyImage(color);
 }
 
 TEST(RenderDeviceLifetime, DestroyingDeviceReleasesLiveResources)

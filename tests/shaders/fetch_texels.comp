@@ -1,0 +1,25 @@
+#version 460
+#extension GL_EXT_buffer_reference : require
+#include "common/textures.glsl"
+
+layout(buffer_reference, std430) buffer Texels
+{
+	vec4 data[];
+};
+
+layout(push_constant) uniform Constants
+{
+	Texels destination;
+	uint   texture;
+	uint   width;
+	uint   count;
+} constants;
+
+layout(local_size_x = 64) in;
+
+void main()
+{
+	const uint index = gl_GlobalInvocationID.x;
+	if (index < constants.count)
+		constants.destination.data[index] = FetchTexel(constants.texture, ivec2(index % constants.width, index / constants.width));
+}
