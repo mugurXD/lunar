@@ -6,6 +6,8 @@
 #include <gtest/gtest.h>
 
 #include <glm/glm.hpp>
+#include <glm/gtc/constants.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 #include <algorithm>
 #include <array>
@@ -72,9 +74,9 @@ namespace
 		return ground;
 	}
 
-	RigidBody CreateChassis(lunar::Scene& scene)
+	RigidBody CreateChassis(lunar::Scene& scene, const glm::quat& rotation = IDENTITY)
 	{
-		RigidBody chassis(scene, UP * SPAWN_HEIGHT, IDENTITY, BodyType::eDynamic);
+		RigidBody chassis(scene, UP * SPAWN_HEIGHT, rotation, BodyType::eDynamic);
 		chassis.addBox(CHASSIS_HALF_EXTENTS, {}, VEHICLE_CATEGORY);
 		chassis.setMass(TRUCK_MASS, CENTER_OF_MASS);
 		chassis.getBody().setIsAllowedToSleep(false);
@@ -331,4 +333,91 @@ TEST(RaycastVehicle, DownforceGrowsWithSpeed)
 	};
 
 	EXPECT_GT(compression_at_speed(pressed), compression_at_speed(TestTruck()));
+}
+
+namespace
+{
+	constexpr float AIR_CONTROL      = 6.f;
+	constexpr float AIR_CONTROL_RATE = 1.5f;
+	constexpr int   FLIGHT_STEPS     = 45;
+	constexpr int   LONG_FLIGHT      = 180;
+	constexpr float SPIN_TOLERANCE   = 0.05f;
+
+	VehicleSettings AirborneTruck(float air_control)
+	{
+		VehicleSettings settings = TestTruck();
+		settings.airControl      = air_control;
+		settings.airControlRate  = AIR_CONTROL_RATE;
+		return settings;
+	}
+
+	float Spin(RigidBody& chassis)
+	{
+		return glm::length(ToGlm(chassis.getBody().getAngularVelocity()));
+	}
+}
+
+TEST(RaycastVehicle, AirControlPitchesTheNoseWithThePitchInput)
+{
+	const auto nose_height = [](float air_control, const VehicleInput& input) {
+		lunar::Scene   scene;
+		RigidBody      chassis = CreateChassis(scene);
+		RaycastVehicle vehicle(AirborneTruck(air_control));
+
+		Simulate(scene, vehicle, chassis, input, FLIGHT_STEPS);
+		return (Rotation(chassis) * FORWARD).y;
+	};
+
+	EXPECT_LT(nose_height(AIR_CONTROL, { .pitch = 1.f }), nose_height(0.f, { .pitch = 1.f }) - MIN_TURN) << "pushing the stick forward should pitch the nose down";
+	EXPECT_NEAR(nose_height(AIR_CONTROL, { .throttle = 1.f }), 0.f, SPIN_TOLERANCE) << "holding the throttle must not pitch the truck";
+}
+
+TEST(RaycastVehicle, AirControlRotatesNoFasterThanItsRate)
+{
+	lunar::Scene   scene;
+	RigidBody      chassis = CreateChassis(scene);
+	RaycastVehicle vehicle(AirborneTruck(AIR_CONTROL));
+
+	Simulate(scene, vehicle, chassis, { .pitch = 1.f }, LONG_FLIGHT);
+	EXPECT_LT(Spin(chassis), AIR_CONTROL_RATE + SPIN_TOLERANCE);
+}
+
+TEST(RaycastVehicle, AirControlSettlesSpinWithoutInput)
+{
+	constexpr float LAUNCH_SPIN = 3.f;
+
+	lunar::Scene   scene;
+	RigidBody      chassis = CreateChassis(scene);
+	RaycastVehicle vehicle(AirborneTruck(AIR_CONTROL));
+
+	chassis.getBody().setAngularVelocity(ToPhysics(glm::vec3(LAUNCH_SPIN, 0.f, 0.f)));
+	Simulate(scene, vehicle, chassis, {}, FLIGHT_STEPS);
+
+	EXPECT_LT(Spin(chassis), SPIN_TOLERANCE) << "leaving a cliff edge should not send the truck tumbling";
+}
+
+TEST(RaycastVehicle, SteeringRollsAnOverturnedVehicleBackUpright)
+{
+	constexpr float SELF_RIGHTING  = 30.f;
+	constexpr float RIGHTING_SPEED = 3.f;
+	constexpr int   RIGHTING_STEPS = 240;
+
+	const auto uprightness_after_steering = [](float self_righting) {
+		VehicleSettings settings   = TestTruck();
+		settings.selfRighting      = self_righting;
+		settings.selfRightingSpeed = RIGHTING_SPEED;
+
+		lunar::Scene   scene;
+		RigidBody      ground  = CreateGround(scene);
+		RigidBody      chassis = CreateChassis(scene, glm::angleAxis(glm::pi<float>(), FORWARD));
+		RaycastVehicle vehicle(settings);
+
+		Simulate(scene, vehicle, chassis, {}, SETTLE_STEPS);
+		Simulate(scene, vehicle, chassis, { .steering = 1.f }, RIGHTING_STEPS);
+		Simulate(scene, vehicle, chassis, {}, SETTLE_STEPS);
+		return (Rotation(chassis) * UP).y;
+	};
+
+	EXPECT_LT(uprightness_after_steering(0.f), 0.f) << "without self-righting the vehicle stays on its roof";
+	EXPECT_GT(uprightness_after_steering(SELF_RIGHTING), UPRIGHT);
 }

@@ -388,3 +388,20 @@ TEST(RoadPlanner, RoadsStayOutOfTheSea)
 		EXPECT_GT(point.y, SEA_LEVEL);
 	}
 }
+
+TEST(RoadNetwork, ClosestPointProjectsOntoTheNearestRoad)
+{
+	constexpr float SIDE_OFFSET = 30.f;
+	constexpr float REACH       = 100.f;
+
+	const trok::RoadNetwork network({ { 0.f, ROAD_HEIGHT, 0.f }, { ROAD_LENGTH, ROAD_HEIGHT, 0.f } }, TestRoadClass());
+
+	const std::optional<trok::RoadPoint> nearby = network.closestPoint({ ROAD_LENGTH * 0.5f, SIDE_OFFSET }, REACH);
+	ASSERT_TRUE(nearby.has_value());
+	EXPECT_NEAR(nearby->position.x, ROAD_LENGTH * 0.5f, TOLERANCE);
+	EXPECT_NEAR(nearby->position.y, ROAD_HEIGHT,        TOLERANCE);
+	EXPECT_NEAR(nearby->position.z, 0.f,                TOLERANCE);
+	EXPECT_NEAR(nearby->direction.x, 1.f,               TOLERANCE);
+
+	EXPECT_FALSE(network.closestPoint({ ROAD_LENGTH * 0.5f, FAR_AWAY }, REACH).has_value()) << "roads beyond the reach are ignored";
+}

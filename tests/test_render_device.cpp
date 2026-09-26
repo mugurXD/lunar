@@ -19,7 +19,9 @@
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include <chrono>
 #include <filesystem>
+#include <fstream>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -73,6 +75,17 @@ namespace
 			<body><div><span/></div><p>trok</p></body>
 		</rml>
 	)";
+
+	constexpr const char* RELOADED_DOCUMENT_ID = "reloaded";
+	constexpr const char* RELOADED_LABEL_ID    = "label";
+	constexpr const char* DOCUMENT_BEFORE      = R"(<rml><body id="reloaded" style="font-family: rmlui-debugger-font;"><p id="label">before</p></body></rml>)";
+	constexpr const char* DOCUMENT_AFTER       = R"(<rml><body id="reloaded" style="font-family: rmlui-debugger-font;"><p id="label">after</p></body></rml>)";
+	constexpr auto        LATER_EDIT           = std::chrono::seconds(1);
+
+	void WriteText(const std::filesystem::path& path, std::string_view text)
+	{
+		std::ofstream(path, std::ios::binary | std::ios::trunc) << text;
+	}
 
 	class ScopedWorkingDirectory
 	{
@@ -939,6 +952,31 @@ TEST_F(RenderDeviceTest, UiDocumentsRenderAndReleaseCleanly)
 	}
 
 	device->destroyImage(color);
+}
+
+TEST_F(RenderDeviceTest, ChangedUiDocumentsAreReloaded)
+{
+	const ScopedWorkingDirectory resources(LUNAR_RESOURCES_DIR);
+	const TemporaryDirectory     directory;
+	const std::filesystem::path  document_path = directory.getPath() / "reloaded.rml";
+
+	WriteText(document_path, DOCUMENT_BEFORE);
+	{
+		lunar::UI::UiLayer ui(*device, Format::eRGBA8Srgb);
+		ASSERT_NE(ui.loadDocument(document_path), nullptr);
+		EXPECT_FALSE(ui.reloadChangedDocuments()) << "nothing changed yet";
+
+		WriteText(document_path, DOCUMENT_AFTER);
+		std::filesystem::last_write_time(document_path, std::filesystem::last_write_time(document_path) + LATER_EDIT);
+
+		EXPECT_TRUE(ui.reloadChangedDocuments());
+		ui.update(IMAGE_EXTENT);
+
+		Rml::ElementDocument* document = ui.getContext()->GetDocument(RELOADED_DOCUMENT_ID);
+		ASSERT_NE(document, nullptr);
+		ASSERT_NE(document->GetElementById(RELOADED_LABEL_ID), nullptr);
+		EXPECT_EQ(document->GetElementById(RELOADED_LABEL_ID)->GetInnerRML(), "after");
+	}
 }
 
 TEST(RenderDeviceLifetime, DestroyingDeviceReleasesLiveResources)

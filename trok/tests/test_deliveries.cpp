@@ -104,3 +104,20 @@ TEST(Deliveries, WithoutTownsInRangeTheNearestOtherTownIsUsed)
 	ASSERT_TRUE(deliveries.getDelivery().has_value());
 	EXPECT_EQ(deliveries.getDelivery()->destination, C);
 }
+
+TEST(Deliveries, ChargesNeverTakeMoneyBelowZero)
+{
+	constexpr int64_t FEE = 100;
+
+	trok::Deliveries deliveries = WithTowns({ A, B, C });
+	deliveries.update(OUTSIDE_A, FRAME);
+	deliveries.update(A.center, FRAME);
+	deliveries.update(B.center, FRAME);
+
+	const int64_t earned = deliveries.getMoney();
+	deliveries.charge(FEE);
+	EXPECT_EQ(deliveries.getMoney(), earned - FEE);
+
+	deliveries.charge(earned);
+	EXPECT_EQ(deliveries.getMoney(), 0);
+}
