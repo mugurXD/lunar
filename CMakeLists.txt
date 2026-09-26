@@ -19,6 +19,8 @@ if(LUNAR_ADD_INSTALL_PATHS)
         "deps/reactphysics3d/install"
         "deps/googletest/install"
         "deps/vk-bootstrap/install"
+        "deps/freetype/install"
+        "deps/RmlUi/install"
     )
 
     if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
@@ -34,6 +36,7 @@ find_package(glm CONFIG REQUIRED)
 find_package(glfw3 REQUIRED)
 find_package(fastgltf REQUIRED)
 find_package(nlohmann_json REQUIRED)
+find_package(RmlUi REQUIRED)
 
 file(GLOB_RECURSE LUNAR_HEADERS "inc/lunar/*.hpp")
 file(GLOB_RECURSE LUNAR_SRC
@@ -163,6 +166,7 @@ target_link_libraries(lunar PUBLIC
     glfw
     fastgltf::fastgltf
     ReactPhysics3D::ReactPhysics3D
+    RmlUi::Core
 )
 
 if(${MACOSX})

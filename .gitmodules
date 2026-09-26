@@ -33,3 +33,9 @@
 [submodule "deps/nontype_functional"]
 	path = deps/nontype_functional
 	url = git@github.com:zhihaoy/nontype_functional.git
+[submodule "deps/RmlUi"]
+	path = deps/RmlUi
+	url = https://github.com/mikke89/RmlUi
+[submodule "deps/freetype"]
+	path = deps/freetype
+	url = https://github.com/freetype/freetype

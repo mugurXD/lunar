@@ -134,7 +134,12 @@ dependencies = [
     Dependency('googletest')
         .gen_flag("gtest_force_shared_crt=ON"),
     Dependency('nontype_functional')
-        .only_on_platform('darwin')
+        .only_on_platform('darwin'),
+    Dependency('freetype'),
+    Dependency('RmlUi')
+        .gen_flag('CMAKE_PREFIX_PATH=' + os.getcwd() + "/deps/freetype/install")
+        .gen_flag('RMLUI_BACKEND=GLFW_VK')
+        .gen_flag('RMLUI_SAMPLES=OFF')
 ]
 
 def create_prefix_path():
