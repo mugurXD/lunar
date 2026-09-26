@@ -18,10 +18,18 @@ namespace lunar::Physics
 		constexpr uint16_t WHEEL_RAY_MASK  = static_cast<uint16_t>(~VEHICLE_CATEGORY);
 		constexpr float    MIN_POWER_SPEED = 1.f;
 		constexpr float    AXLE_TOLERANCE  = 0.01f;
+		constexpr float    UPRIGHT_COSINE  = 0.7f;
+		constexpr float    MIN_AXIS_LENGTH = 0.001f;
 
 		glm::vec3 ProjectOntoPlane(const glm::vec3& vector, const glm::vec3& normal)
 		{
 			return glm::normalize(vector - normal * glm::dot(vector, normal));
+		}
+
+		void ApplyAngularAcceleration(rp3d::RigidBody& body, const glm::quat& rotation, const glm::vec3& world_acceleration)
+		{
+			const glm::vec3 local_acceleration = glm::inverse(rotation) * world_acceleration;
+			body.applyLocalTorque(ToPhysics(local_acceleration * ToGlm(body.getLocalInertiaTensor())));
 		}
 
 		std::optional<size_t> AxlePartner(std::span<const WheelSettings> wheels, size_t wheel)
@@ -79,6 +87,33 @@ namespace lunar::Physics
 		const glm::vec3 gravity   = -WORLD_UP * body.getMass() * settings.extraGravity;
 		const glm::vec3 downforce = grounded ? -state.up * settings.downforce * forwardSpeed * forwardSpeed : glm::vec3(0.f);
 		body.applyWorldForceAtCenterOfMass(ToPhysics(drag + gravity + downforce));
+
+		if (glm::dot(state.up, WORLD_UP) < UPRIGHT_COSINE)
+			applySelfRighting(body, state, input);
+		else if (!grounded)
+			applyAirControl(body, state, input, delta_time);
+	}
+
+	void RaycastVehicle::applyAirControl(rp3d::RigidBody& body, const ChassisState& state, const VehicleInput& input, float delta_time) const
+	{
+		const glm::vec3 local_spin = glm::inverse(state.rotation) * state.angularVelocity;
+		const glm::vec2 target     = glm::vec2(-std::clamp(input.pitch, -1.f, 1.f), -std::clamp(input.steering, -1.f, 1.f)) * settings.airControlRate;
+		const glm::vec2 needed     = (target - glm::vec2(local_spin.x, local_spin.z)) / delta_time;
+		const glm::vec2 applied    = glm::length(needed) > settings.airControl ? glm::normalize(needed) * settings.airControl : needed;
+
+		ApplyAngularAcceleration(body, state.rotation, state.rotation * glm::vec3(applied.x, 0.f, applied.y));
+	}
+
+	void RaycastVehicle::applySelfRighting(rp3d::RigidBody& body, const ChassisState& state, const VehicleInput& input) const
+	{
+		const float steering = std::clamp(input.steering, -1.f, 1.f);
+		if (steering == 0.f || glm::length(state.linearVelocity) > settings.selfRightingSpeed)
+			return;
+
+		const glm::vec3 toward_upright = glm::cross(state.up, WORLD_UP);
+		const glm::vec3 axis           = glm::length(toward_upright) > MIN_AXIS_LENGTH ? glm::normalize(toward_upright) : state.forward * glm::sign(steering);
+
+		ApplyAngularAcceleration(body, state.rotation, axis * settings.selfRighting * std::abs(steering));
 	}
 
 	const VehicleSettings& RaycastVehicle::getSettings() const

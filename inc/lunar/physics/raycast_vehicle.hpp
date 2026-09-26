@@ -45,6 +45,10 @@ namespace lunar::Physics
 		float                      antiRollStiffness  = 0.f;
 		float                      extraGravity       = 0.f;
 		float                      downforce          = 0.f;
+		float                      airControl         = 0.f;
+		float                      airControlRate     = 0.f;
+		float                      selfRighting       = 0.f;
+		float                      selfRightingSpeed  = 0.f;
 
 		bool operator==(const VehicleSettings&) const = default;
 	};
@@ -54,6 +58,7 @@ namespace lunar::Physics
 		float throttle = 0.f;
 		float brake    = 0.f;
 		float steering = 0.f;
+		float pitch    = 0.f;
 	};
 
 	struct LUNAR_API WheelState
@@ -103,6 +108,8 @@ namespace lunar::Physics
 		float                  antiRollLoad(size_t wheel)                                                                  const;
 		std::optional<Contact> probeWheel(size_t wheel, RigidBody& chassis, const ChassisState& state, float delta_time);
 		void                   applyWheel(size_t wheel, const Contact& contact, RigidBody& chassis, const ChassisState& state, const VehicleInput& input, float delta_time);
+		void                   applyAirControl(rp3d::RigidBody& body, const ChassisState& state, const VehicleInput& input, float delta_time) const;
+		void                   applySelfRighting(rp3d::RigidBody& body, const ChassisState& state, const VehicleInput& input) const;
 
 		VehicleSettings                     settings     = {};
 		std::vector<WheelState>             wheels       = {};
