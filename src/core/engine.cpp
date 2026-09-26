@@ -65,7 +65,11 @@ namespace lunar
 				imguiLayer->beginFrame();
 
 				if (window.getActionDown(TOGGLE_DEBUG_MODE))
+				{
 					debugMode = !debugMode;
+					if (uiLayer.has_value())
+						uiLayer->setHotReload(debugMode);
+				}
 			}
 
 			systemScheduler.runFrame(activeScene, timeContext.getFrameTime());

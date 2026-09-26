@@ -6,12 +6,28 @@
 #include <RmlUi/Core.h>
 #include <RmlUi/Debugger.h>
 
+#include <algorithm>
+#include <system_error>
+
 namespace lunar::UI
 {
 	namespace
 	{
-		constexpr const char* CONTEXT_NAME     = "main";
-		constexpr float       REFERENCE_HEIGHT = 1080.f;
+		constexpr const char* CONTEXT_NAME        = "main";
+		constexpr float       REFERENCE_HEIGHT    = 1080.f;
+		constexpr double      HOT_RELOAD_INTERVAL = 0.5;
+
+		std::filesystem::file_time_type NewestChangeIn(const Fs::Path& directory)
+		{
+			std::error_code                 error;
+			std::filesystem::file_time_type newest = {};
+
+			for (const std::filesystem::directory_entry& entry : std::filesystem::recursive_directory_iterator(directory, error))
+				if (entry.is_regular_file(error))
+					newest = std::max(newest, entry.last_write_time(error));
+
+			return newest;
+		}
 	}
 
 	namespace imp
@@ -72,10 +88,73 @@ namespace lunar::UI
 		return loaded;
 	}
 
+	Rml::ElementDocument* UiLayer::loadDocument(const Fs::Path& path)
+	{
+		if (context == nullptr)
+			return nullptr;
+
+		Rml::ElementDocument* document = context->LoadDocument(path.string());
+		if (document == nullptr)
+		{
+			DEBUG_ERROR("Failed to load UI document '{}'", path.string());
+			return nullptr;
+		}
+
+		documents.push_back({ path, document });
+		lastChange = std::max(lastChange, NewestChangeIn(path.parent_path()));
+		return document;
+	}
+
+	bool UiLayer::reloadChangedDocuments()
+	{
+		const std::filesystem::file_time_type newest = newestDocumentChange();
+		if (context == nullptr || newest <= lastChange)
+			return false;
+
+		lastChange = newest;
+		Rml::Factory::ClearStyleSheetCache();
+		Rml::Factory::ClearTemplateCache();
+
+		for (LoadedDocument& loaded : documents)
+		{
+			const bool visible = loaded.document != nullptr && loaded.document->IsVisible();
+			if (loaded.document != nullptr)
+				loaded.document->Close();
+
+			loaded.document = context->LoadDocument(loaded.path.string());
+			if (loaded.document != nullptr && visible)
+				loaded.document->Show();
+		}
+
+		DEBUG_LOG("Reloaded {} UI documents", documents.size());
+		return true;
+	}
+
+	void UiLayer::setHotReload(bool enabled)
+	{
+		hotReload = enabled;
+	}
+
+	std::filesystem::file_time_type UiLayer::newestDocumentChange() const
+	{
+		std::filesystem::file_time_type newest = {};
+		for (const LoadedDocument& loaded : documents)
+			newest = std::max(newest, NewestChangeIn(loaded.path.parent_path()));
+
+		return newest;
+	}
+
 	void UiLayer::update(Render::Extent2D new_extent)
 	{
 		if (context == nullptr)
 			return;
+
+		const double now = systemInterface->GetElapsedTime();
+		if (hotReload && now >= nextReloadCheck)
+		{
+			nextReloadCheck = now + HOT_RELOAD_INTERVAL;
+			reloadChangedDocuments();
+		}
 
 		if (new_extent != extent && new_extent.width > 0 && new_extent.height > 0)
 		{
