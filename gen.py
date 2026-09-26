@@ -156,4 +156,4 @@ if program_args.clean:
 
 log(f"Building dependencies... (Release: {program_args.release})")
 for dep in dependencies:
-    dep.setup(program_args.release)
+    dep.static_library().setup(program_args.release)
