@@ -1,11 +1,11 @@
 #include <lunar/render/renderer.hpp>
 #include <lunar/render/imgui_layer.hpp>
 #include <lunar/render/components.hpp>
+#include <lunar/render/shader.hpp>
+#include <lunar/ui/ui_layer.hpp>
 #include <lunar/core/scene.hpp>
-#include <lunar/file/binary_file.hpp>
 #include <lunar/debug.hpp>
 
-#include <format>
 #include <string_view>
 #include <vector>
 
@@ -15,10 +15,9 @@ namespace lunar::Render
 	{
 		const glm::vec4 CLEAR_COLOR = { 0.6f, 0.745f, 0.76f, 1.f };
 
-		constexpr std::string_view SHADER_BINARY_PATH      = "shader-bin/{}.spv";
-		constexpr Format           DEPTH_FORMAT            = Format::eD32Float;
-		constexpr float            REVERSE_Z_CLEAR_DEPTH   = 0.f;
-		constexpr CompareOp        REVERSE_Z_DEPTH_COMPARE = CompareOp::eGreater;
+		constexpr Format    DEPTH_FORMAT            = Format::eD32Float;
+		constexpr float     REVERSE_Z_CLEAR_DEPTH   = 0.f;
+		constexpr CompareOp REVERSE_Z_DEPTH_COMPARE = CompareOp::eGreater;
 
 		const glm::vec4 AMBIENT_COLOR = { 0.08f, 0.08f, 0.1f, 0.f };
 
@@ -91,17 +90,6 @@ namespace lunar::Render
 
 			return glm::transpose(glm::inverse(model));
 		}
-
-		std::vector<char> LoadShader(std::string_view name)
-		{
-			const Fs::Path path = Fs::fromData(std::format(SHADER_BINARY_PATH, name));
-
-			Fs::BinaryFile file(path);
-			if (file.content.empty())
-				DEBUG_ERROR("Failed to load shader '{}'", path.string());
-
-			return std::move(file.content);
-		}
 	}
 
 	Renderer::Renderer(RenderDevice& device, Swapchain* swapchain) noexcept
@@ -147,7 +135,7 @@ namespace lunar::Render
 		device.destroyPipeline(meshPipeline);
 	}
 
-	void Renderer::render(Scene& scene, ImGuiLayer* ui)
+	void Renderer::render(Scene& scene, UI::UiLayer* ui, ImGuiLayer* debug_ui)
 	{
 		Frame&            frame      = device.beginFrame();
 		const ImageHandle backbuffer = swapchain != nullptr ? frame.acquire(*swapchain) : ImageHandle {};
@@ -158,8 +146,8 @@ namespace lunar::Render
 			resizeDepthImage(extent);
 			recordFrame(frame, scene, backbuffer, extent);
 
-			if (ui != nullptr)
-				recordOverlay(frame, backbuffer, *ui);
+			if (ui != nullptr || debug_ui != nullptr)
+				recordOverlay(frame, backbuffer, extent, ui, debug_ui);
 		}
 
 		device.endFrame(frame);
@@ -229,13 +217,19 @@ namespace lunar::Render
 		commands.endRendering();
 	}
 
-	void Renderer::recordOverlay(Frame& frame, ImageHandle target, ImGuiLayer& ui)
+	void Renderer::recordOverlay(Frame& frame, ImageHandle target, Extent2D extent, UI::UiLayer* ui, ImGuiLayer* debug_ui)
 	{
 		CommandList&          commands           = frame.commandList();
 		const ColorAttachment overlay_attachment = { .image = target, .loadOp = LoadOp::eLoad };
 
 		commands.beginRendering({ .colorAttachments = std::span(&overlay_attachment, 1) });
-		ui.record(commands);
+
+		if (ui != nullptr)
+			ui->record(commands, extent);
+
+		if (debug_ui != nullptr)
+			debug_ui->record(commands);
+
 		commands.endRendering();
 	}
 

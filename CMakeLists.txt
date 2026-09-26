@@ -46,6 +46,7 @@ file(GLOB_RECURSE LUNAR_SRC
     "src/file/*.cpp"
     "src/world/*.cpp"
     "src/physics/*.cpp"
+    "src/ui/*.cpp"
 )
 
 message(${LUNAR_HEADERS})
@@ -60,6 +61,7 @@ target_sources(lunar PRIVATE
     "src/render/window_input.cpp"
     "src/render/render_device.cpp"
     "src/render/renderer.cpp"
+    "src/render/shader.cpp"
     "src/render/mesh_registry.cpp"
     "src/render/frustum.cpp"
     "src/stb_image.cpp"
@@ -167,7 +169,7 @@ target_link_libraries(lunar PUBLIC
     glfw
     fastgltf::fastgltf
     ReactPhysics3D::ReactPhysics3D
-    RmlUi::Core
+    RmlUi::RmlUi
 )
 
 if(${MACOSX})

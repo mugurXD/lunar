@@ -11,6 +11,11 @@ namespace lunar
 	class LUNAR_API Scene;
 }
 
+namespace lunar::UI
+{
+	class UiLayer;
+}
+
 namespace lunar::Render
 {
 	class ImGuiLayer;
@@ -24,14 +29,14 @@ namespace lunar::Render
 		Renderer(const Renderer&)            = delete;
 		Renderer& operator=(const Renderer&) = delete;
 
-		void          render(Scene& scene, ImGuiLayer* ui = nullptr);
+		void          render(Scene& scene, UI::UiLayer* ui = nullptr, ImGuiLayer* debug_ui = nullptr);
 		MeshRegistry& getMeshes();
 		MeshHandle    getCubeMesh() const;
 
 	private:
 		void resizeDepthImage(Extent2D extent);
 		void recordFrame(Frame& frame, Scene& scene, ImageHandle target, Extent2D extent);
-		void recordOverlay(Frame& frame, ImageHandle target, ImGuiLayer& ui);
+		void recordOverlay(Frame& frame, ImageHandle target, Extent2D extent, UI::UiLayer* ui, ImGuiLayer* debug_ui);
 		void drawMeshes(Frame& frame, Scene& scene, uint64_t scene_address, const Frustum& frustum, bool translucent);
 
 		RenderDevice&  device;

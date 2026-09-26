@@ -31,6 +31,11 @@ namespace lunar
 		return renderer;
 	}
 
+	UI::UiLayer* Engine::getUi()
+	{
+		return uiLayer.has_value() ? &*uiLayer : nullptr;
+	}
+
 	JobSystem& Engine::getJobSystem()
 	{
 		return jobSystem;
@@ -73,6 +78,9 @@ namespace lunar
 				imguiLayer->endFrame();
 			}
 
+			if (uiLayer.has_value())
+				uiLayer->update({ static_cast<uint32_t>(window.getRenderWidth()), static_cast<uint32_t>(window.getRenderHeight()) });
+
 			renderFrame();
 			activeScene.flushDestroyedEntities();
 			window.update();
@@ -81,7 +89,7 @@ namespace lunar
 
 	void Engine::renderFrame()
 	{
-		renderer.render(activeScene, imguiLayer.has_value() ? &*imguiLayer : nullptr);
+		renderer.render(activeScene, getUi(), imguiLayer.has_value() ? &*imguiLayer : nullptr);
 	}
 
 	Engine::Engine(const EngineBuilder& builder)
@@ -112,6 +120,7 @@ namespace lunar
 		if (swapchain != nullptr)
 		{
 			imguiLayer.emplace(*renderDevice, *swapchain, window);
+			uiLayer.emplace(*renderDevice, swapchain->getFormat());
 			window.registerAction(TOGGLE_DEBUG_MODE, { { DEBUG_MODE_KEY } });
 		}
 
