@@ -25,10 +25,14 @@
     "power": 1000000.0,
     "rollingResistance": 150.0
   },
-  "formatVersion": 2,
+  "formatVersion": 4,
   "handling": {
+    "airControl": 6.0,
+    "airControlRate": 1.5,
     "downforce": 30.0,
-    "extraGravity": 8.437999725341797
+    "extraGravity": 8.437999725341797,
+    "selfRighting": 20.0,
+    "selfRightingSpeed": 0.4690000116825104
   },
   "name": "core:box_truck",
   "parts": [
@@ -86,7 +90,7 @@
   ],
   "steering": {
     "maxAngle": 50.2599983215332,
-    "speed": 161.302001953125
+    "speed": 40.9900016784668
   },
   "suspension": {
     "antiRollStiffness": 300000.0,
