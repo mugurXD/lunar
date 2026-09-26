@@ -18,27 +18,28 @@ namespace trok
 {
 	struct RoadClass
 	{
-		std::string name             = {};
-		int32_t     lanes            = 2;
-		float       laneWidth        = 3.5f;
-		float       shoulderWidth    = 1.f;
-		float       minCurveRadius   = 60.f;
-		float       maxGrade         = 0.08f;
-		float       limitPenalty     = 40.f;
-		float       turnPenalty      = 0.15f;
-		float       climbCost        = 1.f;
-		float       cutCost          = 0.3f;
-		float       fillCost         = 0.3f;
-		float       bridgeCost       = 3.f;
-		float       bridgeHeight     = 5.f;
-		float       maxCutDepth      = 12.f;
-		float       cutSpread        = 1.5f;
-		float       gradingMargin    = 3.f;
-		float       pillarSpacing    = 30.f;
-		float       pillarWidth      = 2.f;
-		float       surfaceOffset    = 0.06f;
-		float       edgeDepth        = 0.5f;
-		glm::vec3   color            = { 0.16f, 0.16f, 0.17f };
+		std::string name                = {};
+		int32_t     lanes               = 2;
+		float       laneWidth           = 3.5f;
+		float       shoulderWidth       = 1.f;
+		float       minCurveRadius      = 60.f;
+		float       maxGrade            = 0.08f;
+		float       limitPenalty        = 40.f;
+		float       turnPenalty         = 0.15f;
+		float       climbCost           = 1.f;
+		float       cutCost             = 0.3f;
+		float       fillCost            = 0.3f;
+		float       bridgeCost          = 3.f;
+		float       bridgeHeight        = 5.f;
+		float       bridgeHeightPenalty = 0.2f;
+		float       maxCutDepth         = 12.f;
+		float       cutSpread           = 1.5f;
+		float       gradingMargin       = 3.f;
+		float       pillarSpacing       = 30.f;
+		float       pillarWidth         = 2.f;
+		float       surfaceOffset       = 0.06f;
+		float       edgeDepth           = 0.5f;
+		glm::vec3   color               = { 0.16f, 0.16f, 0.17f };
 
 		float halfWidth() const;
 

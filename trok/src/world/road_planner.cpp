@@ -173,7 +173,9 @@ namespace trok
 			if (work.wet && !bridge)
 				return std::nullopt;
 
-			const float structure = bridge ? road_class.bridgeCost : road_class.cutCost * work.cut + road_class.fillCost * work.fill;
+			const float structure = bridge 
+				? road_class.bridgeCost * (1 + road_class.bridgeHeightPenalty * OverLimit(work.fill, 40))
+				: road_class.cutCost * work.cut + road_class.fillCost * work.fill;
 			const float too_deep  = road_class.limitPenalty * OverLimit(work.cut, road_class.maxCutDepth);
 
 			return SlopeCost(to_height - from_height, step, road_class)
