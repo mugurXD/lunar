@@ -10,6 +10,7 @@ namespace trok
 {
 	struct TownSurvey
 	{
+		std::vector<Settlement>            towns   = {};
 		std::vector<RoadLink>              links   = {};
 		std::vector<RegionContext::Region> regions = {};
 	};

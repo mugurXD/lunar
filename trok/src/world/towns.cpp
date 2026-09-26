@@ -36,6 +36,7 @@ namespace trok
 				const auto                      plan  = std::make_shared<const RegionPlan>(planner->plan(coord, settings));
 
 				survey.regions.push_back({ coord, plan });
+				survey.towns.insert(survey.towns.end(), plan->settlements.begin(), plan->settlements.end());
 				if (!plan->settlements.empty())
 					town_at(x, z) = glm::vec2(plan->settlements.front().center);
 			}

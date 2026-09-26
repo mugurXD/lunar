@@ -11,6 +11,8 @@ endif()
 
 add_library(trok_core STATIC
     "FastNoiseLite.h"
+    "inc/trok/gameplay/deliveries.hpp"
+    "inc/trok/gameplay/delivery_beacon.hpp"
     "inc/trok/json_math.hpp"
     "inc/trok/vehicle/chase_camera.hpp"
     "inc/trok/vehicle/truck.hpp"
@@ -30,6 +32,8 @@ add_library(trok_core STATIC
     "inc/trok/world/terrain_generator.hpp"
     "inc/trok/world/towns.hpp"
     "inc/trok/world/world_map.hpp"
+    "src/gameplay/deliveries.cpp"
+    "src/gameplay/delivery_beacon.cpp"
     "src/json_math.cpp"
     "src/vehicle/chase_camera.cpp"
     "src/vehicle/truck.cpp"
@@ -61,6 +65,7 @@ if(${LUNAR_UNIT_TESTS})
         "tests/test_biome.cpp"
         "tests/test_chase_camera.cpp"
         "tests/test_climate.cpp"
+        "tests/test_deliveries.cpp"
         "tests/test_elevation.cpp"
         "tests/test_region_plan.cpp"
         "tests/test_road.cpp"

@@ -1,3 +1,5 @@
+#include <trok/gameplay/deliveries.hpp>
+#include <trok/gameplay/delivery_beacon.hpp>
 #include <trok/world/biome.hpp>
 #include <trok/world/biome_tuning.hpp>
 #include <trok/world/road.hpp>
@@ -320,6 +322,8 @@ int main()
 	trok::WorldMapWindow                       world_map(biomes, region_planner, climate, elevation, world_settings);
 	trok::RoadService                          roads(engine.getJobSystem(), terrain_generator, *road_class, { .seaLevel = elevation.seaLevel });
 	const trok::Towns                          towns(region_planner, world_settings);
+	trok::Deliveries                           deliveries({}, static_cast<uint64_t>(world_storage->getInfo().seed));
+	trok::DeliveryBeacon                       beacon(scene, engine.getRenderer().getMeshes());
 	std::optional<trok::Truck>                 truck;
 
 	GameObject player = scene.createGameObject("Player");
@@ -386,6 +390,7 @@ int main()
 			},
 			[&](trok::TownSurvey survey) {
 				DEBUG_LOG("Planning roads between {} town pairs", survey.links.size());
+				deliveries.setTowns(std::move(survey.towns));
 				roads.plan(survey.links, trok::RegionContext(world_settings, std::move(survey.regions)));
 			});
 	};
@@ -525,6 +530,12 @@ int main()
 		colliders.update(std::span(&truck->getTransform().position, 1));
 		truck->setSimulated(colliders.isReady(truck->getTransform().position));
 		truck->updateWheels();
+
+		const glm::vec3 truck_position = truck->getTransform().position;
+		if (const std::optional<int64_t> payout = deliveries.update({ truck_position.x, truck_position.z }, frame_time.deltaTime))
+			DEBUG_LOG("Delivered for {}, earned {} in total", *payout, deliveries.getMoney());
+
+		beacon.update((is_driving() ? chase_camera : player)->getTransform().position, deliveries.getTarget());
 
 		if (engine.isDebugMode())
 			tuning.draw(*truck);
