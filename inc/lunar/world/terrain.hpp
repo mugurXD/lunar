@@ -3,11 +3,11 @@
 #include <lunar/render/mesh_registry.hpp>
 #include <lunar/world/grid.hpp>
 #include <lunar/world/world_settings.hpp>
+#include <lunar/utils/compat.hpp>
 
 #include <glm/glm.hpp>
 
 #include <cstdint>
-#include <functional>
 #include <optional>
 #include <vector>
 
@@ -47,7 +47,7 @@ namespace lunar::World
 		std::vector<DressedMesh> dressing  = {};
 	};
 
-	using ChunkWork = std::move_only_function<ChunkData()>;
+	using ChunkWork = move_only_function<ChunkData()>;
 
 	class LUNAR_API ChunkSource
 	{

@@ -20,6 +20,13 @@ if(LUNAR_ADD_INSTALL_PATHS)
         "deps/googletest/install"
         "deps/vk-bootstrap/install"
     )
+
+    if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+        message("-- lunar: Adding MacOSX dependencies")
+	set(MACOSX TRUE)
+        list(APPEND CMAKE_PREFIX_PATH "deps/nontype_functional/install")
+        find_package(nontype_functional REQUIRED)
+    endif()
 endif()
 
 find_package(ReactPhysics3D REQUIRED)
@@ -156,6 +163,11 @@ target_link_libraries(lunar PUBLIC
     fastgltf::fastgltf
     ReactPhysics3D::ReactPhysics3D
 )
+
+if(${MACOSX})
+    target_link_libraries(lunar PUBLIC std23::nontype_functional)
+    message("-- lunar: Using 'nontype_functional' package for missing C++23 STL functionality.")
+endif()
 
 target_compile_definitions(lunar PRIVATE LUNAR_LIBRARY_EXPORT)
 target_compile_definitions(lunar PUBLIC

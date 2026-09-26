@@ -46,6 +46,10 @@ class Dependency:
         self.name = name
         self.g_args = []
         self.b_args = []
+        self.dep_active = True
+    def only_on_platform(self, platform_name):
+        self.dep_active = (sys.platform == platform_name)
+        return self
     def gen_args(self, args):
         self.g_args = append_args(self.g_args, args)
         return self
@@ -102,6 +106,10 @@ class Dependency:
                 shutil.rmtree(self.install_dir())
         return self
     def setup(self, release):
+        if self.dep_active == False:
+            log(f"Dependency '{self.name}' is disabled.", delay = 0)
+            return self
+
         if self.is_built():
             log(f"Project '{self.name}' is already built. Skipping...", delay = 0)
             return self
@@ -124,7 +132,9 @@ dependencies = [
         .gen_flag("VK_BOOTSTRAP_INSTALL=ON")
         .gen_flag("VK_BOOTSTRAP_TEST=OFF"),
     Dependency('googletest')
-        .gen_flag("gtest_force_shared_crt=ON")
+        .gen_flag("gtest_force_shared_crt=ON"),
+    Dependency('nontype_functional')
+        .only_on_platform('darwin')
 ]
 
 def create_prefix_path():

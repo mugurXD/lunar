@@ -1,11 +1,11 @@
 #pragma once
 #include <lunar/api.hpp>
+#include <lunar/utils/compat.hpp>
 
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
-#include <functional>
 #include <mutex>
 #include <optional>
 #include <stop_token>
@@ -57,8 +57,8 @@ namespace lunar
 		static size_t defaultWorkerCount();
 
 	private:
-		using Completion = std::move_only_function<void()>;
-		using Task       = std::move_only_function<Completion()>;
+		using Completion = move_only_function<void()>;
+		using Task       = move_only_function<Completion()>;
 
 		struct PendingJob
 		{
