@@ -48,6 +48,7 @@ namespace lunar::Render
 	{
 		eOpaque,
 		eAlpha,
+		ePremultipliedAlpha,
 		eAdditive
 	};
 

@@ -44,6 +44,22 @@ namespace lunar::Render
 		bool operator==(const Extent2D&) const = default;
 	};
 
+	struct LUNAR_API Offset2D
+	{
+		int32_t x = 0;
+		int32_t y = 0;
+
+		bool operator==(const Offset2D&) const = default;
+	};
+
+	struct LUNAR_API Rect2D
+	{
+		Offset2D offset = {};
+		Extent2D extent = {};
+
+		bool operator==(const Rect2D&) const = default;
+	};
+
 	enum class LUNAR_API Format
 	{
 		eUndefined,

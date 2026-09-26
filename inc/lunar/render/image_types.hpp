@@ -3,6 +3,7 @@
 #include <lunar/render/gpu_types.hpp>
 
 #include <cstdint>
+#include <limits>
 
 namespace lunar::Render
 {
@@ -18,6 +19,20 @@ namespace lunar::Render
 	};
 
 	LUNAR_FLAGS(ImageUsageFlags, ImageUsageFlagBits);
+
+	enum class LUNAR_API SamplerType : uint32_t
+	{
+		eLinearClamp,
+		eLinearRepeat,
+		eNearestClamp,
+		eNearestRepeat,
+		eAnisotropicRepeat,
+		eCount
+	};
+
+	constexpr uint32_t MAX_TEXTURES          = 4096;
+	constexpr uint32_t SAMPLER_COUNT         = static_cast<uint32_t>(SamplerType::eCount);
+	constexpr uint32_t INVALID_TEXTURE_INDEX = std::numeric_limits<uint32_t>::max();
 
 	struct LUNAR_API ImageDesc
 	{

@@ -99,24 +99,31 @@ namespace lunar::Render
 		RenderDevice(const RenderDevice&)            = delete;
 		RenderDevice& operator=(const RenderDevice&) = delete;
 
-		virtual std::unique_ptr<Swapchain> createSwapchain(Window_T& window)                                                     = 0;
-		virtual Frame&                     beginFrame()                                                                          = 0;
-		virtual void                       endFrame(Frame& frame)                                                                = 0;
-		virtual void                       waitIdle()                                                                            = 0;
-		virtual RenderDeviceStats          getStats()                                                                      const = 0;
-		virtual BufferHandle               createBuffer(const BufferDesc& desc, std::span<const std::byte> initial_data)         = 0;
-		virtual void                       destroyBuffer(BufferHandle buffer)                                                    = 0;
-		virtual UploadTicket               uploadBuffer(BufferHandle buffer, size_t offset, std::span<const std::byte> data)    = 0;
-		virtual UploadTicket               flushUploads()                                                                        = 0;
-		virtual bool                       isComplete(UploadTicket ticket)                                                 const = 0;
-		virtual uint64_t                   getBufferAddress(BufferHandle buffer)                                                 = 0;
-		virtual std::span<const std::byte> readBuffer(BufferHandle buffer)                                                       = 0;
-		virtual ImageHandle                createImage(const ImageDesc& desc)                                                    = 0;
-		virtual void                       destroyImage(ImageHandle image)                                                       = 0;
-		virtual Extent2D                   getImageExtent(ImageHandle image)                                                     = 0;
-		virtual PipelineHandle             createGraphicsPipeline(const GraphicsPipelineDesc& desc)                              = 0;
-		virtual PipelineHandle             createComputePipeline(const ComputePipelineDesc& desc)                                = 0;
-		virtual void                       destroyPipeline(PipelineHandle pipeline)                                              = 0;
+		virtual std::unique_ptr<Swapchain> createSwapchain(Window_T& window)                                                             = 0;
+		virtual Frame&                     beginFrame()                                                                                  = 0;
+		virtual void                       endFrame(Frame& frame)                                                                        = 0;
+		virtual void                       waitIdle()                                                                                    = 0;
+		virtual RenderDeviceStats          getStats()                                                                              const = 0;
+		virtual BufferHandle               createBuffer(const BufferDesc& desc, std::span<const std::byte> initial_data)                 = 0;
+		virtual void                       destroyBuffer(BufferHandle buffer)                                                            = 0;
+		virtual UploadTicket               uploadBuffer(BufferHandle buffer, size_t offset, std::span<const std::byte> data)             = 0;
+		virtual UploadTicket               flushUploads()                                                                                = 0;
+		virtual bool                       isComplete(UploadTicket ticket)                                                         const = 0;
+		virtual uint64_t                   getBufferAddress(BufferHandle buffer)                                                         = 0;
+		virtual std::span<const std::byte> readBuffer(BufferHandle buffer)                                                               = 0;
+		virtual ImageHandle                createImage(const ImageDesc& desc)                                                            = 0;
+		virtual void                       destroyImage(ImageHandle image)                                                               = 0;
+		virtual Extent2D                   getImageExtent(ImageHandle image)                                                             = 0;
+		virtual UploadTicket               uploadImage(ImageHandle image, const Rect2D& region, std::span<const std::byte> pixels)       = 0;
+		virtual uint32_t                   getTextureIndex(ImageHandle image)                                                            = 0;
+		virtual PipelineHandle             createGraphicsPipeline(const GraphicsPipelineDesc& desc)                                      = 0;
+		virtual PipelineHandle             createComputePipeline(const ComputePipelineDesc& desc)                                        = 0;
+		virtual void                       destroyPipeline(PipelineHandle pipeline)                                                      = 0;
+
+		UploadTicket uploadImage(ImageHandle image, std::span<const std::byte> pixels)
+		{
+			return uploadImage(image, Rect2D { .extent = getImageExtent(image) }, pixels);
+		}
 
 		const RenderDeviceCapabilities& getCapabilities() const { return capabilities; }
 
