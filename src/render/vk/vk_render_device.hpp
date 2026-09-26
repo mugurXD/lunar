@@ -13,6 +13,7 @@
 #include <functional>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <span>
 #include <utility>
 #include <vector>
@@ -54,13 +55,15 @@ namespace lunar::Render::imp
 
 	struct VkImageRecord
 	{
-		VkImage            image      = VK_NULL_HANDLE;
-		VkImageView        view       = VK_NULL_HANDLE;
-		VmaAllocation      allocation = VK_NULL_HANDLE;
-		VkFormat           format     = VK_FORMAT_UNDEFINED;
-		VkExtent2D         extent     = {};
-		VkImageAspectFlags aspect     = VK_IMAGE_ASPECT_COLOR_BIT;
-		VkImageLayout      layout     = VK_IMAGE_LAYOUT_UNDEFINED;
+		VkImage            image           = VK_NULL_HANDLE;
+		VkImageView        view            = VK_NULL_HANDLE;
+		VmaAllocation      allocation      = VK_NULL_HANDLE;
+		VkFormat           format          = VK_FORMAT_UNDEFINED;
+		VkExtent2D         extent          = {};
+		VkImageAspectFlags aspect          = VK_IMAGE_ASPECT_COLOR_BIT;
+		VkImageLayout      layout          = VK_IMAGE_LAYOUT_UNDEFINED;
+		uint32_t           textureIndex    = INVALID_TEXTURE_INDEX;
+		uint64_t           lastUploadValue = 0;
 	};
 
 	struct VkUploadBatch
@@ -109,6 +112,7 @@ namespace lunar::Render::imp
 	VkResult              CreateVkSemaphore(VkDevice device, VkSemaphoreType type, VkSemaphore& semaphore);
 	uint64_t              GetTimelineValue(VkDevice device, VkSemaphore timeline);
 	void                  WaitForTimeline(VkDevice device, VkSemaphore timeline, uint64_t value);
+	void                  TransitionImage(VkCommandBuffer command_buffer, VkImageRecord& image, VkImageLayout layout);
 
 	class VkRenderDevice final : public RenderDevice
 	{
@@ -116,30 +120,33 @@ namespace lunar::Render::imp
 		VkRenderDevice(const RenderDeviceSettings& settings) noexcept;
 		~VkRenderDevice() noexcept override;
 
-		std::unique_ptr<Swapchain> createSwapchain(Window_T& window)                                                  override;
-		Frame&                     beginFrame()                                                                       override;
-		void                       endFrame(Frame& frame)                                                             override;
-		void                       waitIdle()                                                                         override;
-		RenderDeviceStats          getStats()                                                                   const override;
-		BufferHandle               createBuffer(const BufferDesc& desc, std::span<const std::byte> initial_data)      override;
-		void                       destroyBuffer(BufferHandle buffer)                                                 override;
-		UploadTicket               uploadBuffer(BufferHandle buffer, size_t offset, std::span<const std::byte> data) override;
-		UploadTicket               flushUploads()                                                                     override;
-		bool                       isComplete(UploadTicket ticket)                                              const override;
-		uint64_t                   getBufferAddress(BufferHandle buffer)                                              override;
-		std::span<const std::byte> readBuffer(BufferHandle buffer)                                                    override;
-		ImageHandle                createImage(const ImageDesc& desc)                                                 override;
-		void                       destroyImage(ImageHandle image)                                                    override;
-		Extent2D                   getImageExtent(ImageHandle image)                                                  override;
-		PipelineHandle             createGraphicsPipeline(const GraphicsPipelineDesc& desc)                           override;
-		PipelineHandle             createComputePipeline(const ComputePipelineDesc& desc)                             override;
-		void                       destroyPipeline(PipelineHandle pipeline)                                           override;
+		std::unique_ptr<Swapchain> createSwapchain(Window_T& window)                                                             override;
+		Frame&                     beginFrame()                                                                                  override;
+		void                       endFrame(Frame& frame)                                                                        override;
+		void                       waitIdle()                                                                                    override;
+		RenderDeviceStats          getStats()                                                                              const override;
+		BufferHandle               createBuffer(const BufferDesc& desc, std::span<const std::byte> initial_data)                 override;
+		void                       destroyBuffer(BufferHandle buffer)                                                            override;
+		UploadTicket               uploadBuffer(BufferHandle buffer, size_t offset, std::span<const std::byte> data)             override;
+		UploadTicket               flushUploads()                                                                                override;
+		bool                       isComplete(UploadTicket ticket)                                                         const override;
+		uint64_t                   getBufferAddress(BufferHandle buffer)                                                         override;
+		std::span<const std::byte> readBuffer(BufferHandle buffer)                                                               override;
+		ImageHandle                createImage(const ImageDesc& desc)                                                            override;
+		void                       destroyImage(ImageHandle image)                                                               override;
+		Extent2D                   getImageExtent(ImageHandle image)                                                             override;
+		UploadTicket               uploadImage(ImageHandle image, const Rect2D& region, std::span<const std::byte> pixels)       override;
+		uint32_t                   getTextureIndex(ImageHandle image)                                                            override;
+		PipelineHandle             createGraphicsPipeline(const GraphicsPipelineDesc& desc)                                      override;
+		PipelineHandle             createComputePipeline(const ComputePipelineDesc& desc)                                        override;
+		void                       destroyPipeline(PipelineHandle pipeline)                                                      override;
 
 		const vkb::Device&   getDevice()              const;
 		const vkb::Instance& getInstance()            const;
 		VkQueue              getGraphicsQueue()       const;
 		uint32_t             getGraphicsQueueFamily() const;
 		VkPipelineLayout     getPipelineLayout()      const;
+		VkDescriptorSet      getTextureSet()          const;
 		VkBufferRecord*      resolve(BufferHandle buffer);
 		void                 flushBuffer(BufferHandle buffer, size_t offset, size_t size);
 		VkImageRecord*       resolve(ImageHandle image);
@@ -151,10 +158,15 @@ namespace lunar::Render::imp
 		static constexpr size_t UPLOAD_BATCH_COUNT = 3;
 		static constexpr size_t FRAMES_IN_FLIGHT   = 2;
 
-		UploadTicket    uploadThroughStaging(VkBufferRecord& record, size_t offset, std::span<const std::byte> data);
+		UploadTicket                      uploadThroughStaging(VkBufferRecord& record, size_t offset, std::span<const std::byte> data);
+		std::optional<VkBufferAllocation> createStagingBuffer(std::span<const std::byte> data);
 		void            submitImmediately(const std::function<void(VkCommandBuffer)>& record_commands);
 
 		bool            createPipelineLayout();
+		bool            createTextureTable();
+		void            destroyTextureTable();
+		uint32_t        registerTexture(VkImageView view);
+		void            releaseTexture(uint32_t index);
 		PipelineHandle  registerPipeline(VkResult result, VkPipeline pipeline, VkPipelineBindPoint bind_point);
 
 		bool            createFrameResources();
@@ -187,6 +199,12 @@ namespace lunar::Render::imp
 		VkFence                                                immediateFence           = VK_NULL_HANDLE;
 		VmaAllocator                                           allocator                = VK_NULL_HANDLE;
 		VkPipelineLayout                                       pipelineLayout           = VK_NULL_HANDLE;
+		VkDescriptorSetLayout                                  textureSetLayout         = VK_NULL_HANDLE;
+		VkDescriptorPool                                       texturePool              = VK_NULL_HANDLE;
+		VkDescriptorSet                                        textureSet               = VK_NULL_HANDLE;
+		std::array<VkSampler, SAMPLER_COUNT>                   samplers                 = {};
+		std::vector<uint32_t>                                  freeTextureIndices       = {};
+		uint32_t                                               nextTextureIndex         = 0;
 		VkSemaphore                                            frameTimeline            = VK_NULL_HANDLE;
 		uint64_t                                               frameValue               = 0;
 		std::array<std::unique_ptr<VkFrame>, FRAMES_IN_FLIGHT> frames;

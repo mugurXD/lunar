@@ -191,7 +191,7 @@ namespace lunar::Render::imp
 			vmaFlushAllocation(allocator, record->allocation, offset, size);
 	}
 
-	UploadTicket VkRenderDevice::uploadThroughStaging(VkBufferRecord& record, size_t offset, std::span<const std::byte> data)
+	std::optional<VkBufferAllocation> VkRenderDevice::createStagingBuffer(std::span<const std::byte> data)
 	{
 		const VkBufferCreateInfo staging_info =
 		{
@@ -213,11 +213,19 @@ namespace lunar::Render::imp
 		if (result != VK_SUCCESS)
 		{
 			DEBUG_ERROR("Failed to create staging buffer of {} bytes: {}", data.size(), string_VkResult(result));
-			return UploadTicket {};
+			return std::nullopt;
 		}
 
 		std::memcpy(staging_result.pMappedData, data.data(), data.size());
 		vmaFlushAllocation(allocator, staging.allocation, 0, data.size());
+		return staging;
+	}
+
+	UploadTicket VkRenderDevice::uploadThroughStaging(VkBufferRecord& record, size_t offset, std::span<const std::byte> data)
+	{
+		const std::optional<VkBufferAllocation> staging = createStagingBuffer(data);
+		if (!staging.has_value())
+			return UploadTicket {};
 
 		VkUploadBatch& batch = beginUploadBatch();
 
@@ -231,8 +239,8 @@ namespace lunar::Render::imp
 			.size      = data.size()
 		};
 
-		vkCmdCopyBuffer(batch.commandBuffer, staging.buffer, record.buffer, 1, &region);
-		batch.stagingBuffers.push_back(staging);
+		vkCmdCopyBuffer(batch.commandBuffer, staging->buffer, record.buffer, 1, &region);
+		batch.stagingBuffers.push_back(*staging);
 
 		record.lastUploadValue = nextUploadValue;
 		return UploadTicket { nextUploadValue };

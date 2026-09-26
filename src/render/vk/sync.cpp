@@ -88,4 +88,37 @@ namespace lunar::Render::imp
 
 		vkWaitSemaphores(device, &wait_info, WAIT_FOREVER);
 	}
+
+	void TransitionImage(VkCommandBuffer command_buffer, VkImageRecord& image, VkImageLayout layout)
+	{
+		const VkImageMemoryBarrier2 barrier =
+		{
+			.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+			.srcStageMask        = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+			.srcAccessMask       = VK_ACCESS_2_MEMORY_WRITE_BIT,
+			.dstStageMask        = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+			.dstAccessMask       = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
+			.oldLayout           = image.layout,
+			.newLayout           = layout,
+			.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+			.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+			.image               = image.image,
+			.subresourceRange    =
+			{
+				.aspectMask = image.aspect,
+				.levelCount = VK_REMAINING_MIP_LEVELS,
+				.layerCount = VK_REMAINING_ARRAY_LAYERS
+			}
+		};
+
+		const VkDependencyInfo dependency =
+		{
+			.sType                   = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+			.imageMemoryBarrierCount = 1,
+			.pImageMemoryBarriers    = &barrier
+		};
+
+		vkCmdPipelineBarrier2(command_buffer, &dependency);
+		image.layout = layout;
+	}
 }

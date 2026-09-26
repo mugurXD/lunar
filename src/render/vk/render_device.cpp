@@ -304,7 +304,7 @@ namespace lunar::Render::imp
 			return;
 		}
 
-		if (!createUploadResources() || !createFrameResources() || !createPipelineLayout())
+		if (!createUploadResources() || !createFrameResources() || !createTextureTable() || !createPipelineLayout())
 			return;
 
 		DEBUG_LOG("Vulkan rendering interface initialized.");
@@ -343,6 +343,8 @@ namespace lunar::Render::imp
 
 			if (pipelineLayout != VK_NULL_HANDLE)
 				vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
+
+			destroyTextureTable();
 
 			destroyUploadResources();
 

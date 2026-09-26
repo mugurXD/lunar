@@ -71,6 +71,18 @@ namespace lunar::Render::imp
 					.alphaBlendOp        = VK_BLEND_OP_ADD,
 					.colorWriteMask      = ALL_COLOR_COMPONENTS
 				};
+			case BlendMode::ePremultipliedAlpha:
+				return VkPipelineColorBlendAttachmentState
+				{
+					.blendEnable         = VK_TRUE,
+					.srcColorBlendFactor = VK_BLEND_FACTOR_ONE,
+					.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+					.colorBlendOp        = VK_BLEND_OP_ADD,
+					.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
+					.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
+					.alphaBlendOp        = VK_BLEND_OP_ADD,
+					.colorWriteMask      = ALL_COLOR_COMPONENTS
+				};
 			case BlendMode::eAdditive:
 				return VkPipelineColorBlendAttachmentState
 				{
@@ -136,6 +148,8 @@ namespace lunar::Render::imp
 		const VkPipelineLayoutCreateInfo layout_info =
 		{
 			.sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+			.setLayoutCount         = 1,
+			.pSetLayouts            = &textureSetLayout,
 			.pushConstantRangeCount = 1,
 			.pPushConstantRanges    = &push_constant_range
 		};
