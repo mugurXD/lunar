@@ -1,5 +1,6 @@
 #include <trok/gameplay/deliveries.hpp>
 #include <trok/gameplay/delivery_beacon.hpp>
+#include <trok/ui/hud.hpp>
 #include <trok/world/biome.hpp>
 #include <trok/world/biome_tuning.hpp>
 #include <trok/world/road.hpp>
@@ -63,6 +64,8 @@ namespace
 	constexpr std::string_view        TUNED_TRUCK_FILE     = "trucks/box_truck.tuned.json";
 	constexpr std::string_view        TUNED_BIOME_FILE     = "biomes.tuned.json";
 	constexpr std::string_view        ROAD_FILE_NAME       = "roads.json";
+	constexpr std::string_view        HUD_DOCUMENT         = "ui/hud.rml";
+	constexpr std::string_view        UI_FONTS[]           = { "fonts/Inter/Inter-Regular.ttf", "fonts/Inter/Inter-SemiBold.ttf", "fonts/Inter/Inter-Bold.ttf" };
 	constexpr float                   ROAD_PLANNING_MARGIN = 200.f;
 	constexpr int32_t                 TOWN_SURVEY_RADIUS   = 2;
 	constexpr int32_t                 COLLIDER_RADIUS      = 1;
@@ -326,6 +329,15 @@ int main()
 	const trok::Towns                          towns(region_planner, world_settings);
 	trok::Deliveries                           deliveries({}, static_cast<uint64_t>(world_storage->getInfo().seed));
 	trok::DeliveryBeacon                       beacon(scene, engine.getRenderer().getMeshes());
+	std::optional<trok::Hud>                   hud;
+
+	if (UI::UiLayer* ui = engine.getUi())
+	{
+		for (const std::string_view font : UI_FONTS)
+			ui->loadFont(Fs::fromData(font));
+
+		hud.emplace(*ui, Fs::fromData(HUD_DOCUMENT));
+	}
 	std::optional<trok::Truck>                 truck;
 
 	GameObject player = scene.createGameObject("Player");
@@ -534,8 +546,12 @@ int main()
 		truck->updateWheels();
 
 		const glm::vec3 truck_position = truck->getTransform().position;
-		if (const std::optional<int64_t> payout = deliveries.update({ truck_position.x, truck_position.z }, frame_time.deltaTime))
+		const std::optional<int64_t> payout = deliveries.update({ truck_position.x, truck_position.z }, frame_time.deltaTime);
+		if (payout.has_value())
 			DEBUG_LOG("Delivered for {}, earned {} in total", *payout, deliveries.getMoney());
+
+		if (hud.has_value())
+			hud->update(deliveries, payout, frame_time.deltaTime);
 
 		beacon.update((is_driving() ? chase_camera : player)->getTransform().position, deliveries.getTarget());
 

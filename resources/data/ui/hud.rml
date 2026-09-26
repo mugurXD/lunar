@@ -1,0 +1,16 @@
+<rml>
+	<head>
+		<title>HUD</title>
+		<link type="text/rcss" href="hud.rcss"/>
+	</head>
+	<body data-model="hud">
+		<div class="money" data-class-earned="showPayout">${{money}}</div>
+		<div class="payout" data-class-visible="showPayout">+${{payout}}</div>
+
+		<div class="job" data-if="hasDelivery" data-class-late="late">
+			<div class="stage">{{stage}}</div>
+			<div class="reward">${{reward}}</div>
+			<div class="timer" data-if="!pickingUp">{{elapsed}} / {{parTime}}</div>
+		</div>
+	</body>
+</rml>
