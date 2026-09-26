@@ -167,7 +167,10 @@ namespace lunar::Render::imp
 		const VkPipelineRecord* record = device.resolve(pipeline);
 		DEBUG_ASSERT(record != nullptr, "Binding a null or destroyed pipeline");
 
+		const VkDescriptorSet texture_set = device.getTextureSet();
+
 		vkCmdBindPipeline(commandBuffer, record->bindPoint, record->pipeline);
+		vkCmdBindDescriptorSets(commandBuffer, record->bindPoint, device.getPipelineLayout(), 0, 1, &texture_set, 0, nullptr);
 	}
 
 	void VkCommandList::pushConstants(std::span<const std::byte> data)
@@ -182,6 +185,19 @@ namespace lunar::Render::imp
 		DEBUG_ASSERT(record != nullptr, "Binding a null or destroyed index buffer");
 
 		vkCmdBindIndexBuffer(commandBuffer, record->buffer, offset, Translate(INDEX_TYPE_TRANSLATIONS, index_type));
+	}
+
+	void VkCommandList::setScissor(const Rect2D& rect)
+	{
+		DEBUG_ASSERT(rect.offset.x >= 0 && rect.offset.y >= 0, "Scissor offsets must not be negative");
+
+		const VkRect2D scissor =
+		{
+			.offset = { rect.offset.x, rect.offset.y },
+			.extent = { rect.extent.width, rect.extent.height }
+		};
+
+		vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 	}
 
 	void VkCommandList::memoryBarrier()
@@ -227,41 +243,8 @@ namespace lunar::Render::imp
 		VkImageRecord* record = device.resolve(image);
 		DEBUG_ASSERT(record != nullptr, "Rendering to a null or destroyed image");
 
-		transitionImage(*record, layout);
+		TransitionImage(commandBuffer, *record, layout);
 		return *record;
-	}
-
-	void VkCommandList::transitionImage(VkImageRecord& image, VkImageLayout layout)
-	{
-		const VkImageMemoryBarrier2 barrier =
-		{
-			.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-			.srcStageMask        = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-			.srcAccessMask       = VK_ACCESS_2_MEMORY_WRITE_BIT,
-			.dstStageMask        = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
-			.dstAccessMask       = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
-			.oldLayout           = image.layout,
-			.newLayout           = layout,
-			.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-			.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-			.image               = image.image,
-			.subresourceRange    =
-			{
-				.aspectMask = image.aspect,
-				.levelCount = VK_REMAINING_MIP_LEVELS,
-				.layerCount = VK_REMAINING_ARRAY_LAYERS
-			}
-		};
-
-		const VkDependencyInfo dependency =
-		{
-			.sType                   = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-			.imageMemoryBarrierCount = 1,
-			.pImageMemoryBarriers    = &barrier
-		};
-
-		vkCmdPipelineBarrier2(commandBuffer, &dependency);
-		image.layout = layout;
 	}
 
 	VkCommandBuffer VkCommandList::getHandle() const
@@ -401,7 +384,7 @@ namespace lunar::Render::imp
 
 		if (swapchain != nullptr)
 		{
-			frame.commands.transitionImage(*resolve(swapchain->getAcquiredImage()), VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+			TransitionImage(frame.commands.getHandle(), *resolve(swapchain->getAcquiredImage()), VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 			wait_semaphores.push_back(MakeSemaphoreSubmitInfo(frame.acquireSemaphore, 0, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT));
 			signal_semaphores.push_back(MakeSemaphoreSubmitInfo(swapchain->getPresentSemaphore(), 0, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT));
 		}

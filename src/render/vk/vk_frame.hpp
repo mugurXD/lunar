@@ -16,6 +16,7 @@ namespace lunar::Render::imp
 		void bindPipeline(PipelineHandle pipeline)                                      override;
 		void pushConstants(std::span<const std::byte> data)                             override;
 		void bindIndexBuffer(BufferHandle buffer, size_t offset, IndexType index_type) override;
+		void setScissor(const Rect2D& rect)                                             override;
 		void memoryBarrier()                                                            override;
 		void draw(uint32_t vertex_count,
 		          uint32_t instance_count,
@@ -34,7 +35,6 @@ namespace lunar::Render::imp
 
 		void            begin();
 		void            end();
-		void            transitionImage(VkImageRecord& image, VkImageLayout layout);
 		VkCommandBuffer getHandle() const;
 
 	private:
