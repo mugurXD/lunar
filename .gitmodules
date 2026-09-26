@@ -30,3 +30,6 @@
 	path = deps/vk-bootstrap
 	url = https://github.com/charles-lunarg/vk-bootstrap
 	ignore = all
+[submodule "deps/nontype_functional"]
+	path = deps/nontype_functional
+	url = git@github.com:zhihaoy/nontype_functional.git
