@@ -26,17 +26,20 @@ namespace trok
 	private:
 		struct State
 		{
-			int64_t     money       = 0;
-			bool        hasDelivery = false;
-			bool        pickingUp   = false;
-			Rml::String stage       = {};
-			int64_t     reward      = 0;
-			Rml::String elapsed     = {};
-			Rml::String parTime     = {};
-			bool        late        = false;
-			int64_t     payout      = 0;
-			bool        showPayout  = false;
-			bool        flash       = false;
+			int64_t     money        = 0;
+			bool        hasDelivery  = false;
+			bool        pickingUp    = false;
+			Rml::String stage        = {};
+			int64_t     reward       = 0;
+			Rml::String elapsed      = {};
+			Rml::String parTime      = {};
+			bool        late         = false;
+			int64_t     payout       = 0;
+			bool        showPayout   = false;
+			bool        flash        = false;
+			int         condition    = 100;
+			Rml::String conditionBar = "100%";
+			bool        damaged      = false;
 		};
 
 		Rml::Context*        context     = nullptr;

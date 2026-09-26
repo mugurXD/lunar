@@ -11,6 +11,7 @@ endif()
 
 add_library(trok_core STATIC
     "FastNoiseLite.h"
+    "inc/trok/gameplay/cargo_shock.hpp"
     "inc/trok/gameplay/deliveries.hpp"
     "inc/trok/gameplay/delivery_beacon.hpp"
     "inc/trok/json_math.hpp"
@@ -33,6 +34,7 @@ add_library(trok_core STATIC
     "inc/trok/world/terrain_generator.hpp"
     "inc/trok/world/towns.hpp"
     "inc/trok/world/world_map.hpp"
+    "src/gameplay/cargo_shock.cpp"
     "src/gameplay/deliveries.cpp"
     "src/gameplay/delivery_beacon.cpp"
     "src/json_math.cpp"

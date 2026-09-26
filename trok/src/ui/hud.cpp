@@ -5,6 +5,7 @@
 #include <RmlUi/Core/ElementDocument.h>
 
 #include <algorithm>
+#include <cmath>
 #include <format>
 #include <string_view>
 
@@ -16,6 +17,8 @@ namespace trok
 		constexpr float            PAYOUT_DISPLAY_SECONDS = 2.5f;
 		constexpr float            FLASH_SECONDS          = 0.08f;
 		constexpr int              SECONDS_PER_MINUTE     = 60;
+		constexpr float            PERCENT                = 100.f;
+		constexpr float            DAMAGED_CONDITION      = 0.5f;
 		constexpr std::string_view PICKUP_TEXT            = "Pick up the cargo";
 		constexpr std::string_view DROPOFF_TEXT           = "Deliver the cargo";
 
@@ -36,17 +39,20 @@ namespace trok
 		if (!constructor)
 			return;
 
-		constructor.Bind("money",       &state.money);
-		constructor.Bind("hasDelivery", &state.hasDelivery);
-		constructor.Bind("pickingUp",   &state.pickingUp);
-		constructor.Bind("stage",       &state.stage);
-		constructor.Bind("reward",      &state.reward);
-		constructor.Bind("elapsed",     &state.elapsed);
-		constructor.Bind("parTime",     &state.parTime);
-		constructor.Bind("late",        &state.late);
-		constructor.Bind("payout",      &state.payout);
-		constructor.Bind("showPayout",  &state.showPayout);
-		constructor.Bind("flash",       &state.flash);
+		constructor.Bind("money",        &state.money);
+		constructor.Bind("hasDelivery",  &state.hasDelivery);
+		constructor.Bind("pickingUp",    &state.pickingUp);
+		constructor.Bind("stage",        &state.stage);
+		constructor.Bind("reward",       &state.reward);
+		constructor.Bind("elapsed",      &state.elapsed);
+		constructor.Bind("parTime",      &state.parTime);
+		constructor.Bind("late",         &state.late);
+		constructor.Bind("payout",       &state.payout);
+		constructor.Bind("showPayout",   &state.showPayout);
+		constructor.Bind("flash",        &state.flash);
+		constructor.Bind("condition",    &state.condition);
+		constructor.Bind("conditionBar", &state.conditionBar);
+		constructor.Bind("damaged",      &state.damaged);
 		model = constructor.GetModelHandle();
 
 		if (Rml::ElementDocument* loaded = ui.loadDocument(document))
@@ -90,6 +96,10 @@ namespace trok
 			state.elapsed   = FormatTime(delivery->elapsed);
 			state.parTime   = FormatTime(delivery->parTime);
 			state.late      = delivery->elapsed > delivery->parTime;
+
+			state.condition    = static_cast<int>(std::lround(delivery->condition * PERCENT));
+			state.conditionBar = std::format("{}%", state.condition);
+			state.damaged      = delivery->condition < DAMAGED_CONDITION;
 		}
 
 		if (model)

@@ -296,6 +296,17 @@ namespace trok
 		return chassis->getTransform();
 	}
 
+	glm::vec3 Truck::getVelocity()
+	{
+		return lunar::Physics::ToGlm(chassis->getComponent<lunar::Physics::RigidBody>()->getBody().getLinearVelocity());
+	}
+
+	glm::vec3 Truck::getUp()
+	{
+		const rp3d::Quaternion orientation = chassis->getComponent<lunar::Physics::RigidBody>()->getBody().getTransform().getOrientation();
+		return lunar::Physics::ToGlm(orientation) * CHASSIS_UP;
+	}
+
 	const lunar::Physics::RaycastVehicle& Truck::getVehicle() const
 	{
 		return vehicle;

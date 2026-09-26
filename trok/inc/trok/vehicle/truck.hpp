@@ -72,6 +72,8 @@ namespace trok
 		const lunar::Transform&               getTransform()  const;
 		const lunar::Physics::RaycastVehicle& getVehicle()    const;
 		lunar::Physics::RaycastVehicle&       editVehicle();
+		glm::vec3                             getVelocity();
+		glm::vec3                             getUp();
 		bool                                  isSimulated()   const;
 
 	private:

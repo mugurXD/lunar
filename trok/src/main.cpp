@@ -1,3 +1,4 @@
+#include <trok/gameplay/cargo_shock.hpp>
 #include <trok/gameplay/deliveries.hpp>
 #include <trok/gameplay/delivery_beacon.hpp>
 #include <trok/ui/hud.hpp>
@@ -73,6 +74,7 @@ namespace
 	constexpr float                   RECOVER_HOLD_SECONDS = 0.5f;
 	constexpr float                   RECOVER_ROAD_REACH   = 400.f;
 	constexpr int64_t                 RECOVERY_FEE         = 100;
+	constexpr float                   RECOVERY_DAMAGE      = 0.1f;
 	constexpr float                   GROUND_RAY_HEIGHT    = 2000.f;
 	constexpr uint16_t                GROUND_RAY_MASK      = Physics::TERRAIN_CATEGORY | Physics::ROAD_CATEGORY;
 	constexpr float                   REVERSE_THRESHOLD    = 1.f;
@@ -376,9 +378,13 @@ int main()
 
 	const auto is_driving = [&scene, &chase_camera] { return scene.getMainCamera() == chase_camera->getComponent<Camera>(); };
 
+	trok::CargoShock cargo_shock;
 	engine.addSystem(SystemPhase::eFixedUpdate, [&](Scene&, const FrameTime& frame_time) {
-		if (truck.has_value())
-			truck->drive(is_driving() ? ReadDrivingInput(truck->getVehicle().getForwardSpeed()) : PARKED_INPUT, frame_time.deltaTime);
+		if (!truck.has_value())
+			return;
+
+		truck->drive(is_driving() ? ReadDrivingInput(truck->getVehicle().getForwardSpeed()) : PARKED_INPUT, frame_time.deltaTime);
+		deliveries.damageCargo(cargo_shock.update(truck->getVelocity(), truck->getUp(), frame_time.deltaTime));
 	});
 
 	const MeshHandle endpoint_marker_mesh = MakeMarkerMesh(engine.getRenderer().getMeshes(), ENDPOINT_MARKER_COLOR);
@@ -525,7 +531,10 @@ int main()
 			const float ground = player->getTransform().position.y - CAMERA_START_HEIGHT;
 
 			if (truck.has_value())
+			{
 				truck->recover({ static_cast<float>(travelling->x), ground + TRUCK_SPAWN_HEIGHT, static_cast<float>(travelling->y) });
+				cargo_shock.reset(truck->getVelocity(), truck->getUp());
+			}
 
 			travelling.reset();
 		}
@@ -553,7 +562,9 @@ int main()
 			return;
 		}
 
+		cargo_shock.reset(truck->getVelocity(), truck->getUp());
 		deliveries.charge(RECOVERY_FEE);
+		deliveries.damageCargo(RECOVERY_DAMAGE);
 		if (hud.has_value())
 			hud->flash();
 	};

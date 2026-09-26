@@ -95,6 +95,12 @@ namespace trok
 		money = std::max<int64_t>(money - amount, 0);
 	}
 
+	void Deliveries::damageCargo(float amount)
+	{
+		if (delivery.has_value() && delivery->stage == DeliveryStage::eDropoff)
+			delivery->condition = std::max(delivery->condition - amount, 0.f);
+	}
+
 	std::optional<Delivery> Deliveries::offer(const Settlement& origin)
 	{
 		std::vector<const Settlement*> candidates;
@@ -123,7 +129,8 @@ namespace trok
 	int64_t Deliveries::complete()
 	{
 		const bool    on_time = delivery->elapsed <= delivery->parTime;
-		const int64_t payout  = delivery->reward + (on_time ? std::llround(static_cast<double>(delivery->reward) * settings.onTimeBonus) : 0);
+		const double  earned  = static_cast<double>(delivery->reward) * (on_time ? 1.0 + settings.onTimeBonus : 1.0);
+		const int64_t payout  = std::llround(earned * delivery->condition);
 
 		money    += payout;
 		delivery  = offer(delivery->destination);
