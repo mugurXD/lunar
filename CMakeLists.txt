@@ -121,6 +121,7 @@ function(lunar_compile_shaders TARGET_NAME SOURCE_DIR BINARY_DIR)
             COMMAND ${CMAKE_COMMAND} -E make_directory "${SHADER_BINARY_DIR}"
             COMMAND Vulkan::glslc
                 --target-env=vulkan1.3
+                -I "${PROJECT_SOURCE_DIR}/resources/data/shaders"
                 $<IF:$<CONFIG:Debug>,-g,-O>
                 -MD -MF "${SHADER_BINARY}.d"
                 -o "${SHADER_BINARY}"
