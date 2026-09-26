@@ -54,6 +54,7 @@ target_sources(lunar PRIVATE
     ${LUNAR_HEADERS}
     "src/render/components.cpp"
     "src/render/window.cpp"
+    "src/render/window_input.cpp"
     "src/render/render_device.cpp"
     "src/render/renderer.cpp"
     "src/render/mesh_registry.cpp"

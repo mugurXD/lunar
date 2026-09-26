@@ -52,6 +52,7 @@ namespace lunar::Render
 		glm::vec2               getAxis()                                   const override;
 		glm::vec2               getRotation()                               const override;
 		float                   getScroll()                                 const override;
+		glm::vec2               getTriggers()                               const override;
 		GLFWwindow*             glfwGetHandle();
 
 		static void pollEvents();
@@ -68,11 +69,15 @@ namespace lunar::Render
 		glm::vec2                         axis         = { 0, 0 };
 		glm::vec2                         rotation     = { 0, 0 };
 		float                             scroll       = 0.f;
+		glm::vec2                         triggers     = { 0, 0 };
+		double                            lastUpdate   = 0.0;
 		glm::vec2                         lastMouse    = { 0, 0 };
 		bool                              mouseInside  = true;
 		bool                              mouseLocked  = false;
 
 		bool checkActionValue(const std::string_view& name, KeyState required) const;
+		void updateGamepad(float delta_time);
+		void setGamepadButton(int button, bool down);
 
 		friend void GLFW_FramebufferSizeCb(GLFWwindow*, int, int);
 		friend void GLFW_KeyCallback(GLFWwindow*, int, int, int, int);

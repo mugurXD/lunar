@@ -24,6 +24,9 @@ namespace lunar
 			ActionType type;
 			size_t     value;
 		};
+
+		constexpr int GAMEPAD_LEFT_TRIGGER_BUTTON  = GLFW_GAMEPAD_BUTTON_LAST + 1;
+		constexpr int GAMEPAD_RIGHT_TRIGGER_BUTTON = GLFW_GAMEPAD_BUTTON_LAST + 2;
 	}
 
 	/*
@@ -40,6 +43,7 @@ namespace lunar
 		virtual glm::vec2 getAxis()     const = 0;
 		virtual glm::vec2 getRotation() const = 0;
 		virtual float     getScroll()   const = 0;
+		virtual glm::vec2 getTriggers() const = 0;
 		virtual bool      getAction(const std::string_view&) const = 0;
 		virtual bool      getActionUp(const std::string_view&) const = 0;
 		virtual bool      getActionDown(const std::string_view&) const = 0;
@@ -66,9 +70,10 @@ namespace lunar
 		};
 
 		std::unordered_map<std::string_view, InputKeys> actions          = {};
-		float                                           deadzoneLeft     = 0.f;
-		float                                           deadzoneRight    = 0.f;
+		float                                           deadzoneLeft     = 0.15f;
+		float                                           deadzoneRight    = 0.15f;
 		float                                           mouseSensitivity = 1.f;
+		float                                           gamepadLookSpeed = 120.f;
 	};
 
 	enum class LUNAR_API KeyState : int
@@ -94,4 +99,5 @@ namespace lunar::Input
 	LUNAR_API glm::vec2     GetAxis();
 	LUNAR_API glm::vec2     GetRotation();
 	LUNAR_API float         GetScroll();
+	LUNAR_API glm::vec2     GetTriggers();
 }

@@ -1,13 +1,10 @@
 #include <lunar/render/window.hpp>
 #include <lunar/debug.hpp>
 
-#include <atomic>
 #include <GLFW/glfw3.h>
 
 namespace lunar::Render
 {
-	constexpr float CURSOR_UV_CENTER = 0.5f;
-
 	void GLFW_FramebufferSizeCb(GLFWwindow*, int, int);
 	void GLFW_KeyCallback(GLFWwindow*, int, int, int, int);
 	void GLFW_MouseBtnCallback(GLFWwindow*, int, int, int);
@@ -62,6 +59,8 @@ namespace lunar::Render
 		glfwSetCursorPosCallback(handle,       GLFW_CursorPosCb);
 		glfwSetCursorEnterCallback(handle,     GLFW_CursorEnterCb);
 		glfwSetScrollCallback(handle,          GLFW_ScrollCb);
+
+		lastUpdate = glfwGetTime();
 
 		DEBUG_LOG("Window initialized.");
 	}
@@ -156,219 +155,15 @@ namespace lunar::Render
 		glfwSetWindowTitle(handle, this->title.c_str());
 	}
 
-	/*
-		Input handling
-	*/
-
-	bool Window_T::isCursorLocked() const
-	{
-		return mouseLocked;
-	}
-
-	glm::vec2 Window_T::getCursorUv() const
-	{
-		int content_width  = 0;
-		int content_height = 0;
-		glfwGetWindowSize(handle, &content_width, &content_height);
-
-		if (mouseLocked || content_width <= 0 || content_height <= 0)
-			return glm::vec2(CURSOR_UV_CENTER);
-
-		return lastMouse / glm::vec2(content_width, content_height);
-	}
-
-	void Window_T::setCursorLocked(bool value)
-	{
-		glfwSetInputMode(handle, GLFW_CURSOR, value ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
-		mouseLocked = value;
-	}
-
-	void Window_T::toggleCursorLocked()
-	{
-		switch (mouseLocked)
-		{
-		case true:  setCursorLocked(false); return;
-		case false: setCursorLocked(true);  return;
-		}
-	}
-
-	inline void SetAxisValue(GLFWwindow* handle, int lower, int upper, float& value)
-	{
-		int first  = glfwGetKey(handle, lower);
-		int second = glfwGetKey(handle, upper);
-
-		value = 0.f;
-		if (first == GLFW_PRESS)
-			value += -1.f;
-		if (second == GLFW_PRESS)
-			value += 1.f;
-	}
-
-	void Window_T::update()
-	{
-		rotation = { 0, 0 };
-		scroll   = 0.f;
-
-		for (auto& [key, value] : keys)
-		{
-			switch (value)
-			{
-			case KeyState::ePressed:  value = KeyState::eHeld; break;
-			case KeyState::eReleased: value = KeyState::eNone; break;
-			default: break;
-			}
-		}
-
-		SetAxisValue(handle, GLFW_KEY_A, GLFW_KEY_D, axis.x);
-		SetAxisValue(handle, GLFW_KEY_S, GLFW_KEY_W, axis.y);
-
-		glfwSwapBuffers(handle);
-	}
-
-	inline int GetKeyId(::lunar::imp::ActionData* key)
-	{
-		switch (key->type)
-		{
-		case ::lunar::imp::ActionType::eKey:     return key->value;
-		case ::lunar::imp::ActionType::eMouse:   return key->value | (1 << 31);
-		case ::lunar::imp::ActionType::eGamepad: return key->value | (1 << 30);
-		default: return key->value;
-		}
-	}
-
-	bool Window_T::checkActionValue(const std::string_view& name, KeyState required) const
-	{
-		if (!actions.contains(name))
-			return false;
-
-		auto& options = actions.at(name);
-
-		for (size_t i = 0; i < 4; i++)
-		{
-			auto& combo = options.combos[i];
-			if (not combo.active)
-				continue;
-
-			bool combo_fulfilled = true;
-			for (size_t j = 0; j < 4; j++)
-			{
-				auto& key = combo.key[j];
-				if (key == nullptr)
-					continue;
-
-				int  id    = GetKeyId(key);
-				auto value = keys.find(id);
-				if (value == keys.end() || !(value->second & required))
-					combo_fulfilled = false;
-			}
-
-			if (combo_fulfilled)
-				return true;
-		}
-
-		return false;
-	}
-
-	bool Window_T::getAction(const std::string_view& name) const
-	{
-		return checkActionValue(name, KeyState::ePressed | KeyState::eHeld | KeyState::eReleased);
-	}
-
-	bool Window_T::getActionUp(const std::string_view& name) const
-	{
-		return checkActionValue(name, KeyState::eReleased);
-	}
-
-	bool Window_T::getActionDown(const std::string_view& name) const
-	{
-		return checkActionValue(name, KeyState::ePressed);
-	}
-
-	glm::vec2 Window_T::getAxis() const
-	{
-		return axis;
-	}
-
-	glm::vec2 Window_T::getRotation() const
-	{
-		return rotation;
-	}
-
-	float Window_T::getScroll() const
-	{
-		return scroll;
-	}
-
-
-	/*
-		Event handlers
-	*/
-
-	inline Window_T& GetWindowHandle(GLFWwindow* raw)
-	{
-		void* pointer = glfwGetWindowUserPointer(raw);
-		Window_T* handle = static_cast<Window_T*>(pointer);
-		return *handle;
-	}
-
-	void GLFW_MouseBtnCallback(GLFWwindow* handle, int button, int action, int mods)
-	{
-		static_assert(sizeof(int) == sizeof(int32_t));
-
-		auto& window = GetWindowHandle(handle);
-
-		window.keys[button | (int)(1 << 31)] = (action == GLFW_PRESS) 
-			? KeyState::ePressed 
-			: KeyState::eReleased;
-	}
-
-	void GLFW_KeyCallback(GLFWwindow* handle, int key, int scancode, int action, int mods)
-	{
-		auto& window = GetWindowHandle(handle);
-		window.keys[key] = (action == GLFW_PRESS) 
-			? KeyState::ePressed 
-			: KeyState::eReleased;
-	}
-
 	void GLFW_FramebufferSizeCb(GLFWwindow* handle, int width, int height)
 	{
-		auto& window  = GetWindowHandle(handle);
+		Window_T& window = *static_cast<Window_T*>(glfwGetWindowUserPointer(handle));
 
 		if (window.fullscreen)
 			return;
 
 		window.width  = width;
 		window.height = height;
-	}
-
-	void GLFW_CursorPosCb(GLFWwindow* handle, double x, double y)
-	{
-		auto& window = GetWindowHandle(handle);
-		if (not window.mouseInside)
-			return;
-
-		auto current = glm::vec2 { x, y };
-
-		if (window.isCursorLocked())
-		{
-			auto delta = (current - window.lastMouse) * window.mouseSensitivity;
-			window.rotation += glm::vec2{ delta.x, -delta.y };
-		}
-
-		window.lastMouse = current;
-	}
-
-	void GLFW_ScrollCb(GLFWwindow* handle, double, double y_offset)
-	{
-		auto& window = GetWindowHandle(handle);
-		if (window.isCursorLocked())
-			window.scroll += static_cast<float>(y_offset);
-	}
-
-	void GLFW_CursorEnterCb(GLFWwindow* handle, int entered)
-	{
-		auto& window = GetWindowHandle(handle);
-		window.mouseInside = entered;
 	}
 
 	/*

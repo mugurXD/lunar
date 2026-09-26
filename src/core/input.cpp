@@ -71,8 +71,10 @@ namespace lunar
 			{ "gamepad.start",      ActionData { ActionType::eGamepad, GLFW_GAMEPAD_BUTTON_START } },
 			{ "gamepad.lb",         ActionData { ActionType::eGamepad, GLFW_GAMEPAD_BUTTON_LEFT_BUMPER  } },
 			{ "gamepad.rb",         ActionData { ActionType::eGamepad, GLFW_GAMEPAD_BUTTON_RIGHT_BUMPER } },
-			{ "gamepad.lt",         ActionData { ActionType::eGamepad, GLFW_GAMEPAD_BUTTON_LEFT_THUMB   } },
-			{ "gamepad.rt",         ActionData { ActionType::eGamepad, GLFW_GAMEPAD_BUTTON_RIGHT_THUMB  } },
+			{ "gamepad.ls",         ActionData { ActionType::eGamepad, GLFW_GAMEPAD_BUTTON_LEFT_THUMB   } },
+			{ "gamepad.rs",         ActionData { ActionType::eGamepad, GLFW_GAMEPAD_BUTTON_RIGHT_THUMB  } },
+			{ "gamepad.lt",         ActionData { ActionType::eGamepad, GAMEPAD_LEFT_TRIGGER_BUTTON      } },
+			{ "gamepad.rt",         ActionData { ActionType::eGamepad, GAMEPAD_RIGHT_TRIGGER_BUTTON     } },
 			{ "gamepad.dpad_up",    ActionData { ActionType::eGamepad, GLFW_GAMEPAD_BUTTON_DPAD_UP      } },
 			{ "gamepad.dpad_down",  ActionData { ActionType::eGamepad, GLFW_GAMEPAD_BUTTON_DPAD_DOWN    } },
 			{ "gamepad.dpad_left",  ActionData { ActionType::eGamepad, GLFW_GAMEPAD_BUTTON_DPAD_LEFT    } },
@@ -134,6 +136,11 @@ namespace lunar::Input
 	float GetScroll()
 	{
 		return GetGlobalHandler().getScroll();
+	}
+
+	glm::vec2 GetTriggers()
+	{
+		return GetGlobalHandler().getTriggers();
 	}
 
 }

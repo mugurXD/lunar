@@ -30,11 +30,12 @@
 #	define LUNAR_API
 #endif
 
-#ifndef NDEBUG
-#	define LUNAR_DEBUG_BUILD 1
-#else
-#	define LUNAR_DEBUG_BUILD 0
-#endif
+#define LUNAR_DEBUG_BUILD 1
+//#ifndef NDEBUG
+//#	define LUNAR_DEBUG_BUILD 1
+//#else
+//#	define LUNAR_DEBUG_BUILD 0
+//#endif
 
 #ifndef _MSC_VER
 #   define LUNAR_FN_NAME __PRETTY_FUNCTION__
