@@ -1,5 +1,5 @@
 {
-    "formatVersion": 2,
+    "formatVersion": 4,
     "name": "core:national",
     "lanes": 2,
     "laneWidth": 8,
@@ -20,10 +20,27 @@
     "fillCost": 0.3,
     "bridgeCost": 60.0,
     "bridgeHeight": 5.0,
-    "bridgeHeightPenalty": 1,
+    "bridgeHeightPenalty": 1.25,
     "maxCutDepth": 12.0,
     "cutSpread": 1.5,
     "pillarSpacing": 30.0,
     "pillarWidth": 2.0,
-    "climbCost": 1.0
+    "climbCost": 1.0,
+    "furniture": {
+        "markingWidth": 0.45,
+        "dashLength": 3.0,
+        "dashGap": 6.0,
+        "markingColor": [ 0.85, 0.85, 0.8 ],
+        "centreColor": [ 0.95, 0.72, 0.15 ],
+        "postSpacing": 50.0,
+        "postHeight": 1.0,
+        "postWidth": 0.12,
+        "postOutset": 0.5,
+        "postColor": [ 0.9, 0.9, 0.9 ],
+        "railElevation": 1.5,
+        "railHeight": 1.4,
+        "railDepth": 1.4,
+        "railThickness": 0.6,
+        "railColor": [ 0.6, 0.62, 0.65 ]
+    }
 }

@@ -4,6 +4,7 @@
 		<link type="text/rcss" href="hud.rcss"/>
 	</head>
 	<body data-model="hud">
+		<div class="reset-flash" data-class-active="flash"/>
 		<div class="money" data-class-earned="showPayout">${{money}}</div>
 		<div class="payout" data-class-visible="showPayout">+${{payout}}</div>
 
@@ -11,6 +12,10 @@
 			<div class="stage">{{stage}}</div>
 			<div class="reward">${{reward}}</div>
 			<div class="timer" data-if="!pickingUp">{{elapsed}} / {{parTime}}</div>
+			<div class="condition" data-if="!pickingUp" data-class-damaged="damaged">
+				<div class="condition-bar"><div class="condition-fill" data-style-width="conditionBar"/></div>
+				<div class="condition-label">Cargo {{condition}}%</div>
+			</div>
 		</div>
 	</body>
 </rml>

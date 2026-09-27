@@ -87,3 +87,53 @@ div
 {
 	color: #ff6b5e;
 }
+
+.condition
+{
+	margin-top: 10dp;
+}
+
+.condition-bar
+{
+	height: 6dp;
+	border-radius: 3dp;
+	background-color: #ffffff26;
+}
+
+.condition-fill
+{
+	height: 100%;
+	border-radius: 3dp;
+	background-color: #8dffa0;
+	transition: width 0.25s cubic-out;
+}
+
+.condition.damaged .condition-fill
+{
+	background-color: #ff6b5e;
+}
+
+.condition-label
+{
+	margin-top: 4dp;
+	font-size: 13dp;
+	color: #c7d2dc;
+}
+
+.reset-flash
+{
+	position: absolute;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	background-color: #000000;
+	opacity: 0;
+	transition: opacity 0.35s linear-out;
+}
+
+.reset-flash.active
+{
+	opacity: 1;
+	transition: none;
+}
