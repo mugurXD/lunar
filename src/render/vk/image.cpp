@@ -4,6 +4,8 @@
 
 #include <lunar/debug.hpp>
 
+#include <bit>
+
 namespace lunar::Render::imp
 {
 	namespace
@@ -61,7 +63,8 @@ namespace lunar::Render::imp
 				&& desc.extent.height > 0
 				&& desc.format != Format::eUndefined
 				&& desc.mipLevels > 0
-				&& desc.arrayLayers > 0;
+				&& desc.arrayLayers > 0
+				&& std::has_single_bit(desc.samples);
 		}
 	}
 
@@ -104,7 +107,7 @@ namespace lunar::Render::imp
 			.extent                = { desc.extent.width, desc.extent.height, IMAGE_2D_DEPTH },
 			.mipLevels             = desc.mipLevels,
 			.arrayLayers           = desc.arrayLayers,
-			.samples               = VK_SAMPLE_COUNT_1_BIT,
+			.samples               = static_cast<VkSampleCountFlagBits>(desc.samples),
 			.tiling                = VK_IMAGE_TILING_OPTIMAL,
 			.usage                 = TranslateFlags(USAGE_TRANSLATIONS, usage),
 			.sharingMode           = shared_with_transfer ? VK_SHARING_MODE_CONCURRENT : VK_SHARING_MODE_EXCLUSIVE,

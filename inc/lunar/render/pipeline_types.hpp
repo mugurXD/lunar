@@ -66,6 +66,7 @@ namespace lunar::Render
 		bool                       depthWrite     = false;
 		CompareOp                  depthCompare   = CompareOp::eLess;
 		BlendMode                  blendMode      = BlendMode::eOpaque;
+		uint32_t                   samples        = 1;
 	};
 
 	struct LUNAR_API ComputePipelineDesc

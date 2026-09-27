@@ -18,7 +18,6 @@ namespace lunar::Render
 			int                     height,
 			bool                    fullscreen,
 			const std::string_view& title,
-			int                     msaa,
 			bool                    vsync,
 			Backend				    backend
 		) noexcept;
@@ -61,7 +60,6 @@ namespace lunar::Render
 		GLFWwindow*                       handle       = nullptr;
 		int                               width        = -1;
 		int                               height       = -1;
-		int                               msaa         = -1;
 		bool                              vsync        = false;
 		bool                              fullscreen   = false;
 		std::string                       title        = "lunar";
@@ -94,7 +92,6 @@ namespace lunar::Render
 		~WindowBuilder() noexcept = default;
 
 		WindowBuilder& size(int width, int height);
-		WindowBuilder& samples(int msaa);
 		WindowBuilder& fullscreen(bool value);
 		WindowBuilder& title(const std::string_view& title);
 		WindowBuilder& renderBackend(Backend backend);
@@ -103,7 +100,6 @@ namespace lunar::Render
 	private:
 		int              width        = -1;
 		int              height       = -1;
-		int              msaa         = 0;
 		bool             isFullscreen = false;
 		bool             enableVsync  = false;
 		std::string_view windowTitle  = "<no title>";

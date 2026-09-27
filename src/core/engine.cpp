@@ -113,7 +113,7 @@ namespace lunar
 			}
 		)),
 		swapchain(builder.useWindow ? renderDevice->createSwapchain(window) : nullptr),
-		renderer(*renderDevice, swapchain.get()),
+		renderer(*renderDevice, swapchain.get(), builder.sampleCount),
 		activeScene(),
 		appName(builder.appName),
 		systemScheduler(builder.fixedTimestepSeconds),
@@ -162,6 +162,12 @@ namespace lunar
 	EngineBuilder& EngineBuilder::fixedTimestep(double seconds)
 	{
 		fixedTimestepSeconds = seconds;
+		return *this;
+	}
+
+	EngineBuilder& EngineBuilder::samples(uint32_t count)
+	{
+		sampleCount = count;
 		return *this;
 	}
 

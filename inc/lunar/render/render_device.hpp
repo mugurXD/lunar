@@ -27,9 +27,10 @@ namespace lunar::Render
 
 	struct LUNAR_API RenderDeviceCapabilities
 	{
-		bool rayQuery           = false;
-		bool rayTracingPipeline = false;
-		bool memoryBudget       = false;
+		bool     rayQuery           = false;
+		bool     rayTracingPipeline = false;
+		bool     memoryBudget       = false;
+		uint32_t maxSamples         = 1;
 	};
 
 	struct LUNAR_API RenderDeviceStats

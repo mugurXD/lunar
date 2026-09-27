@@ -41,5 +41,6 @@ namespace lunar::Render
 		ImageUsageFlags usage       = {};
 		uint32_t        mipLevels   = 1;
 		uint32_t        arrayLayers = 1;
+		uint32_t        samples     = 1;
 	};
 }

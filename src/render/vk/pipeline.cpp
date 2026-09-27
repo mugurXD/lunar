@@ -205,7 +205,7 @@ namespace lunar::Render::imp
 		const VkPipelineMultisampleStateCreateInfo multisample =
 		{
 			.sType                = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-			.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT
+			.rasterizationSamples = static_cast<VkSampleCountFlagBits>(desc.samples)
 		};
 
 		const bool has_depth = desc.depthFormat != Format::eUndefined;

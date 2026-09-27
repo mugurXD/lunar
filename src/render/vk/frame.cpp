@@ -76,6 +76,14 @@ namespace lunar::Render::imp
 			};
 		}
 
+		void ResolveInto(VkRenderingAttachmentInfo& attachment, const VkImageRecord& target)
+		{
+			attachment.storeOp            = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+			attachment.resolveMode        = VK_RESOLVE_MODE_AVERAGE_BIT;
+			attachment.resolveImageView   = target.view;
+			attachment.resolveImageLayout = target.layout;
+		}
+
 		VkClearValue ToClearColor(const glm::vec4& color)
 		{
 			return VkClearValue { .color = { .float32 = { color.r, color.g, color.b, color.a } } };
@@ -133,6 +141,9 @@ namespace lunar::Render::imp
 			const VkImageRecord& image = prepareAttachment(attachment.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 			color_attachments.push_back(ToVkAttachment(image, attachment.loadOp, ToClearColor(attachment.clearColor)));
 			render_extent = image.extent;
+
+			if (attachment.resolveImage != ImageHandle {})
+				ResolveInto(color_attachments.back(), prepareAttachment(attachment.resolveImage, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL));
 		}
 
 		std::optional<VkRenderingAttachmentInfo> depth_attachment;

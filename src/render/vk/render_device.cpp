@@ -8,6 +8,8 @@
 #include <lunar/render/window.hpp>
 #include <lunar/debug.hpp>
 
+#include <bit>
+
 namespace lunar::Render::imp
 {
 	namespace
@@ -105,13 +107,15 @@ namespace lunar::Render::imp
 
 		RenderDeviceCapabilities EnableOptionalFeatures(vkb::PhysicalDevice& physical_device)
 		{
-			const bool has_acceleration_structures = EnableAccelerationStructures(physical_device);
+			const VkPhysicalDeviceLimits& limits                      = physical_device.properties.limits;
+			const bool                    has_acceleration_structures = EnableAccelerationStructures(physical_device);
 
 			return RenderDeviceCapabilities
 			{
 				.rayQuery           = has_acceleration_structures && EnableRayQuery(physical_device),
 				.rayTracingPipeline = has_acceleration_structures && EnableRayTracingPipeline(physical_device),
-				.memoryBudget       = physical_device.enable_extension_if_present(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME)
+				.memoryBudget       = physical_device.enable_extension_if_present(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME),
+				.maxSamples         = std::bit_floor(static_cast<uint32_t>(limits.framebufferColorSampleCounts & limits.framebufferDepthSampleCounts))
 			};
 		}
 	}

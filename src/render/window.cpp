@@ -18,14 +18,12 @@ namespace lunar::Render
 		int                     height,
 		bool                    fullscreen,
 		const std::string_view& title,
-		int                     msaa,
 		bool                    vsync,
 		Backend				    backend
 	) noexcept : width(width),
 		height(height),
 		fullscreen(fullscreen),
 		title(title),
-		msaa(msaa),
 		vsync(true)
 	{
 		switch (backend)
@@ -183,12 +181,6 @@ namespace lunar::Render
 		return *this;
 	}
 
-	WindowBuilder& WindowBuilder::samples(int count)
-	{
-		this->msaa = count;
-		return *this;
-	}
-
 	WindowBuilder& WindowBuilder::title(const std::string_view& title)
 	{
 		this->windowTitle = title;
@@ -208,7 +200,6 @@ namespace lunar::Render
 			this->height,
 			this->isFullscreen,
 			this->windowTitle,
-			this->msaa,
 			this->enableVsync,
 			this->backend
 		);

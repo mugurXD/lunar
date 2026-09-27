@@ -28,9 +28,10 @@ namespace lunar::Render
 
 	struct LUNAR_API ColorAttachment
 	{
-		ImageHandle image      = {};
-		LoadOp      loadOp     = LoadOp::eClear;
-		glm::vec4   clearColor = {};
+		ImageHandle image        = {};
+		LoadOp      loadOp       = LoadOp::eClear;
+		glm::vec4   clearColor   = {};
+		ImageHandle resolveImage = {};
 	};
 
 	struct LUNAR_API DepthAttachment

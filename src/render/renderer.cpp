@@ -6,6 +6,8 @@
 #include <lunar/core/scene.hpp>
 #include <lunar/debug.hpp>
 
+#include <algorithm>
+#include <bit>
 #include <string_view>
 #include <vector>
 
@@ -18,6 +20,7 @@ namespace lunar::Render
 		constexpr Format    DEPTH_FORMAT            = Format::eD32Float;
 		constexpr float     REVERSE_Z_CLEAR_DEPTH   = 0.f;
 		constexpr CompareOp REVERSE_Z_DEPTH_COMPARE = CompareOp::eGreater;
+		constexpr uint32_t  SINGLE_SAMPLE           = 1;
 
 		const glm::vec4 AMBIENT_COLOR = { 0.08f, 0.08f, 0.1f, 0.f };
 
@@ -92,13 +95,40 @@ namespace lunar::Render
 		}
 	}
 
-	Renderer::Renderer(RenderDevice& device, Swapchain* swapchain) noexcept
+	Renderer::Renderer(RenderDevice& device, Swapchain* swapchain, uint32_t samples) noexcept
 		: device(device),
 		swapchain(swapchain),
 		meshes(device)
 	{
 		cubeMesh = meshes.create(CreateCubeMeshData());
+		setSamples(samples);
+	}
 
+	Renderer::~Renderer() noexcept
+	{
+		destroyTargets();
+		destroyPipelines();
+	}
+
+	void Renderer::setSamples(uint32_t samples)
+	{
+		const uint32_t supported = std::bit_floor(std::clamp(samples, SINGLE_SAMPLE, device.getCapabilities().maxSamples));
+		if (supported == sampleCount)
+			return;
+
+		sampleCount = supported;
+		destroyTargets();
+		destroyPipelines();
+		createPipelines();
+	}
+
+	uint32_t Renderer::getSamples() const
+	{
+		return sampleCount;
+	}
+
+	void Renderer::createPipelines()
+	{
 		if (swapchain == nullptr)
 			return;
 
@@ -116,7 +146,8 @@ namespace lunar::Render
 			.frontFace      = FrontFace::eCounterClockwise,
 			.depthTest      = true,
 			.depthWrite     = true,
-			.depthCompare   = REVERSE_Z_DEPTH_COMPARE
+			.depthCompare   = REVERSE_Z_DEPTH_COMPARE,
+			.samples        = sampleCount
 		};
 
 		GraphicsPipelineDesc translucent_desc = mesh_desc;
@@ -128,11 +159,12 @@ namespace lunar::Render
 		translucentPipeline = device.createGraphicsPipeline(translucent_desc);
 	}
 
-	Renderer::~Renderer() noexcept
+	void Renderer::destroyPipelines()
 	{
-		device.destroyImage(depthImage);
 		device.destroyPipeline(translucentPipeline);
 		device.destroyPipeline(meshPipeline);
+		translucentPipeline = {};
+		meshPipeline        = {};
 	}
 
 	void Renderer::render(Scene& scene, UI::UiLayer* ui, ImGuiLayer* debug_ui)
@@ -143,7 +175,7 @@ namespace lunar::Render
 		if (backbuffer != ImageHandle {})
 		{
 			const Extent2D extent = device.getImageExtent(backbuffer);
-			resizeDepthImage(extent);
+			resizeTargets(extent);
 			recordFrame(frame, scene, backbuffer, extent);
 
 			if (ui != nullptr || debug_ui != nullptr)
@@ -163,17 +195,34 @@ namespace lunar::Render
 		return cubeMesh;
 	}
 
-	void Renderer::resizeDepthImage(Extent2D extent)
+	void Renderer::resizeTargets(Extent2D extent)
 	{
 		if (device.getImageExtent(depthImage) == extent)
 			return;
 
-		device.destroyImage(depthImage);
+		destroyTargets();
 		depthImage = device.createImage({
-			.extent = extent,
-			.format = DEPTH_FORMAT,
-			.usage  = ImageUsageFlags(ImageUsageFlagBits::eDepthAttachment)
+			.extent  = extent,
+			.format  = DEPTH_FORMAT,
+			.usage   = ImageUsageFlags(ImageUsageFlagBits::eDepthAttachment),
+			.samples = sampleCount
 		});
+
+		if (sampleCount > SINGLE_SAMPLE)
+			colorImage = device.createImage({
+				.extent  = extent,
+				.format  = swapchain->getFormat(),
+				.usage   = ImageUsageFlags(ImageUsageFlagBits::eColorAttachment),
+				.samples = sampleCount
+			});
+	}
+
+	void Renderer::destroyTargets()
+	{
+		device.destroyImage(colorImage);
+		device.destroyImage(depthImage);
+		colorImage = {};
+		depthImage = {};
 	}
 
 	void Renderer::recordFrame(Frame& frame, Scene& scene, ImageHandle target, Extent2D extent)
@@ -181,11 +230,13 @@ namespace lunar::Render
 		CommandList&       commands = frame.commandList();
 		const DistanceFog* fog      = FindFirst<DistanceFog>(scene);
 
+		const bool            multisampled     = colorImage != ImageHandle {};
 		const ColorAttachment color_attachment =
 		{
-			.image      = target,
-			.loadOp     = LoadOp::eClear,
-			.clearColor = fog != nullptr ? glm::vec4(fog->color, 1.f) : CLEAR_COLOR
+			.image        = multisampled ? colorImage : target,
+			.loadOp       = LoadOp::eClear,
+			.clearColor   = fog != nullptr ? glm::vec4(fog->color, 1.f) : CLEAR_COLOR,
+			.resolveImage = multisampled ? target : ImageHandle {}
 		};
 
 		const DepthAttachment depth_attachment =

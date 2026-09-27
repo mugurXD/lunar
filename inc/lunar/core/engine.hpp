@@ -70,6 +70,7 @@ namespace lunar
 		EngineBuilder& noWindow();
 		EngineBuilder& renderBackend(Render::Backend backend);
 		EngineBuilder& fixedTimestep(double seconds);
+		EngineBuilder& samples(uint32_t count);
 		Engine build() const;
 
 	private:
@@ -78,6 +79,7 @@ namespace lunar
 		Render::Backend       backend              = Render::Backend::eDefault;
 		std::string           appName              = "lunar";
 		double                fixedTimestepSeconds = DEFAULT_FIXED_TIMESTEP;
+		uint32_t              sampleCount          = 1;
 
 		friend class Engine;
 	};
