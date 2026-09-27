@@ -53,7 +53,6 @@ namespace
 	constexpr float                   FPS_REFRESH_SECONDS  = 3.f;
 	constexpr int                     WINDOW_WIDTH         = 1280;
 	constexpr int                     WINDOW_HEIGHT        = 720;
-	constexpr int                     WINDOW_SAMPLES       = 4;
 	constexpr int32_t                 VIEW_RADIUS          = 32;
 	constexpr std::string_view        WINDOW_TITLE         = "trok";
 	constexpr std::string_view        FPS_TITLE_FORMAT     = "trok | FPS: {}";
@@ -285,11 +284,11 @@ int main()
 	auto engine = EngineBuilder()
 		.applicationName(WINDOW_TITLE)
 		.renderBackend(Backend::eVulkan)
+		.samples(8)
 		.window(
 			WindowBuilder()
 				.title(WINDOW_TITLE)
 				.size(WINDOW_WIDTH, WINDOW_HEIGHT)
-				.samples(WINDOW_SAMPLES)
 		)
 		.build();
 

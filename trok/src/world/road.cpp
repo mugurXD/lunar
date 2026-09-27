@@ -12,7 +12,7 @@ namespace trok
 {
 	namespace
 	{
-		constexpr uint32_t ROAD_FORMAT_VERSION = 2;
+		constexpr uint32_t ROAD_FORMAT_VERSION = 4;
 		constexpr float    CELL_SIZE           = 64.f;
 		constexpr float    HALF                = 0.5f;
 		constexpr float    MIN_MITRE_SCALE     = 0.5f;
@@ -42,6 +42,50 @@ namespace trok
 		{
 			return std::max(from.x, to.x) + reach >= minimum.x && std::min(from.x, to.x) - reach <= maximum.x &&
 			       std::max(from.z, to.z) + reach >= minimum.y && std::min(from.z, to.z) - reach <= maximum.y;
+		}
+
+		nlohmann::json SerializeFurniture(const RoadFurniture& furniture)
+		{
+			return nlohmann::json
+			{
+				{ "markingWidth",  furniture.markingWidth },
+				{ "dashLength",    furniture.dashLength },
+				{ "dashGap",       furniture.dashGap },
+				{ "markingColor",  SerializeVec3(furniture.markingColor) },
+				{ "centreColor",   SerializeVec3(furniture.centreColor) },
+				{ "postSpacing",   furniture.postSpacing },
+				{ "postHeight",    furniture.postHeight },
+				{ "postWidth",     furniture.postWidth },
+				{ "postOutset",    furniture.postOutset },
+				{ "postColor",     SerializeVec3(furniture.postColor) },
+				{ "railElevation", furniture.railElevation },
+				{ "railHeight",    furniture.railHeight },
+				{ "railDepth",     furniture.railDepth },
+				{ "railThickness", furniture.railThickness },
+				{ "railColor",     SerializeVec3(furniture.railColor) }
+			};
+		}
+
+		RoadFurniture DeserializeFurniture(const nlohmann::json& json)
+		{
+			return RoadFurniture
+			{
+				.markingWidth  = json.at("markingWidth").get<float>(),
+				.dashLength    = json.at("dashLength").get<float>(),
+				.dashGap       = json.at("dashGap").get<float>(),
+				.markingColor  = DeserializeVec3(json.at("markingColor")),
+				.centreColor   = DeserializeVec3(json.at("centreColor")),
+				.postSpacing   = json.at("postSpacing").get<float>(),
+				.postHeight    = json.at("postHeight").get<float>(),
+				.postWidth     = json.at("postWidth").get<float>(),
+				.postOutset    = json.at("postOutset").get<float>(),
+				.postColor     = DeserializeVec3(json.at("postColor")),
+				.railElevation = json.at("railElevation").get<float>(),
+				.railHeight    = json.at("railHeight").get<float>(),
+				.railDepth     = json.at("railDepth").get<float>(),
+				.railThickness = json.at("railThickness").get<float>(),
+				.railColor     = DeserializeVec3(json.at("railColor"))
+			};
 		}
 
 		lunar::World::ShapePoint ShapePointOf(const glm::vec3& point, float core)
@@ -80,7 +124,8 @@ namespace trok
 			{ "pillarWidth",     road_class.pillarWidth },
 			{ "surfaceOffset",   road_class.surfaceOffset },
 			{ "edgeDepth",       road_class.edgeDepth },
-			{ "color",           SerializeVec3(road_class.color) }
+			{ "color",           SerializeVec3(road_class.color) },
+			{ "furniture",       SerializeFurniture(road_class.furniture) }
 		};
 	}
 
@@ -111,13 +156,15 @@ namespace trok
 			.pillarWidth     = json.at("pillarWidth").get<float>(),
 			.surfaceOffset   = json.at("surfaceOffset").get<float>(),
 			.edgeDepth       = json.at("edgeDepth").get<float>(),
-			.color           = DeserializeVec3(json.at("color"))
+			.color           = DeserializeVec3(json.at("color")),
+			.furniture       = DeserializeFurniture(json.at("furniture"))
 		};
 
 		if (road_class.lanes <= 0 || road_class.laneWidth <= 0.f || road_class.maxGrade <= 0.f || road_class.minCurveRadius <= 0.f ||
-		    road_class.pillarSpacing <= 0.f || road_class.maxCutDepth <= 0.f || road_class.cutSpread < 0.f)
+		    road_class.pillarSpacing <= 0.f || road_class.maxCutDepth <= 0.f || road_class.cutSpread < 0.f ||
+		    road_class.furniture.dashLength <= 0.f || road_class.furniture.dashGap < 0.f || road_class.furniture.postSpacing <= 0.f)
 		{
-			Fs::ReportMalformedJson("a road class needs positive lanes, lane width, grade, curve radius, cut depth and pillar spacing, and a non-negative cut spread");
+			Fs::ReportMalformedJson("a road class needs positive lanes, lane width, grade, curve radius, cut depth, pillar, post and dash spacing, and a non-negative cut spread and dash gap");
 			return std::nullopt;
 		}
 
