@@ -19,7 +19,7 @@
 
 namespace trok
 {
-	constexpr uint32_t BIOME_CELL_CHUNKS         = 4;
+	constexpr uint32_t BIOME_CELL_CHUNKS         = 8;
 	constexpr int32_t  BIOME_SAMPLE_REACH_CHUNKS = static_cast<int32_t>(BIOME_CELL_CHUNKS) + 1;
 
 	struct Settlement

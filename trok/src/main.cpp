@@ -53,7 +53,7 @@ namespace
 	constexpr float                   FPS_REFRESH_SECONDS  = 3.f;
 	constexpr int                     WINDOW_WIDTH         = 1280;
 	constexpr int                     WINDOW_HEIGHT        = 720;
-	constexpr int32_t                 VIEW_RADIUS          = 32;
+	constexpr int32_t                 VIEW_RADIUS          = 8;
 	constexpr std::string_view        WINDOW_TITLE         = "trok";
 	constexpr std::string_view        FPS_TITLE_FORMAT     = "trok | FPS: {}";
 	constexpr std::string_view        WORLD_SAVE_DIRECTORY = "saves/trok";
