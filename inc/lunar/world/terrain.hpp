@@ -63,7 +63,7 @@ namespace lunar::World
 
 	LUNAR_API uint32_t  HeightmapSamplesPerSide(const WorldSettings& settings);
 	LUNAR_API glm::vec3 HeightmapNormal(const Heightmap& heightmap, int32_t x, int32_t z, const WorldSettings& settings);
-	LUNAR_API void      AppendChunkIndices(Render::MeshData& mesh, const WorldSettings& settings);
+	LUNAR_API void      FacetChunkMesh(Render::MeshData& mesh, ChunkCoord coord, const WorldSettings& settings);
 
 	template<typename HeightFunction>
 	Heightmap SampleHeightmap(HeightFunction&& height_at, ChunkCoord coord, const WorldSettings& settings)
@@ -107,7 +107,7 @@ namespace lunar::World
 			}
 		}
 
-		AppendChunkIndices(mesh, settings);
+		FacetChunkMesh(mesh, coord, settings);
 		return mesh;
 	}
 }
