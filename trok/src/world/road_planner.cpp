@@ -270,6 +270,15 @@ namespace trok
 			return points;
 		}
 
+		void AppendAlong(std::vector<glm::vec3>& centreline, const glm::vec3& point, float spacing)
+		{
+			const glm::vec3 from   = centreline.back();
+			const int       pieces = std::max(1, static_cast<int>(std::ceil(glm::distance(from, point) / spacing)));
+
+			for (int piece = 1; piece <= pieces; piece++)
+				centreline.push_back(glm::mix(from, point, static_cast<float>(piece) / static_cast<float>(pieces)));
+		}
+
 		std::vector<glm::vec3> Curve(const std::vector<glm::vec3>& path, float spacing)
 		{
 			std::vector<glm::vec3> centreline = { path.front() };
@@ -279,7 +288,7 @@ namespace trok
 				const glm::vec3& corner = path[index];
 				if (IsStraight(path[index - 1], corner, path[index + 1]))
 				{
-					centreline.push_back(corner);
+					AppendAlong(centreline, corner, spacing);
 					continue;
 				}
 
@@ -288,10 +297,10 @@ namespace trok
 				const int       samples = std::max(1, static_cast<int>(std::ceil((glm::distance(entry, corner) + glm::distance(corner, exit)) / spacing)));
 
 				for (int sample = centreline.back() == entry ? 1 : 0; sample <= samples; sample++)
-					centreline.push_back(QuadraticBezier(entry, corner, exit, static_cast<float>(sample) / static_cast<float>(samples)));
+					AppendAlong(centreline, QuadraticBezier(entry, corner, exit, static_cast<float>(sample) / static_cast<float>(samples)), spacing);
 			}
 
-			centreline.push_back(path.back());
+			AppendAlong(centreline, path.back(), spacing);
 			return centreline;
 		}
 
