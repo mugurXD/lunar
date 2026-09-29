@@ -71,7 +71,7 @@ namespace lunar
 
 	size_t JobSystem::defaultWorkerCount()
 	{
-		const size_t hardware_threads = std::thread::hardware_concurrency();
+		const size_t hardware_threads = std::thread::hardware_concurrency() - 2;
 		return hardware_threads > MAIN_THREAD_COUNT ? hardware_threads - MAIN_THREAD_COUNT : MIN_WORKER_COUNT;
 	}
 
