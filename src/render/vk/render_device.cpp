@@ -18,10 +18,10 @@ namespace lunar::Render::imp
 		{
 			VkPhysicalDeviceFeatures features = {};
 			features.samplerAnisotropy = VK_TRUE;
-			features.multiDrawIndirect = VK_TRUE;
-			features.shaderInt64       = VK_TRUE;
-			features.fillModeNonSolid  = VK_TRUE;
-			features.depthClamp        = VK_TRUE;
+			features.multiDrawIndirect = VK_FALSE;
+			features.shaderInt64       = VK_FALSE;
+			features.fillModeNonSolid  = VK_FALSE;
+			features.depthClamp        = VK_FALSE;
 			return features;
 		}
 
@@ -30,7 +30,7 @@ namespace lunar::Render::imp
 			return VkPhysicalDeviceVulkan11Features
 			{
 				.sType                = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
-				.shaderDrawParameters = VK_TRUE
+				.shaderDrawParameters = VK_FALSE
 			};
 		}
 
@@ -39,13 +39,13 @@ namespace lunar::Render::imp
 			return VkPhysicalDeviceVulkan12Features
 			{
 				.sType                                         = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
-				.drawIndirectCount                             = VK_TRUE,
-				.descriptorIndexing                            = VK_TRUE,
+				.drawIndirectCount                             = VK_FALSE,
+				.descriptorIndexing                            = VK_FALSE,
 				.shaderSampledImageArrayNonUniformIndexing     = VK_TRUE,
 				.descriptorBindingSampledImageUpdateAfterBind  = VK_TRUE,
-				.descriptorBindingStorageBufferUpdateAfterBind = VK_TRUE,
+				.descriptorBindingStorageBufferUpdateAfterBind = VK_FALSE,
 				.descriptorBindingPartiallyBound               = VK_TRUE,
-				.descriptorBindingVariableDescriptorCount      = VK_TRUE,
+				.descriptorBindingVariableDescriptorCount      = VK_FALSE,
 				.runtimeDescriptorArray                        = VK_TRUE,
 				.scalarBlockLayout                             = VK_TRUE,
 				.timelineSemaphore                             = VK_TRUE,
