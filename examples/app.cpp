@@ -18,7 +18,7 @@ namespace
 	constexpr float     MOON_SPIN_SPEED       = 120.f;
 	constexpr int       WINDOW_WIDTH          = 1280;
 	constexpr int       WINDOW_HEIGHT         = 720;
-	constexpr int       WINDOW_SAMPLES        = 4;
+	constexpr uint32_t  RENDER_SAMPLES        = 4;
 	constexpr int       CHECKER_SIZE          = 16;
 	constexpr int       CHECKER_CELL_SIZE     = 2;
 	constexpr uint32_t  CHECKER_LIGHT_COLOR   = 0xFFE0E0E0;
@@ -181,11 +181,11 @@ int main()
 	auto engine = EngineBuilder()
 		.applicationName("Example app")
 		.renderBackend(lunar::Render::Backend::eVulkan)
+		.samples(RENDER_SAMPLES)
 		.window(
 			WindowBuilder()
 				.title("lunar - example")
 				.size(WINDOW_WIDTH, WINDOW_HEIGHT)
-				.samples(WINDOW_SAMPLES)
 		)
 		.build();
 
