@@ -10,6 +10,7 @@
 #include <glm/glm.hpp>
 
 #include <cstddef>
+#include <cstdint>
 #include <span>
 #include <unordered_map>
 #include <vector>
@@ -32,10 +33,12 @@ namespace lunar::World
 
 		void   update(const glm::vec3& focus_position);
 		void   reload();
+		void   refresh(std::span<const ChunkCoord> coords);
 		size_t           getLoadedChunkCount()          const;
 		size_t           getPendingChunkCount()         const;
 		const Heightmap*             findHeightmap(ChunkCoord coord) const;
 		std::span<const DressedMesh> findSolids(ChunkCoord coord)    const;
+		uint64_t                     getRevision(ChunkCoord coord)   const;
 
 	private:
 		struct LoadedChunk
@@ -46,13 +49,16 @@ namespace lunar::World
 			std::vector<Render::MeshHandle> dressingMeshes = {};
 			std::vector<DressedMesh>        solids         = {};
 			Heightmap                       heightmap      = {};
+			uint64_t                        revision       = 0;
 		};
 
 		void unloadDistantChunks(ChunkCoord center);
 		void requestMissingChunks(ChunkCoord center);
-		void requestChunk(ChunkCoord coord, ChunkWork work);
-		void onChunkGenerated(ChunkCoord coord, ChunkData data);
-		void unloadChunk(const LoadedChunk& chunk);
+		void      requestChunk(ChunkCoord coord, ChunkWork work);
+		JobHandle submitChunk(ChunkCoord coord, ChunkWork work);
+		void      onChunkGenerated(ChunkCoord coord, ChunkData data);
+		void      unloadChunk(const LoadedChunk& chunk);
+		void      destroyResources(const LoadedChunk& chunk);
 
 		Scene&                                                     scene;
 		JobSystem&                                                 jobs;
@@ -62,5 +68,6 @@ namespace lunar::World
 		Render::MaterialHandle                                     material;
 		std::unordered_map<ChunkCoord, LoadedChunk, GridCoordHash> chunks;
 		size_t                                                     pendingCount = 0;
+		uint64_t                                                   nextRevision = 1;
 	};
 }

@@ -33,6 +33,12 @@ namespace lunar::World
 		size_t getColliderCount()                 const;
 
 	private:
+		struct ChunkCollider
+		{
+			Physics::RigidBody body;
+			uint64_t           revision = 0;
+		};
+
 		bool isNeeded(ChunkCoord coord, std::span<const ChunkCoord> focus_chunks) const;
 		void create(ChunkCoord coord, const Heightmap& heightmap);
 
@@ -40,6 +46,6 @@ namespace lunar::World
 		const TerrainWorld&                                               terrain;
 		WorldSettings                                                     settings;
 		int32_t                                                           radiusChunks = 0;
-		std::unordered_map<ChunkCoord, Physics::RigidBody, GridCoordHash> colliders;
+		std::unordered_map<ChunkCoord, ChunkCollider, GridCoordHash>      colliders;
 	};
 }

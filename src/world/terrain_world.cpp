@@ -61,6 +61,29 @@ namespace lunar::World
 		return pendingCount;
 	}
 
+	void TerrainWorld::refresh(std::span<const ChunkCoord> coords)
+	{
+		for (const ChunkCoord coord : coords)
+		{
+			const auto found = chunks.find(coord);
+			if (found == chunks.end())
+				continue;
+
+			std::optional<ChunkWork> work = source.prepareChunk(coord);
+			if (!work.has_value())
+				continue;
+
+			jobs.cancel(found->second.job);
+			found->second.job = submitChunk(coord, std::move(*work));
+		}
+	}
+
+	uint64_t TerrainWorld::getRevision(ChunkCoord coord) const
+	{
+		const auto found = chunks.find(coord);
+		return found == chunks.end() ? 0 : found->second.revision;
+	}
+
 	std::span<const DressedMesh> TerrainWorld::findSolids(ChunkCoord coord) const
 	{
 		const auto found = chunks.find(coord);
@@ -117,10 +140,13 @@ namespace lunar::World
 
 	void TerrainWorld::requestChunk(ChunkCoord coord, ChunkWork work)
 	{
-		const JobHandle job = jobs.submit(std::move(work), [this, coord](ChunkData data) { onChunkGenerated(coord, std::move(data)); });
-
-		chunks.emplace(coord, LoadedChunk { .job = job });
+		chunks.emplace(coord, LoadedChunk { .job = submitChunk(coord, std::move(work)) });
 		pendingCount++;
+	}
+
+	JobHandle TerrainWorld::submitChunk(ChunkCoord coord, ChunkWork work)
+	{
+		return jobs.submit(std::move(work), [this, coord](ChunkData data) { onChunkGenerated(coord, std::move(data)); });
 	}
 
 	void TerrainWorld::onChunkGenerated(ChunkCoord coord, ChunkData data)
@@ -129,7 +155,15 @@ namespace lunar::World
 		if (found == chunks.end())
 			return;
 
-		LoadedChunk& chunk = found->second;
+		LoadedChunk& chunk     = found->second;
+		const bool   refreshed = chunk.object != nullptr;
+		if (refreshed)
+		{
+			destroyResources(chunk);
+			chunk.dressingMeshes.clear();
+			chunk.solids.clear();
+		}
+
 		chunk.mesh         = meshes.create(data.mesh);
 		chunk.heightmap    = std::move(data.heightmap);
 		chunk.object       = scene.createGameObject(std::format(CHUNK_NAME_FORMAT, coord.x, coord.z));
@@ -152,18 +186,26 @@ namespace lunar::World
 				chunk.solids.push_back(std::move(dressed));
 		}
 
-		pendingCount--;
+		chunk.revision = nextRevision++;
+		if (!refreshed)
+			pendingCount--;
 	}
 
 	void TerrainWorld::unloadChunk(const LoadedChunk& chunk)
 	{
+		jobs.cancel(chunk.job);
+
 		if (chunk.object == nullptr)
 		{
-			jobs.cancel(chunk.job);
 			pendingCount--;
 			return;
 		}
 
+		destroyResources(chunk);
+	}
+
+	void TerrainWorld::destroyResources(const LoadedChunk& chunk)
+	{
 		meshes.destroy(chunk.mesh);
 
 		for (const Render::MeshHandle dressing : chunk.dressingMeshes)

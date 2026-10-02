@@ -20,7 +20,7 @@ namespace lunar::World
 		for (const glm::vec3& position : focus_positions)
 			focus_chunks.push_back(ChunkAt(position, settings));
 
-		std::erase_if(colliders, [&](const auto& entry) { return !isNeeded(entry.first, focus_chunks); });
+		std::erase_if(colliders, [&](const auto& entry) { return !isNeeded(entry.first, focus_chunks) || entry.second.revision != terrain.getRevision(entry.first); });
 
 		for (const ChunkCoord focus : focus_chunks)
 		{
@@ -87,6 +87,6 @@ namespace lunar::World
 			body.addTriangleMesh({ .vertices = positions, .indices = solid.mesh.indices }, solid.colliderCategory);
 		}
 
-		colliders.emplace(coord, std::move(body));
+		colliders.emplace(coord, ChunkCollider { std::move(body), terrain.getRevision(coord) });
 	}
 }

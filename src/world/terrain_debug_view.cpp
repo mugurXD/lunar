@@ -98,9 +98,8 @@ namespace lunar::World
 		const ChunkCoord centre = ChunkAt(focus, settings);
 
 		std::erase_if(overlays, [&](auto& entry) {
-			auto& [coord, overlay]     = entry;
-			const Heightmap* heightmap = terrain.findHeightmap(coord);
-			if (IsInsideSquare(coord, centre, radiusChunks) && heightmap != nullptr && *heightmap == overlay.heightmap)
+			auto& [coord, overlay] = entry;
+			if (IsInsideSquare(coord, centre, radiusChunks) && terrain.getRevision(coord) == overlay.revision)
 				return false;
 
 			destroy(overlay);
@@ -131,9 +130,9 @@ namespace lunar::World
 	{
 		Overlay overlay =
 		{
-			.object    = scene.createGameObject(std::format(OVERLAY_NAME_FORMAT, coord.x, coord.z)),
-			.mesh      = meshes.create(BuildOverlay(heightmap, settings)),
-			.heightmap = heightmap
+			.object   = scene.createGameObject(std::format(OVERLAY_NAME_FORMAT, coord.x, coord.z)),
+			.mesh     = meshes.create(BuildOverlay(heightmap, settings)),
+			.revision = terrain.getRevision(coord)
 		};
 
 		overlay.object->getTransform().position = ChunkOrigin(coord, settings);

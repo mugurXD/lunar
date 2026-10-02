@@ -34,9 +34,9 @@ namespace lunar::World
 	private:
 		struct Overlay
 		{
-			GameObject         object    = {};
-			Render::MeshHandle mesh      = {};
-			Heightmap          heightmap = {};
+			GameObject         object   = {};
+			Render::MeshHandle mesh     = {};
+			uint64_t           revision = 0;
 		};
 
 		void create(ChunkCoord coord, const Heightmap& heightmap);
