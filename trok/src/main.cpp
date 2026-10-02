@@ -519,6 +519,7 @@ int main()
 
 		if (roads.update())
 		{
+			deliveries.setRoads(roads.getNetwork());
 			if (awaited_road.has_value())
 				mark_awaited_road();
 

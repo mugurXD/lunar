@@ -1,8 +1,11 @@
 #include <trok/gameplay/cargo_shock.hpp>
 #include <trok/gameplay/deliveries.hpp>
+#include <trok/world/road.hpp>
 #include <gtest/gtest.h>
 
+#include <array>
 #include <cmath>
+#include <memory>
 #include <vector>
 
 namespace
@@ -13,6 +16,7 @@ namespace
 	constexpr double   FAR_TOWN    = 20000.0;
 	constexpr double   FRAME       = 1.0 / 60.0;
 	constexpr double   LONG_WAIT   = 10000.0;
+	constexpr uint64_t SEED_COUNT  = 20;
 
 	const glm::dvec2 OUTSIDE_A = { 1000.0, 0.0 };
 
@@ -25,9 +29,35 @@ namespace
 	const trok::Settlement B = Town(2, NEAR_TOWN);
 	const trok::Settlement C = Town(3, FAR_TOWN);
 
+	using TownLink = std::array<trok::Settlement, 2>;
+
+	glm::vec3 GroundAt(const trok::Settlement& town)
+	{
+		return { static_cast<float>(town.center.x), 0.f, static_cast<float>(town.center.y) };
+	}
+
+	std::shared_ptr<const trok::RoadNetwork> Connect(const std::vector<TownLink>& links)
+	{
+		std::vector<std::vector<glm::vec3>> roads;
+		for (const auto& [from, to] : links)
+			roads.push_back({ GroundAt(from), GroundAt(to) });
+
+		return std::make_shared<const trok::RoadNetwork>(std::move(roads), trok::RoadClass { .name = "test:road" });
+	}
+
+	std::vector<TownLink> InSequence(const std::vector<trok::Settlement>& towns)
+	{
+		std::vector<TownLink> links;
+		for (size_t town = 1; town < towns.size(); town++)
+			links.push_back({ towns[town - 1], towns[town] });
+
+		return links;
+	}
+
 	trok::Deliveries WithTowns(std::vector<trok::Settlement> towns)
 	{
 		trok::Deliveries deliveries({}, SEED);
+		deliveries.setRoads(Connect(InSequence(towns)));
 		deliveries.setTowns(std::move(towns));
 		return deliveries;
 	}
@@ -40,6 +70,49 @@ TEST(Deliveries, WithoutTownsThereIsNothingToDeliver)
 	EXPECT_FALSE(deliveries.update(OUTSIDE_A, FRAME).has_value());
 	EXPECT_FALSE(deliveries.getDelivery().has_value());
 	EXPECT_FALSE(deliveries.getTarget().has_value());
+}
+
+TEST(Deliveries, TownsWithoutRoadsOfferNoJobs)
+{
+	trok::Deliveries deliveries({}, SEED);
+	deliveries.setTowns({ A, B, C });
+
+	EXPECT_FALSE(deliveries.update(OUTSIDE_A, FRAME).has_value());
+	EXPECT_FALSE(deliveries.getDelivery().has_value());
+
+	deliveries.setRoads(Connect({ { A, B } }));
+	deliveries.update(OUTSIDE_A, FRAME);
+	ASSERT_TRUE(deliveries.getDelivery().has_value()) << "jobs appear once a road reaches the towns";
+	EXPECT_EQ(deliveries.getDelivery()->destination, B);
+}
+
+TEST(Deliveries, JobsStayOnTheConnectedRoadNetwork)
+{
+	const trok::Settlement west = Town(4, -NEAR_TOWN);
+
+	for (uint64_t seed = 0; seed < SEED_COUNT; seed++)
+	{
+		trok::Deliveries deliveries({}, seed);
+		deliveries.setTowns({ A, B, west });
+		deliveries.setRoads(Connect({ { A, B } }));
+		deliveries.update(A.center, FRAME);
+
+		ASSERT_TRUE(deliveries.getDelivery().has_value());
+		EXPECT_EQ(deliveries.getDelivery()->destination, B) << "the western town is in range but has no road";
+	}
+}
+
+TEST(Deliveries, TheNearestUnconnectedTownIsSkippedForTheFirstPickup)
+{
+	const trok::Settlement isolated = Town(4, OUTSIDE_A.x + TOWN_RADIUS);
+
+	trok::Deliveries deliveries({}, SEED);
+	deliveries.setTowns({ A, B, isolated });
+	deliveries.setRoads(Connect({ { A, B } }));
+	deliveries.update(OUTSIDE_A, FRAME);
+
+	ASSERT_TRUE(deliveries.getDelivery().has_value());
+	EXPECT_EQ(deliveries.getDelivery()->origin, A);
 }
 
 TEST(Deliveries, TheFirstJobIsPickedUpAtTheNearestTown)

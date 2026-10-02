@@ -4,12 +4,15 @@
 #include <glm/glm.hpp>
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <random>
 #include <vector>
 
 namespace trok
 {
+	class RoadNetwork;
+
 	struct DeliverySettings
 	{
 		double minDistance      = 3000.0;
@@ -42,6 +45,7 @@ namespace trok
 		Deliveries(DeliverySettings settings, uint64_t seed) noexcept;
 
 		void                           setTowns(std::vector<Settlement> towns);
+		void                           setRoads(std::shared_ptr<const RoadNetwork> network);
 		std::optional<int64_t>         update(const glm::dvec2& position, double delta_time);
 		const std::optional<Delivery>& getDelivery() const;
 		std::optional<glm::dvec2>      getTarget()   const;
@@ -52,11 +56,15 @@ namespace trok
 	private:
 		std::optional<Delivery> offer(const Settlement& origin);
 		int64_t                 complete();
+		const Settlement*       nearestConnected(const glm::dvec2& position, std::optional<size_t> group, const Settlement* excluded = nullptr) const;
+		std::optional<size_t>   groupOf(const Settlement& town) const;
 
-		DeliverySettings        settings;
-		std::mt19937_64         random;
-		std::vector<Settlement> towns;
-		std::optional<Delivery> delivery;
-		int64_t                 money = 0;
+		DeliverySettings                   settings;
+		std::mt19937_64                    random;
+		std::vector<Settlement>            towns;
+		std::shared_ptr<const RoadNetwork> network;
+		std::vector<std::optional<size_t>> townGroups;
+		std::optional<Delivery>            delivery;
+		int64_t                            money = 0;
 	};
 }

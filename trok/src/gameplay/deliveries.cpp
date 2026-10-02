@@ -1,4 +1,5 @@
 #include <trok/gameplay/deliveries.hpp>
+#include <trok/world/road.hpp>
 
 #include <lunar/debug.hpp>
 
@@ -19,22 +20,61 @@ namespace trok
 			return glm::distance(town.center, position) <= town.radius;
 		}
 
-		const Settlement* Nearest(std::span<const Settlement> towns, const glm::dvec2& position, const Settlement* excluded = nullptr)
+		std::optional<size_t> TownAt(std::span<const Settlement> towns, const glm::vec3& point)
 		{
-			const Settlement* nearest  = nullptr;
-			double            shortest = std::numeric_limits<double>::max();
+			for (size_t town = 0; town < towns.size(); town++)
+				if (Contains(towns[town], { point.x, point.z }))
+					return town;
 
-			for (const Settlement& town : towns)
+			return std::nullopt;
+		}
+
+		std::vector<std::optional<size_t>> ConnectedGroups(std::span<const Settlement> towns, const RoadNetwork* network)
+		{
+			std::vector<std::optional<size_t>> groups(towns.size());
+			if (network == nullptr)
+				return groups;
+
+			std::vector<std::vector<size_t>> neighbours(towns.size());
+			for (size_t road = 0; road < network->getRoadCount(); road++)
 			{
-				const double distance = glm::distance(town.center, position);
-				if ((excluded != nullptr && town == *excluded) || distance >= shortest)
+				const std::span<const glm::vec3> points = network->getRoad(road);
+				const std::optional<size_t>      from   = TownAt(towns, points.front());
+				const std::optional<size_t>      to     = TownAt(towns, points.back());
+				if (!from.has_value() || !to.has_value() || from == to)
 					continue;
 
-				nearest  = &town;
-				shortest = distance;
+				neighbours[*from].push_back(*to);
+				neighbours[*to].push_back(*from);
 			}
 
-			return nearest;
+			size_t next_group = 0;
+			for (size_t start = 0; start < towns.size(); start++)
+			{
+				if (groups[start].has_value() || neighbours[start].empty())
+					continue;
+
+				std::vector<size_t> pending = { start };
+				groups[start]               = next_group;
+				while (!pending.empty())
+				{
+					const size_t town = pending.back();
+					pending.pop_back();
+
+					for (const size_t neighbour : neighbours[town])
+					{
+						if (groups[neighbour].has_value())
+							continue;
+
+						groups[neighbour] = next_group;
+						pending.push_back(neighbour);
+					}
+				}
+
+				next_group++;
+			}
+
+			return groups;
 		}
 	}
 
@@ -46,14 +86,21 @@ namespace trok
 
 	void Deliveries::setTowns(std::vector<Settlement> replacement)
 	{
-		towns = std::move(replacement);
+		towns      = std::move(replacement);
+		townGroups = ConnectedGroups(towns, network.get());
+	}
+
+	void Deliveries::setRoads(std::shared_ptr<const RoadNetwork> replacement)
+	{
+		network    = std::move(replacement);
+		townGroups = ConnectedGroups(towns, network.get());
 	}
 
 	std::optional<int64_t> Deliveries::update(const glm::dvec2& position, double delta_time)
 	{
 		if (!delivery.has_value())
 		{
-			const Settlement* nearest = Nearest(towns, position);
+			const Settlement* nearest = nearestConnected(position, std::nullopt);
 			if (nearest != nullptr)
 				delivery = offer(*nearest);
 
@@ -103,16 +150,20 @@ namespace trok
 
 	std::optional<Delivery> Deliveries::offer(const Settlement& origin)
 	{
+		const std::optional<size_t> group = groupOf(origin);
+		if (!group.has_value())
+			return std::nullopt;
+
 		std::vector<const Settlement*> candidates;
-		for (const Settlement& town : towns)
+		for (size_t town = 0; town < towns.size(); town++)
 		{
-			const double distance = glm::distance(origin.center, town.center);
-			if (!(town == origin) && distance >= settings.minDistance && distance <= settings.maxDistance)
-				candidates.push_back(&town);
+			const double distance = glm::distance(origin.center, towns[town].center);
+			if (townGroups[town] == group && !(towns[town] == origin) && distance >= settings.minDistance && distance <= settings.maxDistance)
+				candidates.push_back(&towns[town]);
 		}
 
 		const Settlement* destination = candidates.empty()
-		                              ? Nearest(towns, origin.center, &origin)
+		                              ? nearestConnected(origin.center, group, &origin)
 		                              : candidates[std::uniform_int_distribution<size_t>(0, candidates.size() - 1)(random)];
 		if (destination == nullptr)
 			return std::nullopt;
@@ -124,6 +175,31 @@ namespace trok
 		          origin.center.x, origin.center.y, destination->center.x, destination->center.y, distance / METRES_PER_KILOMETRE, reward);
 
 		return Delivery { .origin = origin, .destination = *destination, .reward = reward, .parTime = distance / settings.parSpeed };
+	}
+
+	const Settlement* Deliveries::nearestConnected(const glm::dvec2& position, std::optional<size_t> group, const Settlement* excluded) const
+	{
+		const Settlement* nearest  = nullptr;
+		double            shortest = std::numeric_limits<double>::max();
+
+		for (size_t town = 0; town < towns.size(); town++)
+		{
+			const double distance  = glm::distance(towns[town].center, position);
+			const bool   reachable = townGroups[town].has_value() && (!group.has_value() || townGroups[town] == group);
+			if (!reachable || (excluded != nullptr && towns[town] == *excluded) || distance >= shortest)
+				continue;
+
+			nearest  = &towns[town];
+			shortest = distance;
+		}
+
+		return nearest;
+	}
+
+	std::optional<size_t> Deliveries::groupOf(const Settlement& town) const
+	{
+		const auto found = std::ranges::find(towns, town);
+		return found == towns.end() ? std::nullopt : townGroups[static_cast<size_t>(found - towns.begin())];
 	}
 
 	int64_t Deliveries::complete()
