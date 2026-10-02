@@ -11,18 +11,21 @@
 
 #include <glm/glm.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <memory>
 #include <vector>
 
 namespace
 {
-	constexpr int32_t WORLD_SEED       = 1337;
-	constexpr int32_t OTHER_SEED       = 4242;
-	constexpr float   HEIGHT_TOLERANCE = 0.5f;
-	constexpr float   MAX_STEP_DELTA   = 8.f;
-	constexpr double  CLIMATE_WALK     = 40000.0;
-	constexpr double  CENTRE_CELL      = 4.0;
+	constexpr int32_t WORLD_SEED           = 1337;
+	constexpr int32_t OTHER_SEED           = 4242;
+	constexpr float   HEIGHT_TOLERANCE     = 0.5f;
+	constexpr float   GEOMETRY_TOLERANCE   = 0.01f;
+	constexpr float   MARKING_ALLOWANCE    = 0.1f;
+	constexpr float   MAX_STEP_DELTA       = 8.f;
+	constexpr double  CLIMATE_WALK         = 40000.0;
+	constexpr double  CENTRE_CELL          = 4.0;
 	constexpr float   RAISED_ELEVATION     = 100.f;
 	constexpr size_t  VERTICES_PER_SEGMENT = trok::QUAD_CORNERS * 3;
 	constexpr size_t  QUAD_TOP_LEFT        = 0;
@@ -193,7 +196,7 @@ TEST(TrokTerrain, RoadsGradeTheTerrainAndAddAsphalt)
 	EXPECT_NE(natural, ROAD_HEIGHT);
 
 	const std::vector<lunar::World::DressedMesh> dressing = Dress(trok::RoadDresser(roads), generator, context, lunar::World::ChunkAt(glm::vec3(centre, 0.f, centre), SETTINGS));
-	ASSERT_EQ(dressing.size(), 1u);
+	ASSERT_FALSE(dressing.empty()) << "the road surface is always the first mesh";
 	EXPECT_EQ(dressing.front().colliderCategory, lunar::Physics::ROAD_CATEGORY) << "asphalt must collide as road for the grip to apply";
 	EXPECT_FALSE(dressing.front().translucent);
 
@@ -237,7 +240,7 @@ TEST(TrokTerrain, LowFillDropsStraightDownToTheGround)
 	EXPECT_FLOAT_EQ(generator.sampleHeight(context, centre, centre), natural) << "roads never raise the terrain";
 
 	const std::vector<lunar::World::DressedMesh> dressing = Dress(trok::RoadDresser(roads), generator, context, lunar::World::ChunkAt(glm::vec3(centre, 0.f, centre), SETTINGS));
-	ASSERT_EQ(dressing.size(), 1u);
+	ASSERT_FALSE(dressing.empty()) << "the road surface is always the first mesh";
 
 	const lunar::Render::MeshData& mesh = dressing.front().mesh;
 	ASSERT_EQ(mesh.vertices.size() % VERTICES_PER_SEGMENT, 0u) << "low fill must not grow bridge geometry";
@@ -267,7 +270,7 @@ TEST(TrokTerrain, HighRoadsBecomeBridgesOnPillars)
 		road_class));
 
 	const std::vector<lunar::World::DressedMesh> dressing = Dress(trok::RoadDresser(roads), generator, context, lunar::World::ChunkAt(glm::vec3(centre, 0.f, centre), SETTINGS));
-	ASSERT_EQ(dressing.size(), 1u);
+	ASSERT_FALSE(dressing.empty()) << "the road surface is always the first mesh";
 
 	const lunar::Render::MeshData& mesh    = dressing.front().mesh;
 	const float                    surface = natural + BRIDGE_HEIGHT + road_class.surfaceOffset;
@@ -276,6 +279,78 @@ TEST(TrokTerrain, HighRoadsBecomeBridgesOnPillars)
 
 	const auto lowest = std::ranges::min_element(mesh.vertices, {}, [](const lunar::Render::Vertex& vertex) { return vertex.position.y; });
 	EXPECT_LT(lowest->position.y, natural) << "pillars should reach the ground";
+}
+
+namespace
+{
+	size_t CountColliders(const std::vector<lunar::World::DressedMesh>& dressing)
+	{
+		return static_cast<size_t>(std::ranges::count_if(dressing, [](const lunar::World::DressedMesh& dressed) { return dressed.colliderCategory != 0; }));
+	}
+
+	float HighestPoint(const lunar::World::DressedMesh& dressed)
+	{
+		return std::ranges::max(dressed.mesh.vertices, {}, [](const lunar::Render::Vertex& vertex) { return vertex.position.y; }).position.y;
+	}
+}
+
+TEST(TrokTerrain, GroundLevelRoadsGetMarkingsAndPostsButNoRails)
+{
+	constexpr float FAR_FROM_ROAD = 400.f;
+	constexpr float POINT_SPACING = 8.f;
+
+	trok::Biome level = FLAT;
+	level.terrain.amplitude = 0.f;
+
+	const trok::RoadClass     road_class = {};
+	const trok::RegionContext context    = ContextOf(FLAT_BIOME, FLAT_BIOME);
+	const double              centre     = CellCentre(CENTRE_CELL);
+	const auto                roads      = std::make_shared<trok::RoadLayer>();
+	trok::TerrainGenerator    generator  = MakeGenerator(WORLD_SEED, FLAT_LAND, std::make_shared<const trok::BiomeLibrary>(*trok::BiomeLibrary::Create({ level }, level.name)));
+
+	std::vector<glm::vec3> following;
+	for (double along = -FAR_FROM_ROAD; along <= FAR_FROM_ROAD; along += POINT_SPACING)
+		following.emplace_back(centre + along, generator.sampleHeight(context, centre + along, centre), centre);
+
+	roads->set(std::make_shared<const trok::RoadNetwork>(std::move(following), road_class));
+
+	const std::vector<lunar::World::DressedMesh> dressing = Dress(trok::RoadDresser(roads), generator, context, lunar::World::ChunkAt(glm::vec3(centre, 0.f, centre), SETTINGS));
+
+	EXPECT_EQ(CountColliders(dressing), 1u) << "only the road surface collides when nothing is elevated";
+	ASSERT_EQ(dressing.size(), 3u) << "road, markings and posts";
+
+	const glm::vec3 origin  = lunar::World::ChunkOrigin(lunar::World::ChunkAt(glm::vec3(centre, 0.f, centre), SETTINGS), SETTINGS);
+	const float     natural = generator.sampleHeight(context, centre, centre) - origin.y;
+
+	EXPECT_GT(HighestPoint(dressing[1]), natural + road_class.surfaceOffset) << "markings sit just above the road surface";
+	EXPECT_LT(HighestPoint(dressing[1]), natural + road_class.surfaceOffset + MARKING_ALLOWANCE);
+	EXPECT_GT(HighestPoint(dressing[2]), natural + road_class.furniture.postHeight * 0.5f) << "posts stand up from the ground";
+}
+
+TEST(TrokTerrain, ElevatedRoadsGetCollidingGuardRails)
+{
+	constexpr float BRIDGE_HEIGHT = 80.f;
+	constexpr float FAR_FROM_ROAD = 400.f;
+
+	const trok::RoadClass     road_class = {};
+	const trok::RegionContext context    = ContextOf(FLAT_BIOME, FLAT_BIOME);
+	const double              centre     = CellCentre(CENTRE_CELL);
+	const auto                roads      = std::make_shared<trok::RoadLayer>();
+	trok::TerrainGenerator    generator  = MakeGenerator(WORLD_SEED);
+
+	const float deck = generator.sampleHeight(context, centre, centre) + BRIDGE_HEIGHT;
+	roads->set(std::make_shared<const trok::RoadNetwork>(
+		std::vector<glm::vec3> { { centre - FAR_FROM_ROAD, deck, centre }, { centre + FAR_FROM_ROAD, deck, centre } },
+		road_class));
+
+	const lunar::World::ChunkCoord               coord    = lunar::World::ChunkAt(glm::vec3(centre, 0.f, centre), SETTINGS);
+	const std::vector<lunar::World::DressedMesh> dressing = Dress(trok::RoadDresser(roads), generator, context, coord);
+
+	ASSERT_EQ(CountColliders(dressing), 2u) << "the rails collide as well as the deck";
+	ASSERT_EQ(dressing.size(), 3u) << "road, rails and markings, but no posts on a bridge";
+
+	const float surface = deck + road_class.surfaceOffset - lunar::World::ChunkOrigin(coord, SETTINGS).y;
+	EXPECT_NEAR(HighestPoint(dressing[1]), surface + road_class.furniture.railHeight, GEOMETRY_TOLERANCE);
 }
 
 TEST(TrokTerrain, CurvedRoadsFormAContinuousStrip)
@@ -300,7 +375,7 @@ TEST(TrokTerrain, CurvedRoadsFormAContinuousStrip)
 	roads->set(std::make_shared<const trok::RoadNetwork>(std::move(arc), trok::RoadClass {}));
 
 	const std::vector<lunar::World::DressedMesh> dressing = Dress(trok::RoadDresser(roads), generator, context, lunar::World::ChunkAt(on_the_arc, SETTINGS));
-	ASSERT_EQ(dressing.size(), 1u);
+	ASSERT_FALSE(dressing.empty()) << "the road surface is always the first mesh";
 
 	const lunar::Render::MeshData& mesh = dressing.front().mesh;
 	ASSERT_GE(mesh.vertices.size(), VERTICES_PER_SEGMENT * 2);

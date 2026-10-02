@@ -45,6 +45,8 @@ namespace
 	constexpr int              FRAME_COUNT         = 10;
 	constexpr uint32_t         UPLOAD_BATCH_ROUNDS = 10;
 	constexpr Extent2D         IMAGE_EXTENT        = { 64, 32 };
+	constexpr uint32_t         GUARANTEED_SAMPLES  = 4;
+	constexpr uint32_t         INVALID_SAMPLES     = 3;
 	constexpr uint32_t         TRIANGLE_VERTICES   = 3;
 	constexpr size_t           TRANSIENT_ODD_SIZE  = 13;
 	constexpr size_t           TRANSIENT_OVERSIZED = size_t(1) << 30;
@@ -606,6 +608,52 @@ TEST_F(RenderDeviceTest, RenderingToColorAndDepthAcrossFrames)
 	device->destroyPipeline(pipeline);
 	device->destroyImage(depth);
 	device->destroyImage(color);
+}
+
+TEST_F(RenderDeviceTest, MultisampledRenderingResolvesIntoTarget)
+{
+	const std::vector<char> vertex_shader   = LoadShader("triangle.vert");
+	const std::vector<char> fragment_shader = LoadShader("white.frag");
+	const Format            color_format    = Format::eRGBA8Unorm;
+	const uint32_t          samples         = device->getCapabilities().maxSamples;
+	ASSERT_GE(samples, GUARANTEED_SAMPLES) << "Vulkan guarantees 4x multisampling for colour and depth attachments";
+
+	const ImageUsageFlags color_usage  = ImageUsageFlags(ImageUsageFlagBits::eColorAttachment);
+	const ImageHandle     multisampled = device->createImage({ .extent = IMAGE_EXTENT, .format = color_format, .usage = color_usage, .samples = samples });
+	const ImageHandle     resolved     = device->createImage({ .extent = IMAGE_EXTENT, .format = color_format, .usage = color_usage });
+	const ImageHandle     depth        = device->createImage({ .extent = IMAGE_EXTENT, .format = Format::eD32Float, .usage = ImageUsageFlags(ImageUsageFlagBits::eDepthAttachment), .samples = samples });
+	const PipelineHandle  pipeline     = device->createGraphicsPipeline({
+		.vertexShader   = std::as_bytes(std::span(vertex_shader)),
+		.fragmentShader = std::as_bytes(std::span(fragment_shader)),
+		.colorFormats   = std::span(&color_format, 1),
+		.depthFormat    = Format::eD32Float,
+		.samples        = samples
+	});
+	ASSERT_NE(multisampled, ImageHandle {});
+	ASSERT_NE(depth,        ImageHandle {});
+	ASSERT_NE(pipeline,     PipelineHandle {});
+
+	const ColorAttachment color_attachment = { .image = multisampled, .resolveImage = resolved };
+	const DepthAttachment depth_attachment = { .image = depth };
+
+	Frame&       frame    = device->beginFrame();
+	CommandList& commands = frame.commandList();
+
+	commands.beginRendering({ .colorAttachments = std::span(&color_attachment, 1), .depthAttachment = depth_attachment });
+	commands.bindPipeline(pipeline);
+	commands.draw(TRIANGLE_VERTICES);
+	commands.endRendering();
+	device->endFrame(frame);
+
+	device->destroyPipeline(pipeline);
+	device->destroyImage(depth);
+	device->destroyImage(resolved);
+	device->destroyImage(multisampled);
+}
+
+TEST_F(RenderDeviceTest, NonPowerOfTwoSampleCountsAreRejected)
+{
+	EXPECT_EQ(device->createImage({ .extent = IMAGE_EXTENT, .format = Format::eRGBA8Unorm, .usage = ImageUsageFlags(ImageUsageFlagBits::eColorAttachment), .samples = INVALID_SAMPLES }), ImageHandle {});
 }
 
 TEST_F(RenderDeviceTest, MeshRegistryCreatesCubeMesh)

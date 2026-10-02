@@ -34,6 +34,7 @@ namespace
 	constexpr float LOOKUP_SPACING    = 6.f;
 	constexpr float LOOKUP_WANDER     = 40.f;
 	constexpr float LOOKUP_RECT_SIZE  = 64.f;
+	constexpr float COARSE_STEP       = 560.f;
 
 	const glm::vec2 START = { 0.f, 0.f };
 	const glm::vec2 END   = { ROAD_LENGTH, 0.f };
@@ -146,6 +147,32 @@ TEST(RoadPlanner, LongRoadsArePlannedInSegmentsAndStillJoinUp)
 
 	for (const glm::vec3& point : *road)
 		EXPECT_NEAR(point.z, 0.f, TOLERANCE) << "segments should join into one straight road across flat ground";
+}
+
+TEST(RoadPlanner, NoCentrelineSegmentIsLongerThanThePointSpacing)
+{
+	const trok::RoadPlannerSettings             settings = {};
+	const std::optional<std::vector<glm::vec3>> road     = trok::PlanRoad(START, END, TestRoadClass(), RollingHills, settings);
+	ASSERT_TRUE(road.has_value());
+
+	for (size_t point = 1; point < road->size(); point++)
+		EXPECT_LE(glm::distance((*road)[point - 1], (*road)[point]), settings.pointSpacing + TOLERANCE) << "segment " << point - 1;
+}
+
+TEST(RoadPlanner, CoarseFallbackRoutesAreSplitIntoShortSegments)
+{
+	const trok::RoadPlannerSettings settings = {};
+	const std::vector<glm::vec3>    coarse   = { glm::vec3(0.f), glm::vec3(COARSE_STEP, 0.f, 0.f), glm::vec3(COARSE_STEP * 2.f, 0.f, 0.f) };
+	const std::vector<glm::vec3>    road     = trok::JoinSegments(std::span(&coarse, 1), settings);
+
+	EXPECT_EQ(road.front(), coarse.front());
+	EXPECT_EQ(road.back(),  coarse.back());
+
+	for (size_t point = 1; point < road.size(); point++)
+	{
+		EXPECT_GT(glm::distance(road[point - 1], road[point]), 0.f) << "segment " << point - 1 << " is degenerate";
+		EXPECT_LE(glm::distance(road[point - 1], road[point]), settings.pointSpacing + TOLERANCE) << "segment " << point - 1;
+	}
 }
 
 TEST(RoadPlanner, RoutesThroughAPassInsteadOfOverTheWall)
