@@ -154,6 +154,11 @@ namespace trok
 			AppendQuad(mesh, { edge(frame.start, right, bottom), edge(frame.start, left, bottom), edge(frame.end, right, bottom), edge(frame.end, left, bottom) }, origin, furniture.railColor);
 		}
 
+		bool InsideOtherRoad(const RoadNetwork& network, const glm::vec3& point, size_t own_road, float clearance)
+		{
+			return network.closestPoint({ point.x, point.z }, network.getRoadClass().halfWidth() + clearance, own_road).has_value();
+		}
+
 		bool IsElevated(const lunar::World::HeightSampler& ground, const RoadClass& road_class, const glm::vec3& surface, const glm::vec3& side, float direction)
 		{
 			const glm::vec3 edge = surface + side * (direction * road_class.halfWidth());
@@ -294,17 +299,26 @@ namespace trok
 
 			AppendMarkings(markings, frame, road_class, origin);
 
+			const size_t own_road  = network->getRoadAt(segment);
+			const auto   clear_of = [&](const glm::vec3& point, float clearance) { return !InsideOtherRoad(*network, point, own_road, clearance); };
+
 			for (const float side : { LEFT, RIGHT })
 			{
 				if (IsElevated(ground, road_class, frame.from, frame.fromSide, side) || IsElevated(ground, road_class, frame.to, frame.toSide, side))
 				{
-					AppendRail(rails, frame, road_class, side, origin);
+					const float rail_clearance = road_class.furniture.railThickness;
+					if (clear_of(SurfacePoint(frame, frame.start, side * width), rail_clearance) && clear_of(SurfacePoint(frame, frame.end, side * width), rail_clearance))
+						AppendRail(rails, frame, road_class, side, origin);
+
 					continue;
 				}
 
 				EveryInterval(frame.start, frame.end, road_class.furniture.postSpacing, [&](float distance) {
 					const glm::vec3 base = SurfacePoint(frame, distance, side * (width + road_class.furniture.postOutset));
-					const float     foot = ground(base.x, base.z);
+					if (!clear_of(base, road_class.furniture.postWidth))
+						return;
+
+					const float foot = ground(base.x, base.z);
 					AppendColumn(posts, { base.x, foot + road_class.furniture.postHeight, base.z }, foot - GROUND_SINK, along, road_class.furniture.postWidth, origin, road_class.furniture.postColor);
 				});
 			}
@@ -316,7 +330,7 @@ namespace trok
 
 			EveryInterval(frame.start, frame.end, road_class.pillarSpacing, [&](float distance) {
 				const glm::vec3 centre = glm::mix(from, to, (distance - frame.start) / (frame.end - frame.start));
-				if (IsBridge(ground, road_class, centre))
+				if (IsBridge(ground, road_class, centre) && clear_of(centre, road_class.pillarWidth * static_cast<float>(HALF)))
 					AppendColumn(mesh, centre + lift - glm::vec3(0.f, road_class.edgeDepth, 0.f), ground(centre.x, centre.z) - GROUND_SINK, along, road_class.pillarWidth, origin, road_class.color);
 			});
 		}

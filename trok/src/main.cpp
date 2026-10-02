@@ -34,7 +34,9 @@
 
 #include <imgui.h>
 
+#include <algorithm>
 #include <format>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string_view>
@@ -72,7 +74,7 @@ namespace
 	constexpr std::string_view        HUD_DOCUMENT         = "ui/hud.rml";
 	constexpr std::string_view        UI_FONTS[]           = { "fonts/Inter/Inter-Regular.ttf", "fonts/Inter/Inter-SemiBold.ttf", "fonts/Inter/Inter-Bold.ttf" };
 	constexpr float                   ROAD_PLANNING_MARGIN = 200.f;
-	constexpr int32_t                 TOWN_SURVEY_RADIUS   = 2;
+	constexpr int32_t                 ROAD_SURVEY_RADIUS   = 1;
 	constexpr int32_t                 COLLIDER_RADIUS      = 1;
 	constexpr int32_t                 TERRAIN_DEBUG_RADIUS = 1;
 	constexpr float                   TRUCK_SPAWN_HEIGHT   = 1.5f;
@@ -399,7 +401,9 @@ int main()
 	const MeshHandle endpoint_marker_mesh = MakeMarkerMesh(engine.getRenderer().getMeshes(), ENDPOINT_MARKER_COLOR);
 	const MeshHandle node_marker_mesh     = MakeMarkerMesh(engine.getRenderer().getMeshes(), NODE_MARKER_COLOR);
 
-	bool                          roads_requested = false;
+	std::optional<World::RegionCoord> surveyed_region;
+	std::vector<trok::Settlement>     known_towns;
+
 	std::vector<GameObject>       road_markers;
 	std::optional<glm::vec2>      road_start;
 	std::optional<glm::vec2>      road_end;
@@ -415,17 +419,20 @@ int main()
 		colliders.clear();
 	};
 
-	const auto connect_towns = [&] {
-		roads_requested = true;
+	const auto survey_towns = [&](World::RegionCoord centre) {
+		surveyed_region = centre;
 
 		engine.getJobSystem().submit(
-			[towns, centre = World::RegionAt(CAMERA_START_POSITION, world_settings)] {
-				return towns.survey(centre, TOWN_SURVEY_RADIUS);
+			[towns, centre] {
+				return towns.survey(centre, ROAD_SURVEY_RADIUS);
 			},
 			[&](trok::TownSurvey survey) {
-				DEBUG_LOG("Planning roads between {} town pairs", survey.links.size());
-				deliveries.setTowns(std::move(survey.towns));
-				roads.plan(survey.links, trok::RegionContext(world_settings, std::move(survey.regions)));
+				for (const trok::Settlement& town : survey.towns)
+					if (std::ranges::find(known_towns, town) == known_towns.end())
+						known_towns.push_back(town);
+
+				deliveries.setTowns(known_towns);
+				roads.request(survey.links, trok::RegionContext(world_settings, std::move(survey.regions)));
 			});
 	};
 
@@ -518,10 +525,11 @@ int main()
 				renderer.visible = false;
 			});
 
-		if (!roads_requested)
-			connect_towns();
+		const World::RegionCoord viewer_region = World::RegionAt(viewer, world_settings);
+		if (surveyed_region != viewer_region)
+			survey_towns(viewer_region);
 
-		const std::vector<std::vector<glm::vec3>> new_roads = roads.update();
+		const std::vector<std::vector<glm::vec3>> new_roads = roads.update({ viewer.x, viewer.z });
 		if (!new_roads.empty())
 		{
 			deliveries.setRoads(roads.getNetwork());

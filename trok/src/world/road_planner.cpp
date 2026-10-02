@@ -390,10 +390,11 @@ namespace trok
 	                                                  const glm::vec2&           end,
 	                                                  const RoadClass&           road_class,
 	                                                  const HeightSampler&       sample_height,
-	                                                  const RoadPlannerSettings& settings)
+	                                                  const RoadPlannerSettings& settings,
+	                                                  std::optional<float>       end_height)
 	{
 		const RoadWaypoint                     origin   = { start, sample_height(start.x, start.y) };
-		const RoadWaypoint                     target   = { end, sample_height(end.x, end.y) };
+		const RoadWaypoint                     target   = { end, end_height.value_or(sample_height(end.x, end.y)) };
 		const float                            distance = glm::distance(start, end);
 		const float                            step     = CurveStep(road_class.minCurveRadius, settings.headings) * settings.coarseScale;
 		const std::optional<std::vector<Node>> route    = distance < step ? std::nullopt

@@ -31,50 +31,10 @@ namespace trok
 
 		std::vector<std::optional<size_t>> ConnectedGroups(std::span<const Settlement> towns, const RoadNetwork* network)
 		{
-			std::vector<std::optional<size_t>> groups(towns.size());
 			if (network == nullptr)
-				return groups;
+				return std::vector<std::optional<size_t>>(towns.size());
 
-			std::vector<std::vector<size_t>> neighbours(towns.size());
-			for (size_t road = 0; road < network->getRoadCount(); road++)
-			{
-				const std::span<const glm::vec3> points = network->getRoad(road);
-				const std::optional<size_t>      from   = TownAt(towns, points.front());
-				const std::optional<size_t>      to     = TownAt(towns, points.back());
-				if (!from.has_value() || !to.has_value() || from == to)
-					continue;
-
-				neighbours[*from].push_back(*to);
-				neighbours[*to].push_back(*from);
-			}
-
-			size_t next_group = 0;
-			for (size_t start = 0; start < towns.size(); start++)
-			{
-				if (groups[start].has_value() || neighbours[start].empty())
-					continue;
-
-				std::vector<size_t> pending = { start };
-				groups[start]               = next_group;
-				while (!pending.empty())
-				{
-					const size_t town = pending.back();
-					pending.pop_back();
-
-					for (const size_t neighbour : neighbours[town])
-					{
-						if (groups[neighbour].has_value())
-							continue;
-
-						groups[neighbour] = next_group;
-						pending.push_back(neighbour);
-					}
-				}
-
-				next_group++;
-			}
-
-			return groups;
+			return ConnectRoads(*network, towns.size(), [&](const glm::vec3& point) { return TownAt(towns, point); }).townGroups;
 		}
 	}
 

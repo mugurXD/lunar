@@ -7,6 +7,7 @@
 #include <nlohmann/json.hpp>
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -78,20 +79,29 @@ namespace trok
 		glm::vec2 direction = {};
 	};
 
+	struct RoadJunction
+	{
+		uint32_t road  = 0;
+		uint32_t joins = 0;
+		uint32_t point = 0;
+	};
+
 	class RoadNetwork
 	{
 	public:
-		RoadNetwork(std::vector<glm::vec3> centreline, RoadClass road_class)                noexcept;
-		RoadNetwork(std::vector<std::vector<glm::vec3>> centrelines, RoadClass road_class) noexcept;
+		RoadNetwork(std::vector<glm::vec3> centreline, RoadClass road_class) noexcept;
+		RoadNetwork(std::vector<std::vector<glm::vec3>> centrelines, RoadClass road_class, std::vector<RoadJunction> junctions = {}) noexcept;
 
 		std::vector<lunar::World::ShapeDeclaration> shapesReaching(const glm::vec2& minimum, const glm::vec2& maximum) const;
 		std::vector<uint32_t>      segmentsWithin(const glm::vec2& minimum, const glm::vec2& maximum) const;
-		std::optional<RoadPoint>   closestPoint(const glm::vec2& position, float max_distance)           const;
+		std::optional<RoadPoint>   closestPoint(const glm::vec2& position, float max_distance, std::optional<size_t> excluded_road = std::nullopt) const;
 		glm::vec3                  sideAt(size_t point)                                   const;
 		float                      distanceAt(size_t point)                               const;
 		std::span<const glm::vec3> getCentreline()                                        const;
 		std::span<const glm::vec3> getRoad(size_t road)                                   const;
 		size_t                     getRoadCount()                                         const;
+		size_t                     getRoadAt(size_t point)                                const;
+		std::span<const RoadJunction> getJunctions()                                      const;
 		const RoadClass&           getRoadClass()                                         const;
 
 	private:
@@ -105,6 +115,7 @@ namespace trok
 		std::vector<float>                                                distances;
 		std::vector<uint32_t>                                             roadOf;
 		std::vector<uint32_t>                                             roadStarts;
+		std::vector<RoadJunction>                                         junctions;
 		RoadClass                                                         roadClass;
 		std::unordered_map<Cell, std::vector<uint32_t>, lunar::World::GridCoordHash> cells;
 	};
@@ -114,6 +125,16 @@ namespace trok
 		glm::vec2 from = {};
 		glm::vec2 to   = {};
 	};
+
+	struct RoadConnectivity
+	{
+		std::vector<size_t>                roadGroups = {};
+		std::vector<std::optional<size_t>> townGroups = {};
+	};
+
+	using TownLocator = std::function<std::optional<size_t>(const glm::vec3& point)>;
+
+	RoadConnectivity ConnectRoads(const RoadNetwork& network, size_t town_count, const TownLocator& town_at);
 
 	std::vector<lunar::World::ChunkCoord> ChunksReachedBy(std::span<const glm::vec3> road, const RoadClass& road_class, const lunar::World::WorldSettings& settings);
 

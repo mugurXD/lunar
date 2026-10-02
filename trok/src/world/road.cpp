@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numeric>
 #include <unordered_set>
 #include <utility>
 
@@ -94,6 +95,50 @@ namespace trok
 		{
 			return { .position = { point.x, point.z }, .height = point.y, .core = core };
 		}
+	}
+
+	RoadConnectivity ConnectRoads(const RoadNetwork& network, size_t town_count, const TownLocator& town_at)
+	{
+		const size_t        road_count = network.getRoadCount();
+		std::vector<size_t> parents(road_count + town_count);
+		std::vector<bool>   reached(town_count, false);
+		std::iota(parents.begin(), parents.end(), size_t(0));
+
+		const auto root = [&](size_t node) {
+			while (parents[node] != node)
+				node = parents[node] = parents[parents[node]];
+
+			return node;
+		};
+
+		const auto unite = [&](size_t first, size_t second) { parents[root(first)] = root(second); };
+
+		for (size_t road = 0; road < road_count; road++)
+		{
+			const std::span<const glm::vec3> points = network.getRoad(road);
+			for (const glm::vec3& end : { points.front(), points.back() })
+			{
+				const std::optional<size_t> town = town_at(end);
+				if (!town.has_value())
+					continue;
+
+				unite(road, road_count + *town);
+				reached[*town] = true;
+			}
+		}
+
+		for (const RoadJunction& junction : network.getJunctions())
+			unite(junction.road, junction.joins);
+
+		RoadConnectivity connectivity = { .roadGroups = std::vector<size_t>(road_count), .townGroups = std::vector<std::optional<size_t>>(town_count) };
+		for (size_t road = 0; road < road_count; road++)
+			connectivity.roadGroups[road] = root(road);
+
+		for (size_t town = 0; town < town_count; town++)
+			if (reached[town])
+				connectivity.townGroups[town] = root(road_count + town);
+
+		return connectivity;
 	}
 
 	std::vector<lunar::World::ChunkCoord> ChunksReachedBy(std::span<const glm::vec3> road, const RoadClass& road_class, const lunar::World::WorldSettings& settings)
@@ -198,8 +243,9 @@ namespace trok
 	{
 	}
 
-	RoadNetwork::RoadNetwork(std::vector<std::vector<glm::vec3>> centrelines, RoadClass road_class) noexcept
-		: roadClass(std::move(road_class))
+	RoadNetwork::RoadNetwork(std::vector<std::vector<glm::vec3>> centrelines, RoadClass road_class, std::vector<RoadJunction> junctions) noexcept
+		: junctions(std::move(junctions)),
+		roadClass(std::move(road_class))
 	{
 		for (const std::vector<glm::vec3>& road : centrelines)
 		{
@@ -250,6 +296,16 @@ namespace trok
 	size_t RoadNetwork::getRoadCount() const
 	{
 		return roadStarts.empty() ? 0 : roadStarts.size() - 1;
+	}
+
+	size_t RoadNetwork::getRoadAt(size_t point) const
+	{
+		return roadOf[point];
+	}
+
+	std::span<const RoadJunction> RoadNetwork::getJunctions() const
+	{
+		return junctions;
 	}
 
 	std::vector<lunar::World::ShapeDeclaration> RoadNetwork::shapesReaching(const glm::vec2& minimum, const glm::vec2& maximum) const
@@ -306,7 +362,7 @@ namespace trok
 		return found;
 	}
 
-	std::optional<RoadPoint> RoadNetwork::closestPoint(const glm::vec2& position, float max_distance) const
+	std::optional<RoadPoint> RoadNetwork::closestPoint(const glm::vec2& position, float max_distance, std::optional<size_t> excluded_road) const
 	{
 		std::optional<RoadPoint> closest;
 		float                    shortest = max_distance;
@@ -316,7 +372,7 @@ namespace trok
 			const glm::vec3& from   = points[segment];
 			const glm::vec3& to     = points[segment + 1];
 			const glm::vec2  course = glm::vec2(to.x - from.x, to.z - from.z);
-			if (course == glm::vec2(0.f))
+			if (course == glm::vec2(0.f) || roadOf[segment] == excluded_road)
 				continue;
 
 			float       amount   = 0.f;

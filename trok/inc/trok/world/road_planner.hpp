@@ -47,7 +47,8 @@ namespace trok
 	                                                  const glm::vec2&           end,
 	                                                  const RoadClass&           road_class,
 	                                                  const HeightSampler&       sample_height,
-	                                                  const RoadPlannerSettings& settings = {});
+	                                                  const RoadPlannerSettings& settings   = {},
+	                                                  std::optional<float>       end_height = std::nullopt);
 
 	std::optional<std::vector<glm::vec3>> PlanSegment(const RoadSegment&         segment,
 	                                                  const RoadClass&           road_class,
