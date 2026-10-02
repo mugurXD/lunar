@@ -58,9 +58,11 @@ namespace
 	constexpr std::string_view        FPS_TITLE_FORMAT     = "trok | FPS: {}";
 	constexpr std::string_view        WORLD_SAVE_DIRECTORY = "saves/trok";
 	constexpr std::string_view        CHUNK_DIRECTORY      = "chunks";
+	constexpr std::string_view        TERRAIN_VERTEX       = "mesh.vert";
+	constexpr std::string_view        TERRAIN_FRAGMENT     = "terrain.frag";
 	constexpr std::string_view        BIOME_FILE_NAME      = "biomes.json";
 	constexpr std::string_view        ELEVATION_FILE_NAME  = "elevation.json";
-	constexpr std::string_view        TRUCK_FILE_NAME      = "trucks/box_truck.json";
+	constexpr std::string_view        TRUCK_FILE_NAME      = "trucks/box_truck.json";	
 	constexpr std::string_view        TUNED_TRUCK_FILE     = "trucks/box_truck.tuned.json";
 	constexpr std::string_view        TUNED_BIOME_FILE     = "biomes.tuned.json";
 	constexpr std::string_view        ROAD_FILE_NAME       = "roads.json";
@@ -323,9 +325,10 @@ int main()
 	terrain_generator->addDresser(std::make_shared<const trok::SeaDresser>(elevation.seaLevel));
 	terrain_generator->addDresser(std::make_shared<const trok::RiverWaterDresser>());
 
+	const MaterialHandle                       terrain_material = engine.getRenderer().createMaterial({ .vertexShader = TERRAIN_VERTEX, .fragmentShader = TERRAIN_FRAGMENT });
 	World::RegionStore<trok::RegionPlan>       regions(engine.getJobSystem(), world_storage, region_planner, world_settings);
 	World::RegionChunkSource<trok::RegionPlan> chunk_source(regions, terrain_generator, chunk_storage, world_settings);
-	World::TerrainWorld                        terrain(scene, engine.getJobSystem(), engine.getRenderer().getMeshes(), chunk_source, world_settings);
+	World::TerrainWorld                        terrain(scene, engine.getJobSystem(), engine.getRenderer().getMeshes(), chunk_source, world_settings, terrain_material);
 	World::TerrainColliders                    colliders(scene, terrain, world_settings, COLLIDER_RADIUS);
 	trok::TruckTuningWindow                    tuning(*truck_definition, Fs::fromData(TUNED_TRUCK_FILE));
 	trok::BiomeTuningWindow                    biome_tuning(biomes, Fs::fromData(TUNED_BIOME_FILE));
