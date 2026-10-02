@@ -41,6 +41,7 @@ namespace lunar::Render
 		bool                    isActive()                                  const;
 		bool                    isMinimized()                               const;
 		bool                    isFullscreen()                              const;
+		bool                    isVsyncEnabled()                            const;
 		bool                    isCursorLocked()                            const;
 		glm::vec2               getCursorUv()                               const;
 		int                     getRenderWidth()                            const;
@@ -93,6 +94,7 @@ namespace lunar::Render
 
 		WindowBuilder& size(int width, int height);
 		WindowBuilder& fullscreen(bool value);
+		WindowBuilder& vsync(bool value);
 		WindowBuilder& title(const std::string_view& title);
 		WindowBuilder& renderBackend(Backend backend);
 		Window_T       build() const;
@@ -101,7 +103,7 @@ namespace lunar::Render
 		int              width        = -1;
 		int              height       = -1;
 		bool             isFullscreen = false;
-		bool             enableVsync  = false;
+		bool             enableVsync  = true;
 		std::string_view windowTitle  = "<no title>";
 		Backend          backend      = Backend::eDefault;
 	};

@@ -24,7 +24,7 @@ namespace lunar::Render
 		height(height),
 		fullscreen(fullscreen),
 		title(title),
-		vsync(true)
+		vsync(vsync)
 	{
 		switch (backend)
 		{
@@ -133,6 +133,11 @@ namespace lunar::Render
 		return fullscreen;
 	}
 
+	bool Window_T::isVsyncEnabled() const
+	{
+		return vsync;
+	}
+
 	void Window_T::toggleFullscreen()
 	{
 		GLFWmonitor*       monitor  = glfwGetPrimaryMonitor();
@@ -178,6 +183,12 @@ namespace lunar::Render
 	{
 		this->width  = width;
 		this->height = height;
+		return *this;
+	}
+
+	WindowBuilder& WindowBuilder::vsync(bool value)
+	{
+		this->enableVsync = value;
 		return *this;
 	}
 

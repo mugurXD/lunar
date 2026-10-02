@@ -107,6 +107,8 @@ namespace lunar::Render::imp
 
 		auto swapchain_res = vkb::SwapchainBuilder { device.getDevice() }
 			.set_desired_extent(requestedExtent.width, requestedExtent.height)
+			.set_desired_present_mode(window.isVsyncEnabled() ? VK_PRESENT_MODE_FIFO_KHR : VK_PRESENT_MODE_MAILBOX_KHR)
+			.add_fallback_present_mode(VK_PRESENT_MODE_IMMEDIATE_KHR)
 			.set_old_swapchain(swapchain)
 			.build();
 
