@@ -19,11 +19,12 @@ namespace lunar::World
 	class LUNAR_API TerrainWorld
 	{
 	public:
-		TerrainWorld(Scene&                scene,
-		             JobSystem&            jobs,
-		             Render::MeshRegistry& meshes,
-		             ChunkSource&          source,
-		             const WorldSettings&  settings) noexcept;
+		TerrainWorld(Scene&                 scene,
+		             JobSystem&             jobs,
+		             Render::MeshRegistry&  meshes,
+		             ChunkSource&           source,
+		             const WorldSettings&   settings,
+		             Render::MaterialHandle material = {}) noexcept;
 		~TerrainWorld() noexcept;
 
 		TerrainWorld(const TerrainWorld&)            = delete;
@@ -58,6 +59,7 @@ namespace lunar::World
 		Render::MeshRegistry&                                      meshes;
 		ChunkSource&                                               source;
 		WorldSettings                                              settings;
+		Render::MaterialHandle                                     material;
 		std::unordered_map<ChunkCoord, LoadedChunk, GridCoordHash> chunks;
 		size_t                                                     pendingCount = 0;
 	};

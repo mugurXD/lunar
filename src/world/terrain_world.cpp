@@ -15,16 +15,18 @@ namespace lunar::World
 		constexpr std::string_view DRESSING_NAME_FORMAT = "TerrainDressing {},{}";
 	}
 
-	TerrainWorld::TerrainWorld(Scene&                scene,
-	                           JobSystem&            jobs,
-	                           Render::MeshRegistry& meshes,
-	                           ChunkSource&          source,
-	                           const WorldSettings&  settings) noexcept
+	TerrainWorld::TerrainWorld(Scene&                 scene,
+	                           JobSystem&             jobs,
+	                           Render::MeshRegistry&  meshes,
+	                           ChunkSource&           source,
+	                           const WorldSettings&   settings,
+	                           Render::MaterialHandle material) noexcept
 		: scene(scene),
 		jobs(jobs),
 		meshes(meshes),
 		source(source),
-		settings(settings)
+		settings(settings),
+		material(material)
 	{
 	}
 
@@ -133,7 +135,7 @@ namespace lunar::World
 		chunk.object       = scene.createGameObject(std::format(CHUNK_NAME_FORMAT, coord.x, coord.z));
 
 		chunk.object->getTransform().position = ChunkOrigin(coord, settings);
-		chunk.object->addComponent<MeshRenderer>(chunk.mesh);
+		chunk.object->addComponent<MeshRenderer>(chunk.mesh, true, false, material);
 		chunk.object->addComponent<TerrainChunk>(coord);
 
 		for (DressedMesh& dressed : data.dressing)

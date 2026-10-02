@@ -20,7 +20,8 @@ namespace lunar::World
 		int32_t  regionLoadRadius  = 1;
 		int32_t  unloadMargin      = 1;
 		size_t   maxJobsInFlight   = 16;
-		float    facetVariation    = 0.1f;
+		float    facetVariation    = 0.03f;
+		uint32_t facetSize         = 16;
 
 		float getChunkSize() const;
 	};
