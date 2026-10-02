@@ -404,14 +404,15 @@ TEST(RoadService, PlansInTheBackgroundAndKeepsEveryRoad)
 	const auto finish = [&] {
 		for (int round = 0; round < MAX_ROUNDS; round++)
 		{
-			if (roads.update())
-				return true;
+			std::vector<std::vector<glm::vec3>> published = roads.update();
+			if (!published.empty())
+				return published;
 
 			jobs.waitIdle();
 			jobs.processCompleted();
 		}
 
-		return false;
+		return std::vector<std::vector<glm::vec3>> {};
 	};
 
 	const trok::RoadLink first  = { { 0.f, 0.f }, { SHORT_ROAD, 0.f } };
@@ -419,13 +420,20 @@ TEST(RoadService, PlansInTheBackgroundAndKeepsEveryRoad)
 
 	roads.plan(std::span(&first, 1), context);
 	EXPECT_EQ(roads.getNetwork(), nullptr) << "nothing is published until the planning jobs finish";
-	ASSERT_TRUE(finish());
+
+	const std::vector<std::vector<glm::vec3>> first_published = finish();
+	ASSERT_EQ(first_published.size(), 1u);
 	ASSERT_NE(roads.getNetwork(), nullptr);
 	EXPECT_EQ(roads.getNetwork()->getRoadCount(), 1u);
+	EXPECT_TRUE(std::ranges::equal(first_published.front(), roads.getNetwork()->getRoad(0)));
 
 	roads.plan(std::span(&second, 1), context);
-	ASSERT_TRUE(finish());
+
+	const std::vector<std::vector<glm::vec3>> second_published = finish();
+	ASSERT_EQ(second_published.size(), 1u) << "only the newly finished road is reported";
 	EXPECT_EQ(roads.getNetwork()->getRoadCount(), 2u) << "a new road is added to the network instead of replacing it";
+	EXPECT_TRUE(std::ranges::equal(second_published.front(), roads.getNetwork()->getRoad(1)));
+	EXPECT_TRUE(roads.update().empty()) << "nothing new to report";
 }
 
 TEST(TrokTerrain, WithoutARoadTheRoadDresserAddsNothing)

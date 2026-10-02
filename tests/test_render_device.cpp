@@ -820,6 +820,42 @@ TEST_F(RenderDeviceTest, TerrainUnloadsChunksLeftBehind)
 	EXPECT_EQ(harness.registry.size(),               CHUNKS_WITHIN_RADIUS);
 }
 
+TEST_F(RenderDeviceTest, RefreshedChunksStayVisibleUntilReplaced)
+{
+	TerrainHarness harness(*device, UNLIMITED_JOB_BUDGET);
+	harness.prepareRegions({});
+	harness.terrain.update({});
+	FinishJobs(harness.jobs);
+
+	const lunar::World::ChunkCoord centre   = {};
+	const uint64_t                 previous = harness.terrain.getRevision(centre);
+	ASSERT_NE(previous, 0u);
+
+	harness.terrain.refresh(std::span(&centre, 1));
+	EXPECT_EQ(harness.terrain.getLoadedChunkCount(), CHUNKS_WITHIN_RADIUS) << "the old chunk stays until its replacement is ready";
+	EXPECT_EQ(harness.terrain.getRevision(centre),   previous);
+
+	FinishJobs(harness.jobs);
+	harness.scene.flushDestroyedEntities();
+	EXPECT_GT(harness.terrain.getRevision(centre),   previous);
+	EXPECT_EQ(harness.terrain.getLoadedChunkCount(), CHUNKS_WITHIN_RADIUS);
+	EXPECT_EQ(harness.registry.size(),               CHUNKS_WITHIN_RADIUS) << "the replaced chunk's mesh is released";
+	EXPECT_EQ(CountTerrainChunks(harness.scene),     CHUNKS_WITHIN_RADIUS);
+}
+
+TEST_F(RenderDeviceTest, RefreshingChunksThatAreNotLoadedDoesNothing)
+{
+	TerrainHarness harness(*device, UNLIMITED_JOB_BUDGET);
+	harness.prepareRegions({});
+
+	const lunar::World::ChunkCoord unloaded = {};
+	harness.terrain.refresh(std::span(&unloaded, 1));
+
+	harness.jobs.waitIdle();
+	EXPECT_EQ(harness.jobs.processCompleted(),       0u);
+	EXPECT_EQ(harness.terrain.getRevision(unloaded), 0u);
+}
+
 TEST_F(RenderDeviceTest, DestroyingTerrainCancelsPendingChunks)
 {
 	TerrainHarness harness(*device, UNLIMITED_JOB_BUDGET);

@@ -9,6 +9,9 @@ namespace
 	constexpr float  SHORT_FRAME     = 0.1f;
 	constexpr float  LONG_FRAME      = 1.25f;
 	constexpr float  REMAINDER_FRAME = 0.25f;
+	constexpr int    MAX_STEPS       = 2;
+	constexpr float  STALL_FRAME     = 5.25f;
+	constexpr float  ALPHA_TOLERANCE = 1e-5f;
 
 	lunar::FrameTime MakeFrameTime(float delta_time)
 	{
@@ -65,6 +68,24 @@ TEST(SystemScheduler, FixedUpdateRunsOncePerElapsedTimestep)
 
 	scheduler.runFrame(scene, MakeFrameTime(REMAINDER_FRAME));
 	EXPECT_EQ(fixed_runs, 3);
+}
+
+TEST(SystemScheduler, StallsRunAtMostTheStepLimitAndDropTheBacklog)
+{
+	lunar::Scene           scene;
+	lunar::SystemScheduler scheduler(FIXED_TIMESTEP, MAX_STEPS);
+	int                    fixed_runs = 0;
+	float                  alpha      = 0.f;
+
+	scheduler.addSystem(lunar::SystemPhase::eFixedUpdate, [&](lunar::Scene&, const lunar::FrameTime&) { fixed_runs++; });
+	scheduler.addSystem(lunar::SystemPhase::eUpdate,      [&](lunar::Scene&, const lunar::FrameTime& frame_time) { alpha = frame_time.fixedAlpha; });
+
+	scheduler.runFrame(scene, MakeFrameTime(STALL_FRAME));
+	EXPECT_EQ(fixed_runs, MAX_STEPS);
+	EXPECT_NEAR(alpha, static_cast<float>(REMAINDER_FRAME / FIXED_TIMESTEP), ALPHA_TOLERANCE) << "the fraction of a step is kept for interpolation";
+
+	scheduler.runFrame(scene, MakeFrameTime(SHORT_FRAME));
+	EXPECT_EQ(fixed_runs, MAX_STEPS) << "the dropped backlog is not caught up on later frames";
 }
 
 TEST(SystemScheduler, FixedUpdateIsSkippedForShortFramesButUpdateStillRuns)

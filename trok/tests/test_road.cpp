@@ -416,6 +416,25 @@ TEST(RoadPlanner, RoadsStayOutOfTheSea)
 	}
 }
 
+TEST(RoadNetwork, ARoadReachesTheChunksItCrossesAndTheirNeighboursOnly)
+{
+	constexpr float ROAD_Z     = 10.f;
+	constexpr float ROAD_END_X = 100.f;
+	constexpr int   FAR_CHUNKS = 3;
+
+	const lunar::World::WorldSettings           settings = {};
+	const std::vector<glm::vec3>                road     = { { 10.f, 0.f, ROAD_Z }, { ROAD_END_X, 0.f, ROAD_Z } };
+	const std::vector<lunar::World::ChunkCoord> reached  = trok::ChunksReachedBy(road, TestRoadClass(), settings);
+
+	const auto contains = [&](lunar::World::ChunkCoord coord) { return std::ranges::find(reached, coord) != reached.end(); };
+
+	EXPECT_TRUE(contains(lunar::World::ChunkAt(road.front(), settings)));
+	EXPECT_TRUE(contains(lunar::World::ChunkAt(road.back(),  settings)));
+	EXPECT_TRUE(contains({ 0, -1 })) << "cuts spread into the neighbouring chunk on the other side";
+	EXPECT_FALSE(contains({ 0, FAR_CHUNKS }));
+	EXPECT_FALSE(contains({ FAR_CHUNKS + 1, 0 }));
+}
+
 TEST(RoadNetwork, ClosestPointProjectsOntoTheNearestRoad)
 {
 	constexpr float SIDE_OFFSET = 30.f;
