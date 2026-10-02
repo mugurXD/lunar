@@ -4,6 +4,7 @@
 layout(location = 0)      out vec3 outNormal;
 layout(location = 1) flat out vec3 outColor;
 layout(location = 2)      out vec3 outWorldPosition;
+layout(location = 3) flat out vec3 outFacetNormal;
 
 void main()
 {
@@ -13,5 +14,6 @@ void main()
 	outNormal        = mat3(constants.draw.normalMatrix) * vertex.normal;
 	outColor         = vertex.color.rgb;
 	outWorldPosition = world_position.xyz;
+	outFacetNormal   = outNormal;
 	gl_Position      = constants.scene.viewProjection * world_position;
 }
