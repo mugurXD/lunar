@@ -6,6 +6,9 @@
 
 #include <glm/glm.hpp>
 
+#include <string>
+#include <string_view>
+
 namespace lunar
 {
 	class LUNAR_API Scene;
@@ -20,6 +23,12 @@ namespace lunar::Render
 {
 	class ImGuiLayer;
 
+	struct LUNAR_API MaterialDesc
+	{
+		std::string_view vertexShader   = {};
+		std::string_view fragmentShader = {};
+	};
+
 	class LUNAR_API Renderer
 	{
 	public:
@@ -29,29 +38,38 @@ namespace lunar::Render
 		Renderer(const Renderer&)            = delete;
 		Renderer& operator=(const Renderer&) = delete;
 
-		void          render(Scene& scene, UI::UiLayer* ui = nullptr, ImGuiLayer* debug_ui = nullptr);
-		void          setSamples(uint32_t samples);
-		uint32_t      getSamples() const;
-		MeshRegistry& getMeshes();
-		MeshHandle    getCubeMesh() const;
+		void           render(Scene& scene, UI::UiLayer* ui = nullptr, ImGuiLayer* debug_ui = nullptr);
+		void           setSamples(uint32_t samples);
+		uint32_t       getSamples() const;
+		MaterialHandle createMaterial(const MaterialDesc& desc);
+		MeshRegistry&  getMeshes();
+		MeshHandle     getCubeMesh() const;
 
 	private:
-		void createPipelines();
-		void destroyPipelines();
+		struct Material
+		{
+			std::string    vertexShader        = {};
+			std::string    fragmentShader      = {};
+			PipelineHandle opaquePipeline      = {};
+			PipelineHandle translucentPipeline = {};
+		};
+
+		void createPipelines(Material& material);
+		void destroyPipelines(Material& material);
 		void resizeTargets(Extent2D extent);
 		void destroyTargets();
 		void recordFrame(Frame& frame, Scene& scene, ImageHandle target, Extent2D extent);
 		void recordOverlay(Frame& frame, ImageHandle target, Extent2D extent, UI::UiLayer* ui, ImGuiLayer* debug_ui);
-		void drawMeshes(Frame& frame, Scene& scene, uint64_t scene_address, const Frustum& frustum, bool translucent);
+		void drawMeshes(Frame& frame, Scene& scene, uint64_t scene_address, const Frustum& frustum, MaterialHandle material, PipelineHandle pipeline, bool translucent);
 
 		RenderDevice&  device;
-		Swapchain*     swapchain           = nullptr;
+		Swapchain*     swapchain       = nullptr;
 		MeshRegistry   meshes;
-		MeshHandle     cubeMesh            = {};
-		PipelineHandle translucentPipeline = {};
-		PipelineHandle meshPipeline        = {};
-		ImageHandle    colorImage          = {};
-		ImageHandle    depthImage          = {};
-		uint32_t       sampleCount         = 0;
+		MeshHandle     cubeMesh        = {};
+		Pool<Material> materials;
+		MaterialHandle defaultMaterial = {};
+		ImageHandle    colorImage      = {};
+		ImageHandle    depthImage      = {};
+		uint32_t       sampleCount     = 0;
 	};
 }

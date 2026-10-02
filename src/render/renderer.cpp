@@ -22,6 +22,9 @@ namespace lunar::Render
 		constexpr CompareOp REVERSE_Z_DEPTH_COMPARE = CompareOp::eGreater;
 		constexpr uint32_t  SINGLE_SAMPLE           = 1;
 
+		constexpr std::string_view DEFAULT_VERTEX_SHADER   = "mesh.vert";
+		constexpr std::string_view DEFAULT_FRAGMENT_SHADER = "mesh.frag";
+
 		const glm::vec4 AMBIENT_COLOR = { 0.08f, 0.08f, 0.1f, 0.f };
 
 		struct SceneData
@@ -102,12 +105,15 @@ namespace lunar::Render
 	{
 		cubeMesh = meshes.create(CreateCubeMeshData());
 		setSamples(samples);
+		defaultMaterial = createMaterial({ .vertexShader = DEFAULT_VERTEX_SHADER, .fragmentShader = DEFAULT_FRAGMENT_SHADER });
 	}
 
 	Renderer::~Renderer() noexcept
 	{
 		destroyTargets();
-		destroyPipelines();
+		materials.forEach([this](PoolHandle<Material>, Material& material) {
+			destroyPipelines(material);
+		});
 	}
 
 	void Renderer::setSamples(uint32_t samples)
@@ -118,8 +124,10 @@ namespace lunar::Render
 
 		sampleCount = supported;
 		destroyTargets();
-		destroyPipelines();
-		createPipelines();
+		materials.forEach([this](PoolHandle<Material>, Material& material) {
+			destroyPipelines(material);
+			createPipelines(material);
+		});
 	}
 
 	uint32_t Renderer::getSamples() const
@@ -127,13 +135,20 @@ namespace lunar::Render
 		return sampleCount;
 	}
 
-	void Renderer::createPipelines()
+	MaterialHandle Renderer::createMaterial(const MaterialDesc& desc)
+	{
+		const PoolHandle<Material> material = materials.create(Material { .vertexShader = std::string(desc.vertexShader), .fragmentShader = std::string(desc.fragmentShader) });
+		createPipelines(*materials.get(material));
+		return ToGpuHandle<MaterialTag>(material);
+	}
+
+	void Renderer::createPipelines(Material& material)
 	{
 		if (swapchain == nullptr)
 			return;
 
-		const std::vector<char> vertex_shader   = LoadShader("mesh.vert");
-		const std::vector<char> fragment_shader = LoadShader("mesh.frag");
+		const std::vector<char> vertex_shader   = LoadShader(material.vertexShader);
+		const std::vector<char> fragment_shader = LoadShader(material.fragmentShader);
 		const Format            color_format    = swapchain->getFormat();
 
 		const GraphicsPipelineDesc mesh_desc =
@@ -155,16 +170,16 @@ namespace lunar::Render
 		translucent_desc.depthWrite = false;
 		translucent_desc.blendMode  = BlendMode::eAlpha;
 
-		meshPipeline        = device.createGraphicsPipeline(mesh_desc);
-		translucentPipeline = device.createGraphicsPipeline(translucent_desc);
+		material.opaquePipeline      = device.createGraphicsPipeline(mesh_desc);
+		material.translucentPipeline = device.createGraphicsPipeline(translucent_desc);
 	}
 
-	void Renderer::destroyPipelines()
+	void Renderer::destroyPipelines(Material& material)
 	{
-		device.destroyPipeline(translucentPipeline);
-		device.destroyPipeline(meshPipeline);
-		translucentPipeline = {};
-		meshPipeline        = {};
+		device.destroyPipeline(material.translucentPipeline);
+		device.destroyPipeline(material.opaquePipeline);
+		material.translucentPipeline = {};
+		material.opaquePipeline      = {};
 	}
 
 	void Renderer::render(Scene& scene, UI::UiLayer* ui, ImGuiLayer* debug_ui)
@@ -252,7 +267,7 @@ namespace lunar::Render
 		});
 
 		const Camera* camera = scene.getMainCamera();
-		if (camera != nullptr && meshPipeline != PipelineHandle {})
+		if (camera != nullptr)
 		{
 			const SceneData scene_data    = BuildSceneData(scene, *camera, extent);
 			const uint64_t  scene_address = frame.writeTransient(scene_data);
@@ -260,8 +275,11 @@ namespace lunar::Render
 			{
 				const Frustum frustum(scene_data.viewProjection);
 
-				drawMeshes(frame, scene, scene_address, frustum, false);
-				drawMeshes(frame, scene, scene_address, frustum, true);
+				for (const bool translucent : { false, true })
+					materials.forEach([&](PoolHandle<Material> handle, const Material& material) {
+						const PipelineHandle pipeline = translucent ? material.translucentPipeline : material.opaquePipeline;
+						drawMeshes(frame, scene, scene_address, frustum, ToGpuHandle<MaterialTag>(handle), pipeline, translucent);
+					});
 			}
 		}
 
@@ -284,14 +302,18 @@ namespace lunar::Render
 		commands.endRendering();
 	}
 
-	void Renderer::drawMeshes(Frame& frame, Scene& scene, uint64_t scene_address, const Frustum& frustum, bool translucent)
+	void Renderer::drawMeshes(Frame& frame, Scene& scene, uint64_t scene_address, const Frustum& frustum, MaterialHandle material, PipelineHandle pipeline, bool translucent)
 	{
+		if (pipeline == PipelineHandle {})
+			return;
+
 		CommandList& commands = frame.commandList();
-		commands.bindPipeline(translucent ? translucentPipeline : meshPipeline);
+		commands.bindPipeline(pipeline);
 
 		scene.forEach<MeshRenderer>([&](Entity entity, const MeshRenderer& mesh_renderer) {
-			const Mesh* mesh = meshes.get(mesh_renderer.mesh);
-			if (mesh == nullptr || !mesh_renderer.visible || mesh_renderer.translucent != translucent)
+			const Mesh*          mesh  = meshes.get(mesh_renderer.mesh);
+			const MaterialHandle drawn = mesh_renderer.material == MaterialHandle {} ? defaultMaterial : mesh_renderer.material;
+			if (mesh == nullptr || !mesh_renderer.visible || mesh_renderer.translucent != translucent || drawn != material)
 				return;
 
 			const glm::mat4 model = scene.resolveWorldTransform(entity).matrix;

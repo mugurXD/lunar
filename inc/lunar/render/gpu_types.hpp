@@ -18,11 +18,13 @@ namespace lunar::Render
 	struct ImageTag;
 	struct PipelineTag;
 	struct MeshTag;
+	struct MaterialTag;
 
 	using BufferHandle   = GpuHandle<BufferTag>;
 	using ImageHandle    = GpuHandle<ImageTag>;
 	using PipelineHandle = GpuHandle<PipelineTag>;
 	using MeshHandle     = GpuHandle<MeshTag>;
+	using MaterialHandle = GpuHandle<MaterialTag>;
 
 	template<typename Tag, typename T>
 	GpuHandle<Tag> ToGpuHandle(const PoolHandle<T>& handle)
