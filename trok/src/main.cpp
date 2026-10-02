@@ -25,6 +25,7 @@
 #include <lunar/physics/rigid_body.hpp>
 #include <lunar/world/region_store.hpp>
 #include <lunar/world/terrain_colliders.hpp>
+#include <lunar/world/terrain_debug_view.hpp>
 #include <lunar/world/terrain_generator.hpp>
 #include <lunar/world/terrain_world.hpp>
 #include <lunar/world/world_storage.hpp>
@@ -71,6 +72,7 @@ namespace
 	constexpr float                   ROAD_PLANNING_MARGIN = 200.f;
 	constexpr int32_t                 TOWN_SURVEY_RADIUS   = 2;
 	constexpr int32_t                 COLLIDER_RADIUS      = 1;
+	constexpr int32_t                 TERRAIN_DEBUG_RADIUS = 1;
 	constexpr float                   TRUCK_SPAWN_HEIGHT   = 1.5f;
 	constexpr float                   RECOVER_HOLD_SECONDS = 0.5f;
 	constexpr float                   RECOVER_ROAD_REACH   = 400.f;
@@ -330,6 +332,7 @@ int main()
 	World::RegionChunkSource<trok::RegionPlan> chunk_source(regions, terrain_generator, chunk_storage, world_settings);
 	World::TerrainWorld                        terrain(scene, engine.getJobSystem(), engine.getRenderer().getMeshes(), chunk_source, world_settings, terrain_material);
 	World::TerrainColliders                    colliders(scene, terrain, world_settings, COLLIDER_RADIUS);
+	World::TerrainDebugView                    terrain_debug(scene, engine.getRenderer().getMeshes(), terrain, world_settings, TERRAIN_DEBUG_RADIUS);
 	trok::TruckTuningWindow                    tuning(*truck_definition, Fs::fromData(TUNED_TRUCK_FILE));
 	trok::BiomeTuningWindow                    biome_tuning(biomes, Fs::fromData(TUNED_BIOME_FILE));
 	trok::WorldMapWindow                       world_map(biomes, region_planner, climate, elevation, world_settings);
@@ -376,6 +379,7 @@ int main()
 	window.registerAction("road_point",     { { "keyboard.f5" }, { "mouse.right_button" } });
 	window.registerAction("road_build",     { { "keyboard.f6" }, { "mouse.middle_button" } });
 	window.registerAction("toggle_terrain", { { "keyboard.f7" } });
+	window.registerAction("terrain_debug",  { { "keyboard.f8" } });
 	window.registerAction("recover",        { { "keyboard.i" },     { "gamepad.back" } });
 
 	const auto is_driving = [&scene, &chase_camera] { return scene.getMainCamera() == chase_camera->getComponent<Camera>(); };
@@ -397,7 +401,8 @@ int main()
 	std::optional<glm::vec2>      road_start;
 	std::optional<glm::vec2>      road_end;
 	std::optional<trok::RoadLink> awaited_road;
-	bool                          terrain_visible = true;
+	bool                          terrain_visible       = true;
+	bool                          terrain_debug_visible = false;
 
 	const auto regenerate_chunks = [&] {
 		engine.getJobSystem().waitIdle();
@@ -492,6 +497,17 @@ int main()
 			terrain_visible = !terrain_visible;
 			DEBUG_LOG("Terrain rendering {}", terrain_visible ? "enabled" : "disabled");
 		}
+
+		if (window.getActionDown("terrain_debug"))
+		{
+			terrain_debug_visible = !terrain_debug_visible;
+			DEBUG_LOG("Terrain samples and chunk borders {}", terrain_debug_visible ? "shown" : "hidden");
+		}
+
+		if (terrain_debug_visible)
+			terrain_debug.update(viewer);
+		else
+			terrain_debug.clear();
 
 		if (!terrain_visible)
 			scene.forEach<World::TerrainChunk, MeshRenderer>([](Entity, const World::TerrainChunk&, MeshRenderer& renderer) {

@@ -2,19 +2,10 @@
 #include <lunar/core/scene.hpp>
 
 #include <algorithm>
-#include <cstdlib>
 #include <vector>
 
 namespace lunar::World
 {
-	namespace
-	{
-		bool IsInsideSquare(ChunkCoord coord, ChunkCoord center, int32_t radius)
-		{
-			return std::abs(coord.x - center.x) <= radius && std::abs(coord.z - center.z) <= radius;
-		}
-	}
-
 	TerrainColliders::TerrainColliders(Scene& scene, const TerrainWorld& terrain, const WorldSettings& settings, int32_t radius_chunks) noexcept
 		: scene(scene),
 		terrain(terrain),

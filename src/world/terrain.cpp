@@ -4,6 +4,9 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
+#include <cmath>
+#include <optional>
 #include <span>
 
 namespace lunar::World
@@ -12,40 +15,31 @@ namespace lunar::World
 	{
 		constexpr uint32_t BORDER_SIDES        = 2;
 		constexpr float    CENTRAL_DIFFERENCES = 2.f;
-		constexpr size_t   INDICES_PER_QUAD    = 6;
-		constexpr size_t   GRID_COPIES         = 2;
-		constexpr uint32_t FIRST_COPY          = 0;
 		constexpr float    TRIANGLE_CORNERS    = 3.f;
+		constexpr float    HALF                = 0.5f;
 		constexpr uint64_t DIAGONAL_BIT        = 1;
-		constexpr uint64_t CELL_SEED           = 0;
-		constexpr uint64_t FACET_SEED          = 1;
-		constexpr uint64_t FIRST_HALF          = 0;
-		constexpr uint64_t SECOND_HALF         = 1;
+		constexpr uint64_t CHUNK_SEED          = 0;
+		constexpr uint64_t TRIANGLE_SEED       = 1;
 		constexpr int      UNIT_BITS           = 24;
 		constexpr int      UNIT_SHIFT          = 64 - UNIT_BITS;
 		constexpr float    UNIT_SCALE          = 1.f / static_cast<float>(1u << UNIT_BITS);
 		constexpr float    SIGNED_RANGE        = 2.f;
+		constexpr int32_t  CENTROID_SCALE      = 3;
 
-		using Triangle = std::array<uint32_t, 3>;
-		using Halves   = std::array<Triangle, 2>;
+		using GridPoint    = glm::ivec2;
+		using GridTriangle = std::array<GridPoint, 3>;
+		using GridEdge     = std::array<GridPoint, 2>;
 
-		struct Facet
+		struct Simplifier
 		{
-			glm::vec3 normal = {};
-			float     tone   = 1.f;
+			std::span<const Render::Vertex> grid   = {};
+			int32_t                         quads  = 0;
+			std::vector<float>              errors = {};
 		};
 
-		struct FacetCell
+		uint64_t PointHash(uint64_t seed, int64_t x, int64_t z)
 		{
-			uint32_t             left         = 0;
-			uint32_t             top          = 0;
-			bool                 mainDiagonal = false;
-			std::array<Facet, 2> halves       = {};
-		};
-
-		uint64_t CellHash(uint64_t seed, int64_t cell_x, int64_t cell_z)
-		{
-			return MixHash(MixHash(seed, static_cast<uint64_t>(cell_x)), static_cast<uint64_t>(cell_z));
+			return MixHash(MixHash(seed, static_cast<uint64_t>(x)), static_cast<uint64_t>(z));
 		}
 
 		float SignedUnit(uint64_t hash)
@@ -53,90 +47,186 @@ namespace lunar::World
 			return static_cast<float>(hash >> UNIT_SHIFT) * UNIT_SCALE * SIGNED_RANGE - 1.f;
 		}
 
-		Halves SplitQuad(uint32_t top_left, uint32_t size, uint32_t vertices_per_side, bool main_diagonal)
+		size_t IndexOf(const Simplifier& simplifier, GridPoint point)
 		{
-			const uint32_t top_right    = top_left + size;
-			const uint32_t bottom_left  = top_left + size * vertices_per_side;
-			const uint32_t bottom_right = bottom_left + size;
+			return static_cast<size_t>(point.y) * (simplifier.quads + 1) + point.x;
+		}
+
+		float HeightAt(const Simplifier& simplifier, GridPoint point)
+		{
+			return simplifier.grid[IndexOf(simplifier, point)].position.y;
+		}
+
+		std::optional<GridEdge> BorderLineOf(const Simplifier& simplifier, GridPoint from, GridPoint to)
+		{
+			for (const int32_t line : { 0, simplifier.quads })
+			{
+				if (from.x == line && to.x == line)
+					return GridEdge { GridPoint { line, 0 }, GridPoint { line, simplifier.quads } };
+
+				if (from.y == line && to.y == line)
+					return GridEdge { GridPoint { 0, line }, GridPoint { simplifier.quads, line } };
+			}
+
+			return std::nullopt;
+		}
+
+		float LowestAlong(const Simplifier& simplifier, const GridEdge& line)
+		{
+			const GridPoint step   = glm::sign(line[1] - line[0]);
+			float           lowest = HeightAt(simplifier, line[0]);
+
+			for (GridPoint point = line[0]; point != line[1]; point += step)
+				lowest = std::min(lowest, HeightAt(simplifier, point + step));
+
+			return lowest;
+		}
+
+		bool CanSplit(GridPoint apex, GridPoint corner)
+		{
+			return std::abs(apex.x - corner.x) + std::abs(apex.y - corner.y) > 1;
+		}
+
+		std::vector<std::vector<GridTriangle>> SplitLevels(std::span<const GridTriangle> roots)
+		{
+			std::vector<std::vector<GridTriangle>> levels = { std::vector<GridTriangle>(roots.begin(), roots.end()) };
+
+			while (true)
+			{
+				const auto& [first, second, apex] = levels.back().front();
+				if (!CanSplit(apex, (first + second) / 2))
+					return levels;
+
+				std::vector<GridTriangle> children;
+				for (const auto& [parent_first, parent_second, parent_apex] : levels.back())
+				{
+					const GridPoint middle = (parent_first + parent_second) / 2;
+					children.push_back({ parent_apex, parent_first, middle });
+					children.push_back({ parent_second, parent_apex, middle });
+				}
+
+				levels.push_back(std::move(children));
+			}
+		}
+
+		void MeasureErrors(Simplifier& simplifier, std::span<const GridTriangle> roots)
+		{
+			const std::vector<std::vector<GridTriangle>> levels = SplitLevels(roots);
+
+			for (size_t level = levels.size(); level-- > 0;)
+			{
+				const bool has_children = level + 1 < levels.size();
+
+				for (const auto& [first, second, apex] : levels[level])
+				{
+					const GridPoint middle = (first + second) / 2;
+					const float     own    = std::abs((HeightAt(simplifier, first) + HeightAt(simplifier, second)) * HALF - HeightAt(simplifier, middle));
+					float&          error  = simplifier.errors[IndexOf(simplifier, middle)];
+
+					error = std::max(error, own);
+					if (has_children)
+						error = std::max({ error, simplifier.errors[IndexOf(simplifier, (apex + first) / 2)], simplifier.errors[IndexOf(simplifier, (second + apex) / 2)] });
+				}
+			}
+		}
+
+		void CollectTriangles(const Simplifier& simplifier, float max_error, GridPoint first, GridPoint second, GridPoint apex, std::vector<GridTriangle>& triangles)
+		{
+			const GridPoint middle = (first + second) / 2;
+			if (CanSplit(first, apex) && simplifier.errors[IndexOf(simplifier, middle)] > max_error)
+			{
+				CollectTriangles(simplifier, max_error, apex, first, middle, triangles);
+				CollectTriangles(simplifier, max_error, second, apex, middle, triangles);
+				return;
+			}
+
+			triangles.push_back({ first, second, apex });
+		}
+
+		std::array<GridTriangle, 2> RootTriangles(int32_t quads, bool main_diagonal)
+		{
+			const GridPoint near_left  = { 0, 0 };
+			const GridPoint near_right = { quads, 0 };
+			const GridPoint far_left   = { 0, quads };
+			const GridPoint far_right  = { quads, quads };
 
 			if (main_diagonal)
-				return { Triangle { top_left, bottom_left, bottom_right }, Triangle { top_right, top_left, bottom_right } };
+				return { GridTriangle { near_left, far_right, near_right }, GridTriangle { far_right, near_left, far_left } };
 
-			return { Triangle { top_left, bottom_left, top_right }, Triangle { top_right, bottom_left, bottom_right } };
+			return { GridTriangle { near_right, far_left, near_left }, GridTriangle { far_left, near_right, far_right } };
 		}
 
-		glm::vec3 PlaneNormal(const Render::MeshData& mesh, const Triangle& corners)
+		void AppendVertex(Render::MeshData& mesh, Render::Vertex vertex, const glm::vec3& normal, const glm::vec4& color)
 		{
-			const glm::vec3& first  = mesh.vertices[corners[0]].position;
-			const glm::vec3& second = mesh.vertices[corners[1]].position;
-			const glm::vec3& third  = mesh.vertices[corners[2]].position;
-			return glm::normalize(glm::cross(second - first, third - first));
+			vertex.normal = normal;
+			vertex.color  = color;
+
+			mesh.indices.push_back(static_cast<uint32_t>(mesh.vertices.size()));
+			mesh.vertices.push_back(vertex);
 		}
 
-		FacetCell MakeFacetCell(const Render::MeshData& mesh, ChunkCoord coord, uint32_t facet_x, uint32_t facet_z, const WorldSettings& settings)
+		void AppendSkirt(Render::MeshData& mesh, const Simplifier& simplifier, GridPoint from, GridPoint to, const glm::vec3& normal, const glm::vec4& color)
 		{
-			const uint32_t vertices_per_side = settings.chunkQuads + 1;
-			const int64_t  facets_per_chunk  = settings.chunkQuads / settings.facetSize;
-			const uint64_t hash              = CellHash(FACET_SEED, coord.x * facets_per_chunk + facet_x, coord.z * facets_per_chunk + facet_z);
-			const uint32_t left              = facet_x * settings.facetSize;
-			const uint32_t top               = facet_z * settings.facetSize;
-			const bool     main_diagonal     = (hash & DIAGONAL_BIT) != 0;
-			const Halves   halves            = SplitQuad(top * vertices_per_side + left, settings.facetSize, vertices_per_side, main_diagonal);
+			const std::optional<GridEdge> line = BorderLineOf(simplifier, from, to);
+			if (!line.has_value())
+				return;
 
-			const auto facet = [&](size_t half, uint64_t salt) {
-				return Facet { PlaneNormal(mesh, halves[half]), 1.f + settings.facetVariation * SignedUnit(MixHash(hash, salt)) };
+			const float lowest = LowestAlong(simplifier, *line);
+			if (HeightAt(simplifier, from) <= lowest && HeightAt(simplifier, to) <= lowest)
+				return;
+
+			const Render::Vertex top_from    = simplifier.grid[IndexOf(simplifier, from)];
+			const Render::Vertex top_to      = simplifier.grid[IndexOf(simplifier, to)];
+			Render::Vertex       bottom_from = top_from;
+			Render::Vertex       bottom_to   = top_to;
+			bottom_from.position.y = lowest;
+			bottom_to.position.y   = lowest;
+
+			const auto append_both_sides = [&](const Render::Vertex& first, const Render::Vertex& second, const Render::Vertex& third) {
+				if (first.position == second.position || second.position == third.position || third.position == first.position)
+					return;
+
+				for (const auto& [a, b, c] : { std::array { first, second, third }, std::array { first, third, second } })
+				{
+					AppendVertex(mesh, a, normal, color);
+					AppendVertex(mesh, b, normal, color);
+					AppendVertex(mesh, c, normal, color);
+				}
 			};
 
-			return FacetCell { left, top, main_diagonal, { facet(0, FIRST_HALF), facet(1, SECOND_HALF) } };
+			append_both_sides(top_from, bottom_from, top_to);
+			append_both_sides(top_to, bottom_from, bottom_to);
 		}
 
-		bool SplitsAlongMainDiagonal(const FacetCell& facet, uint32_t x, uint32_t z, uint64_t cell_hash, uint32_t facet_size)
+		void AppendTriangle(Render::MeshData& mesh, const Simplifier& simplifier, GridTriangle corners, ChunkCoord coord, const WorldSettings& settings)
 		{
-			const uint32_t across = x - facet.left;
-			const uint32_t down   = z - facet.top;
+			const auto position = [&](GridPoint point) { return simplifier.grid[IndexOf(simplifier, point)].position; };
 
-			if (facet.mainDiagonal && across == down)
-				return true;
+			glm::vec3 facing = glm::cross(position(corners[1]) - position(corners[0]), position(corners[2]) - position(corners[0]));
+			if (facing.y < 0.f)
+			{
+				std::swap(corners[1], corners[2]);
+				facing = -facing;
+			}
 
-			if (!facet.mainDiagonal && across + down + 1 == facet_size)
-				return false;
+			const GridPoint summed = corners[0] + corners[1] + corners[2];
+			const uint64_t  hash   = PointHash(TRIANGLE_SEED, static_cast<int64_t>(coord.x) * simplifier.quads * CENTROID_SCALE + summed.x, static_cast<int64_t>(coord.z) * simplifier.quads * CENTROID_SCALE + summed.y);
+			const float     tone   = 1.f + settings.facetVariation * SignedUnit(hash);
 
-			return (cell_hash & DIAGONAL_BIT) != 0;
-		}
+			glm::vec4 average = {};
+			for (const GridPoint corner : corners)
+				average += simplifier.grid[IndexOf(simplifier, corner)].color;
 
-		const Facet& FacetOf(const FacetCell& facet, const Triangle& corners, uint32_t vertices_per_side, uint32_t facet_size)
-		{
-			glm::vec2 centroid = {};
-			for (const uint32_t corner : corners)
-				centroid += glm::vec2(static_cast<float>(corner % vertices_per_side), static_cast<float>(corner / vertices_per_side));
+			average /= TRIANGLE_CORNERS;
 
-			centroid = centroid / TRIANGLE_CORNERS - glm::vec2(static_cast<float>(facet.left), static_cast<float>(facet.top));
+			const glm::vec3 normal = glm::normalize(facing);
+			const glm::vec4 color  = glm::vec4(glm::vec3(average) * tone, average.a);
 
-			const bool first_half = facet.mainDiagonal ? centroid.y > centroid.x : centroid.x + centroid.y < static_cast<float>(facet_size);
-			return facet.halves[first_half ? 0 : 1];
-		}
+			for (const GridPoint corner : corners)
+				AppendVertex(mesh, simplifier.grid[IndexOf(simplifier, corner)], normal, color);
 
-		void AppendFacet(Render::MeshData& mesh, std::span<const glm::vec4> grid_colors, uint32_t copy, const Triangle& corners, const Facet& facet)
-		{
-			const auto& [first, second, third] = corners;
-			const uint32_t  provoking          = first + copy;
-			const glm::vec4 average            = (grid_colors[first] + grid_colors[second] + grid_colors[third]) / TRIANGLE_CORNERS;
-
-			mesh.vertices[provoking].color  = glm::vec4(glm::vec3(average) * facet.tone, average.a);
-			mesh.vertices[provoking].normal = facet.normal;
-			mesh.indices.insert(mesh.indices.end(), { provoking, second, third });
-		}
-
-		void AppendCell(Render::MeshData& mesh, std::span<const glm::vec4> grid_colors, const FacetCell& facet, ChunkCoord coord, uint32_t x, uint32_t z, const WorldSettings& settings)
-		{
-			const uint32_t vertices_per_side = settings.chunkQuads + 1;
-			const uint32_t grid_size         = static_cast<uint32_t>(grid_colors.size());
-			const uint64_t cell_hash         = CellHash(CELL_SEED, static_cast<int64_t>(coord.x) * settings.chunkQuads + x, static_cast<int64_t>(coord.z) * settings.chunkQuads + z);
-			const bool     main_diagonal     = SplitsAlongMainDiagonal(facet, x, z, cell_hash, settings.facetSize);
-			const Halves   halves            = SplitQuad(z * vertices_per_side + x, 1, vertices_per_side, main_diagonal);
-
-			AppendFacet(mesh, grid_colors, FIRST_COPY, halves[0], FacetOf(facet, halves[0], vertices_per_side, settings.facetSize));
-			AppendFacet(mesh, grid_colors, grid_size,  halves[1], FacetOf(facet, halves[1], vertices_per_side, settings.facetSize));
+			for (size_t corner = 0; corner < corners.size(); corner++)
+				AppendSkirt(mesh, simplifier, corners[corner], corners[(corner + 1) % corners.size()], normal, color);
 		}
 	}
 
@@ -162,30 +252,25 @@ namespace lunar::World
 
 	void FacetChunkMesh(Render::MeshData& mesh, ChunkCoord coord, const WorldSettings& settings)
 	{
-		DEBUG_ASSERT(settings.facetSize > 0 && settings.chunkQuads % settings.facetSize == 0, "Facets must evenly divide a chunk");
+		DEBUG_ASSERT(std::has_single_bit(settings.chunkQuads), "Simplifying terrain needs a power-of-two number of quads per chunk");
 
-		const uint32_t grid_size        = static_cast<uint32_t>(mesh.vertices.size());
-		const uint32_t facets_per_chunk = settings.chunkQuads / settings.facetSize;
+		const std::vector<Render::Vertex> grid = std::move(mesh.vertices);
+		const int32_t                     quads = static_cast<int32_t>(settings.chunkQuads);
 
-		std::vector<glm::vec4> grid_colors(grid_size);
-		std::ranges::transform(mesh.vertices, grid_colors.begin(), &Render::Vertex::color);
+		Simplifier simplifier = { .grid = grid, .quads = quads, .errors = std::vector<float>(grid.size(), 0.f) };
 
-		mesh.vertices.reserve(grid_size * GRID_COPIES);
-		for (uint32_t index = 0; index < grid_size; index++)
-			mesh.vertices.push_back(mesh.vertices[index]);
+		const bool                        main_diagonal = (PointHash(CHUNK_SEED, coord.x, coord.z) & DIAGONAL_BIT) != 0;
+		const std::array<GridTriangle, 2> roots         = RootTriangles(quads, main_diagonal);
 
-		mesh.indices.reserve(mesh.indices.size() + static_cast<size_t>(settings.chunkQuads) * settings.chunkQuads * INDICES_PER_QUAD);
+		MeasureErrors(simplifier, roots);
 
-		for (uint32_t facet_z = 0; facet_z < facets_per_chunk; facet_z++)
-		{
-			for (uint32_t facet_x = 0; facet_x < facets_per_chunk; facet_x++)
-			{
-				const FacetCell facet = MakeFacetCell(mesh, coord, facet_x, facet_z, settings);
+		std::vector<GridTriangle> triangles;
+		for (const auto& [first, second, apex] : roots)
+			CollectTriangles(simplifier, settings.maxFacetError, first, second, apex, triangles);
 
-				for (uint32_t z = facet.top; z < facet.top + settings.facetSize; z++)
-					for (uint32_t x = facet.left; x < facet.left + settings.facetSize; x++)
-						AppendCell(mesh, grid_colors, facet, coord, x, z, settings);
-			}
-		}
+		mesh.vertices.clear();
+		mesh.indices.clear();
+		for (const GridTriangle& triangle : triangles)
+			AppendTriangle(mesh, simplifier, triangle, coord, settings);
 	}
 }
