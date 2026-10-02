@@ -67,7 +67,7 @@ namespace trok
 		void drive(const lunar::Physics::VehicleInput& input, float delta_time);
 		void recover(const glm::vec3& position, std::optional<glm::vec2> facing = std::nullopt);
 		void setSimulated(bool simulated);
-		void updateWheels();
+		void updateWheels(float alpha);
 
 		const lunar::Transform&               getTransform()  const;
 		const lunar::Physics::RaycastVehicle& getVehicle()    const;
@@ -77,11 +77,20 @@ namespace trok
 		bool                                  isSimulated()   const;
 
 	private:
+		struct WheelPose
+		{
+			glm::vec3 position = {};
+			glm::quat rotation = glm::quat(1.f, 0.f, 0.f, 0.f);
+		};
+
 		lunar::GameObject createBox(const glm::vec3& color, const glm::vec3& half_extents, const glm::vec3& offset);
+		void              captureWheels();
 
 		lunar::Render::MeshRegistry&           meshes;
 		lunar::GameObject                      chassis;
-		std::vector<lunar::GameObject>         wheels      = {};
+		std::vector<lunar::GameObject>         wheels         = {};
+		std::vector<WheelPose>                 previousWheels = {};
+		std::vector<WheelPose>                 currentWheels  = {};
 		std::vector<lunar::Render::MeshHandle> ownedMeshes = {};
 		lunar::Physics::RaycastVehicle         vehicle;
 		float                                  wheelWidth  = 0.f;

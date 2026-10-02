@@ -609,7 +609,7 @@ int main()
 
 		colliders.update(std::span(&truck->getTransform().position, 1));
 		truck->setSimulated(colliders.isReady(truck->getTransform().position));
-		truck->updateWheels();
+		truck->updateWheels(frame_time.fixedAlpha);
 
 		const glm::vec3 truck_position = truck->getTransform().position;
 		const std::optional<int64_t> payout = deliveries.update({ truck_position.x, truck_position.z }, frame_time.deltaTime);

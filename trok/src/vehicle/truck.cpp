@@ -240,7 +240,10 @@ namespace trok
 		for (const lunar::Physics::WheelSettings& wheel : definition.vehicle.wheels)
 			wheels.push_back(createBox(definition.wheelColor, glm::vec3(wheelWidth * HALF, wheel.radius, wheel.radius), wheel.mountPoint));
 
-		updateWheels();
+		currentWheels.resize(wheels.size());
+		captureWheels();
+		captureWheels();
+		updateWheels(1.f);
 	}
 
 	Truck::~Truck() noexcept
@@ -255,6 +258,8 @@ namespace trok
 		lunar::Physics::RigidBody& body = *chassis->getComponent<lunar::Physics::RigidBody>();
 		if (body.getBody().isActive())
 			vehicle.update(body, input, delta_time);
+
+		captureWheels();
 	}
 
 	void Truck::recover(const glm::vec3& position, std::optional<glm::vec2> facing)
@@ -270,6 +275,8 @@ namespace trok
 
 		body.capturePose();
 		body.capturePose();
+		captureWheels();
+		captureWheels();
 	}
 
 	void Truck::setSimulated(bool active)
@@ -281,14 +288,21 @@ namespace trok
 		simulated = active;
 	}
 
-	void Truck::updateWheels()
+	void Truck::updateWheels(float alpha)
 	{
 		for (size_t wheel = 0; wheel < wheels.size(); wheel++)
 		{
 			lunar::Transform& transform = wheels[wheel]->getTransform();
-			transform.position = vehicle.getWheelLocalPosition(wheel);
-			transform.rotation = vehicle.getWheelLocalRotation(wheel);
+			transform.position = glm::mix(previousWheels[wheel].position, currentWheels[wheel].position, alpha);
+			transform.rotation = glm::slerp(previousWheels[wheel].rotation, currentWheels[wheel].rotation, alpha);
 		}
+	}
+
+	void Truck::captureWheels()
+	{
+		previousWheels = currentWheels;
+		for (size_t wheel = 0; wheel < currentWheels.size(); wheel++)
+			currentWheels[wheel] = { vehicle.getWheelLocalPosition(wheel), vehicle.getWheelLocalRotation(wheel) };
 	}
 
 	const lunar::Transform& Truck::getTransform() const
