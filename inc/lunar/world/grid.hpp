@@ -2,6 +2,7 @@
 #include <lunar/api.hpp>
 
 #include <cstddef>
+#include <cstdlib>
 #include <cstdint>
 
 namespace lunar::World
@@ -31,6 +32,12 @@ namespace lunar::World
 			return HashGridCoord(coord.x, coord.z);
 		}
 	};
+
+	template<typename Tag>
+	constexpr bool IsInsideSquare(GridCoord<Tag> coord, GridCoord<Tag> center, int32_t radius)
+	{
+		return std::abs(coord.x - center.x) <= radius && std::abs(coord.z - center.z) <= radius;
+	}
 
 	constexpr int32_t FloorDivide(int32_t value, int32_t divisor)
 	{
