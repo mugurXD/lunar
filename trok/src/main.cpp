@@ -460,10 +460,11 @@ int main()
 	const auto mark_awaited_road = [&] {
 		const std::shared_ptr<const trok::RoadNetwork> network = roads.getNetwork();
 		const std::optional<std::span<const glm::vec3>> road   = FindRoad(*network, awaited_road->from, awaited_road->to);
+		if (!road.has_value())
+			return;
 
-		if (road.has_value())
-			for (const glm::vec3& point : *road)
-				road_markers.push_back(PlaceMarker(scene, node_marker_mesh, point, NODE_MARKER_SIZE));
+		for (const glm::vec3& point : *road)
+			road_markers.push_back(PlaceMarker(scene, node_marker_mesh, point, NODE_MARKER_SIZE));
 
 		awaited_road.reset();
 	};
@@ -517,13 +518,15 @@ int main()
 		if (!roads_requested)
 			connect_towns();
 
-		if (roads.update())
+		const std::vector<std::vector<glm::vec3>> new_roads = roads.update();
+		if (!new_roads.empty())
 		{
 			deliveries.setRoads(roads.getNetwork());
 			if (awaited_road.has_value())
 				mark_awaited_road();
 
-			regenerate_chunks();
+			for (const std::vector<glm::vec3>& road : new_roads)
+				terrain.refresh(trok::ChunksReachedBy(road, roads.getNetwork()->getRoadClass(), world_settings));
 		}
 
 		const bool ui_has_mouse = ImGui::GetIO().WantCaptureMouse;

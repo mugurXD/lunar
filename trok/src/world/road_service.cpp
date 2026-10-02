@@ -47,14 +47,17 @@ namespace trok
 			planLink(link, sampler);
 	}
 
-	bool RoadService::update()
+	std::vector<std::vector<glm::vec3>> RoadService::update()
 	{
-		if (!changed || pendingLinks > 0)
-			return false;
+		if (!changed)
+			return {};
 
 		changed = false;
 		layer->set(std::make_shared<const RoadNetwork>(roads, roadClass));
-		return true;
+
+		std::vector<std::vector<glm::vec3>> published(roads.begin() + static_cast<std::ptrdiff_t>(publishedRoads), roads.end());
+		publishedRoads = roads.size();
+		return published;
 	}
 
 	std::shared_ptr<const RoadNetwork> RoadService::getNetwork() const

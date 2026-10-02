@@ -1,6 +1,7 @@
 #pragma once
 #include <lunar/world/grid.hpp>
 #include <lunar/world/terrain_shaping.hpp>
+#include <lunar/world/world_settings.hpp>
 
 #include <glm/glm.hpp>
 #include <nlohmann/json.hpp>
@@ -113,6 +114,8 @@ namespace trok
 		glm::vec2 from = {};
 		glm::vec2 to   = {};
 	};
+
+	std::vector<lunar::World::ChunkCoord> ChunksReachedBy(std::span<const glm::vec3> road, const RoadClass& road_class, const lunar::World::WorldSettings& settings);
 
 	class RoadLayer
 	{

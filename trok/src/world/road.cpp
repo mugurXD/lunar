@@ -3,9 +3,11 @@
 
 #include <lunar/file/json_file.hpp>
 #include <lunar/utils/geometry.hpp>
+#include <lunar/world/terrain.hpp>
 
 #include <algorithm>
 #include <cmath>
+#include <unordered_set>
 #include <utility>
 
 namespace trok
@@ -92,6 +94,26 @@ namespace trok
 		{
 			return { .position = { point.x, point.z }, .height = point.y, .core = core };
 		}
+	}
+
+	std::vector<lunar::World::ChunkCoord> ChunksReachedBy(std::span<const glm::vec3> road, const RoadClass& road_class, const lunar::World::WorldSettings& settings)
+	{
+		const float reach = GradingReach(road_class) + settings.vertexSpacing * lunar::World::HEIGHTMAP_BORDER;
+
+		std::unordered_set<lunar::World::ChunkCoord, lunar::World::GridCoordHash> reached;
+		for (size_t point = 1; point < road.size(); point++)
+		{
+			const glm::vec3&               from    = road[point - 1];
+			const glm::vec3&               to      = road[point];
+			const lunar::World::ChunkCoord minimum = lunar::World::ChunkAt(std::min(from.x, to.x) - reach, std::min(from.z, to.z) - reach, settings);
+			const lunar::World::ChunkCoord maximum = lunar::World::ChunkAt(std::max(from.x, to.x) + reach, std::max(from.z, to.z) + reach, settings);
+
+			for (int32_t z = minimum.z; z <= maximum.z; z++)
+				for (int32_t x = minimum.x; x <= maximum.x; x++)
+					reached.insert({ x, z });
+		}
+
+		return { reached.begin(), reached.end() };
 	}
 
 	float RoadClass::halfWidth() const

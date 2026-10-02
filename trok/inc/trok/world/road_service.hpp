@@ -25,9 +25,9 @@ namespace trok
 		RoadService(const RoadService&)            = delete;
 		RoadService& operator=(const RoadService&) = delete;
 
-		void                               plan(std::span<const RoadLink> links, const RegionContext& context);
-		bool                               update();
-		std::shared_ptr<const RoadNetwork> getNetwork() const;
+		void                                plan(std::span<const RoadLink> links, const RegionContext& context);
+		std::vector<std::vector<glm::vec3>> update();
+		std::shared_ptr<const RoadNetwork>  getNetwork() const;
 
 	private:
 		struct LinkProgress
@@ -48,7 +48,8 @@ namespace trok
 		std::shared_ptr<RoadLayer>              layer;
 		std::vector<std::vector<glm::vec3>>     roads;
 		std::vector<lunar::JobHandle>           handles;
-		size_t                                  pendingLinks = 0;
-		bool                                    changed      = false;
+		size_t                                  pendingLinks   = 0;
+		size_t                                  publishedRoads = 0;
+		bool                                    changed        = false;
 	};
 }
