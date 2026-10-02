@@ -15,17 +15,17 @@ namespace trok
 {
 	struct BeaconSettings
 	{
-		float     halfWidth     = 8.f;
-		float     bottom        = -60.f;
-		float     top           = 900.f;
-		float     proxyDistance = 800.f;
-		glm::vec4 color         = { 1.f, 0.55f, 0.1f, 0.6f };
+		float     halfWidth             = 8.f;
+		float     depthBelowEye         = 200.f;
+		float     heightAboveEye        = 600.f;
+		float     constantWidthDistance = 400.f;
+		glm::vec4 color                 = { 1.f, 0.55f, 0.1f, 0.6f };
 	};
 
 	class DeliveryBeacon
 	{
 	public:
-		DeliveryBeacon(lunar::Scene& scene, lunar::Render::MeshRegistry& meshes, BeaconSettings settings = {});
+		DeliveryBeacon(lunar::Scene& scene, lunar::Render::MeshRegistry& meshes, lunar::Render::MaterialHandle material, BeaconSettings settings = {});
 		~DeliveryBeacon() noexcept;
 
 		DeliveryBeacon(const DeliveryBeacon&)            = delete;

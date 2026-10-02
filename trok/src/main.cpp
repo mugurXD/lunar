@@ -61,6 +61,8 @@ namespace
 	constexpr std::string_view        CHUNK_DIRECTORY      = "chunks";
 	constexpr std::string_view        TERRAIN_VERTEX       = "mesh.vert";
 	constexpr std::string_view        TERRAIN_FRAGMENT     = "terrain.frag";
+	constexpr std::string_view        BEACON_VERTEX        = "beacon.vert";
+	constexpr std::string_view        BEACON_FRAGMENT      = "beacon.frag";
 	constexpr std::string_view        BIOME_FILE_NAME      = "biomes.json";
 	constexpr std::string_view        ELEVATION_FILE_NAME  = "elevation.json";
 	constexpr std::string_view        TRUCK_FILE_NAME      = "trucks/box_truck.json";	
@@ -339,7 +341,8 @@ int main()
 	trok::RoadService                          roads(engine.getJobSystem(), terrain_generator, *road_class, { .seaLevel = elevation.seaLevel });
 	const trok::Towns                          towns(region_planner, world_settings);
 	trok::Deliveries                           deliveries({}, static_cast<uint64_t>(world_storage->getInfo().seed));
-	trok::DeliveryBeacon                       beacon(scene, engine.getRenderer().getMeshes());
+	const MaterialHandle                       beacon_material  = engine.getRenderer().createMaterial({ .vertexShader = BEACON_VERTEX, .fragmentShader = BEACON_FRAGMENT });
+	trok::DeliveryBeacon                       beacon(scene, engine.getRenderer().getMeshes(), beacon_material);
 	std::optional<trok::Hud>                   hud;
 
 	if (UI::UiLayer* ui = engine.getUi())

@@ -24,13 +24,13 @@ namespace trok
 		}
 	}
 
-	DeliveryBeacon::DeliveryBeacon(lunar::Scene& scene, lunar::Render::MeshRegistry& meshes, BeaconSettings settings)
+	DeliveryBeacon::DeliveryBeacon(lunar::Scene& scene, lunar::Render::MeshRegistry& meshes, lunar::Render::MaterialHandle material, BeaconSettings settings)
 		: meshes(meshes),
 		mesh(CreateBeaconMesh(meshes, settings.color)),
 		beacon(scene.createGameObject(BEACON_NAME)),
 		settings(std::move(settings))
 	{
-		beacon->addComponent<lunar::MeshRenderer>(mesh, false, true);
+		beacon->addComponent<lunar::MeshRenderer>(mesh, false, true, material);
 	}
 
 	DeliveryBeacon::~DeliveryBeacon() noexcept
@@ -46,12 +46,12 @@ namespace trok
 		if (!target.has_value())
 			return;
 
-		const glm::vec3 centre      = { static_cast<float>(target->x), (settings.bottom + settings.top) * HALF, static_cast<float>(target->y) };
-		const glm::vec3 half_extent = { settings.halfWidth, (settings.top - settings.bottom) * HALF, settings.halfWidth };
-		const float     distance    = glm::distance(glm::vec2(eye.x, eye.z), glm::vec2(centre.x, centre.z));
-		const float     scale       = std::min(1.f, settings.proxyDistance / distance);
+		const float bottom     = eye.y - settings.depthBelowEye;
+		const float top        = eye.y + settings.heightAboveEye;
+		const float distance   = glm::distance(glm::vec2(eye.x, eye.z), glm::vec2(*target));
+		const float half_width = settings.halfWidth * std::max(1.f, distance / settings.constantWidthDistance);
 
-		beacon->getTransform().position = eye + (centre - eye) * scale;
-		beacon->getTransform().scale    = half_extent * scale;
+		beacon->getTransform().position = { static_cast<float>(target->x), (bottom + top) * HALF, static_cast<float>(target->y) };
+		beacon->getTransform().scale    = { half_width, (top - bottom) * HALF, half_width };
 	}
 }
