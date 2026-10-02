@@ -3,13 +3,15 @@
 #include <lunar/core/time.hpp>
 #include <lunar/utils/collections.hpp>
 #include <array>
+#include <cstdint>
 #include <functional>
 
 namespace lunar
 {
 	class LUNAR_API Scene;
 
-	constexpr double DEFAULT_FIXED_TIMESTEP = 1.0 / 60.0;
+	constexpr double   DEFAULT_FIXED_TIMESTEP = 1.0 / 60.0;
+	constexpr uint32_t DEFAULT_MAX_FIXED_STEPS = 5;
 
 	enum class LUNAR_API SystemPhase : size_t
 	{
@@ -25,8 +27,8 @@ namespace lunar
 	class LUNAR_API SystemScheduler
 	{
 	public:
-		SystemScheduler(double fixed_timestep) noexcept;
-		~SystemScheduler()                     noexcept = default;
+		SystemScheduler(double fixed_timestep, uint32_t max_fixed_steps = DEFAULT_MAX_FIXED_STEPS) noexcept;
+		~SystemScheduler()                                                                     noexcept = default;
 
 		void addSystem(SystemPhase phase, System system);
 		void runFrame(Scene& scene, const FrameTime& frame_time);
@@ -36,6 +38,7 @@ namespace lunar
 
 		std::array<vector<System>, static_cast<size_t>(SystemPhase::eCount)> systems       = {};
 		double                                                                fixedTimestep = DEFAULT_FIXED_TIMESTEP;
+		uint32_t                                                              maxFixedSteps = DEFAULT_MAX_FIXED_STEPS;
 		double                                                                accumulator   = 0.0;
 	};
 }

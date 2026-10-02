@@ -1,10 +1,12 @@
 #include <lunar/core/system.hpp>
+#include <cmath>
 #include <utility>
 
 namespace lunar
 {
-	SystemScheduler::SystemScheduler(double fixed_timestep) noexcept
-		: fixedTimestep(fixed_timestep)
+	SystemScheduler::SystemScheduler(double fixed_timestep, uint32_t max_fixed_steps) noexcept
+		: fixedTimestep(fixed_timestep),
+		maxFixedSteps(max_fixed_steps)
 	{
 	}
 
@@ -20,11 +22,13 @@ namespace lunar
 		fixed_frame_time.fixedDeltaTime = static_cast<float>(fixedTimestep);
 
 		accumulator += frame_time.deltaTime;
-		while (accumulator >= fixedTimestep)
+		for (uint32_t step = 0; step < maxFixedSteps && accumulator >= fixedTimestep; step++)
 		{
 			runPhase(SystemPhase::eFixedUpdate, scene, fixed_frame_time);
 			accumulator -= fixedTimestep;
 		}
+
+		accumulator = std::fmod(accumulator, fixedTimestep);
 
 		FrameTime variable_frame_time      = frame_time;
 		variable_frame_time.fixedDeltaTime = static_cast<float>(fixedTimestep);
