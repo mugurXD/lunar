@@ -92,7 +92,6 @@ if(ON)
     target_sources(imgui PRIVATE
         "deps/imgui/imgui.h"
         "deps/imgui/imgui.cpp"
-        "deps/imgui/imgui_demo.cpp"
         "deps/imgui/imgui_draw.cpp"
         "deps/imgui/imgui_widgets.cpp"
         "deps/imgui/imgui_tables.cpp"
