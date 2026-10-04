@@ -5,8 +5,11 @@
 #include <lunar/utils/geometry.hpp>
 #include <lunar/world/terrain.hpp>
 
+#include <glm/gtc/constants.hpp>
+
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <numeric>
 #include <unordered_set>
 #include <utility>
@@ -19,6 +22,180 @@ namespace trok
 		constexpr float    CELL_SIZE           = 64.f;
 		constexpr float    HALF                = 0.5f;
 		constexpr float    MIN_MITRE_SCALE     = 0.5f;
+		constexpr float    NODE_MERGE_DISTANCE = 0.05f;
+		constexpr float    MAX_NODE_RADIUS     = 2.5f;
+		constexpr float    MIN_NODE_GAP        = 0.01f;
+		constexpr float    ARRIVAL_BLEND       = 30.f;
+		constexpr float    SMOOTHSTEP_PEAK     = 1.5f;
+		constexpr float    STUB_MARGIN         = 6.f;
+		constexpr float    STUB_SPACING        = 6.f;
+		constexpr float    CORNER_MERGE        = 0.01f;
+
+		float AngleOf(const glm::vec2& direction)
+		{
+			return std::atan2(direction.y, direction.x);
+		}
+
+		float GapBetween(float from, float to)
+		{
+			const float gap = to - from;
+			return gap > 0.f ? gap : gap + glm::two_pi<float>();
+		}
+
+		float MeetingDistance(float gap, float width)
+		{
+			if (gap >= glm::pi<float>() - MIN_NODE_GAP)
+				return 0.f;
+
+			return std::min(width / std::tan(std::max(gap, MIN_NODE_GAP) * HALF), width * MAX_NODE_RADIUS);
+		}
+
+		std::vector<float> TrimsFor(std::span<const glm::vec2> directions, float width)
+		{
+			std::vector<size_t> order(directions.size());
+			std::iota(order.begin(), order.end(), size_t(0));
+			std::ranges::sort(order, {}, [&](size_t index) { return AngleOf(directions[index]); });
+
+			std::vector<float> trims(directions.size(), width);
+			for (size_t index = 0; index < order.size(); index++)
+			{
+				const size_t current = order[index];
+				const size_t next    = order[(index + 1) % order.size()];
+				const float  meeting = MeetingDistance(GapBetween(AngleOf(directions[current]), AngleOf(directions[next])), width);
+
+				trims[current] = std::max(trims[current], meeting);
+				trims[next]    = std::max(trims[next], meeting);
+			}
+
+			return trims;
+		}
+
+		glm::vec3 PointBeforeEnd(std::span<const glm::vec3> line, float distance)
+		{
+			float travelled = 0.f;
+			for (size_t point = line.size() - 1; point > 0; point--)
+			{
+				const float step = glm::distance(line[point], line[point - 1]);
+				if (travelled + step >= distance)
+					return glm::mix(line[point], line[point - 1], (distance - travelled) / step);
+
+				travelled += step;
+			}
+
+			return line.front();
+		}
+
+		float BlendLength(float rise, const RoadClass& road_class)
+		{
+			return std::max(ARRIVAL_BLEND, SMOOTHSTEP_PEAK * std::abs(rise) / road_class.maxGrade);
+		}
+
+		void BlendTowards(std::vector<glm::vec3>& line, float rise, float length)
+		{
+			float travelled = 0.f;
+			for (size_t point = line.size() - 1; point-- > 0;)
+			{
+				travelled += glm::distance(line[point], line[point + 1]);
+				if (travelled >= length)
+					break;
+
+				line[point].y += rise * (1.f - glm::smoothstep(0.f, length, travelled));
+			}
+		}
+
+		void LevelEnd(std::vector<glm::vec3>& line, const glm::vec3& node, float stub, const RoadClass& road_class)
+		{
+			std::optional<glm::vec3> anchor;
+			float                    travelled = 0.f;
+			while (line.size() > 1 && !anchor.has_value())
+			{
+				const glm::vec3 inner = line.back();
+				line.pop_back();
+
+				const float step = glm::distance(inner, line.back());
+				if (travelled + step >= stub)
+					anchor = glm::mix(inner, line.back(), (stub - travelled) / step);
+
+				travelled += step;
+			}
+
+			if (!anchor.has_value())
+			{
+				anchor = line.front();
+				line.clear();
+			}
+
+			const float rise = node.y - anchor->y;
+			line.push_back(*anchor);
+			BlendTowards(line, rise, BlendLength(rise, road_class));
+			line.back().y = node.y;
+
+			const glm::vec3 level  = line.back();
+			const int       pieces = std::max(1, static_cast<int>(std::ceil(glm::distance(level, node) / STUB_SPACING)));
+			for (int piece = 1; piece < pieces; piece++)
+				line.push_back(glm::mix(level, node, static_cast<float>(piece) / static_cast<float>(pieces)));
+
+			line.push_back(node);
+		}
+
+		std::vector<RoadNode> FindNodes(const std::vector<std::vector<glm::vec3>>& roads)
+		{
+			std::vector<RoadNode> nodes;
+			for (uint32_t road = 0; road < roads.size(); road++)
+			{
+				for (const bool at_start : { true, false })
+				{
+					const glm::vec3& end   = at_start ? roads[road].front() : roads[road].back();
+					const auto       found = std::ranges::find_if(nodes, [&](const RoadNode& node) { return glm::distance(node.position, end) <= NODE_MERGE_DISTANCE; });
+					if (found != nodes.end())
+						found->ends.push_back({ .road = road, .atStart = at_start });
+					else
+						nodes.push_back({ .position = end, .ends = { { .road = road, .atStart = at_start } } });
+				}
+			}
+
+			return nodes;
+		}
+
+		std::vector<std::vector<glm::vec3>> LevelJunctions(std::vector<std::vector<glm::vec3>> roads, const RoadClass& road_class)
+		{
+			const float width = road_class.halfWidth();
+
+			for (const RoadNode& node : FindNodes(roads))
+			{
+				if (node.ends.size() < 2)
+					continue;
+
+				const auto toward_node = [&](const RoadEnd& end) {
+					std::vector<glm::vec3> line = roads[end.road];
+					if (end.atStart)
+						std::ranges::reverse(line);
+
+					return line;
+				};
+
+				std::vector<glm::vec2> directions;
+				for (const RoadEnd& end : node.ends)
+				{
+					const glm::vec3 probe = PointBeforeEnd(toward_node(end), width);
+					directions.push_back(glm::normalize(glm::vec2(probe.x - node.position.x, probe.z - node.position.z)));
+				}
+
+				const std::vector<float> trims = TrimsFor(directions, width);
+				for (size_t index = 0; index < node.ends.size(); index++)
+				{
+					const RoadEnd&         end  = node.ends[index];
+					std::vector<glm::vec3> line = toward_node(end);
+					LevelEnd(line, node.position, trims[index] + STUB_MARGIN, road_class);
+					if (end.atStart)
+						std::ranges::reverse(line);
+
+					roads[end.road] = std::move(line);
+				}
+			}
+
+			return roads;
+		}
 
 		lunar::World::GridCoord<struct RoadCellTag> CellAt(float x, float z)
 		{
@@ -127,8 +304,9 @@ namespace trok
 			}
 		}
 
-		for (const RoadJunction& junction : network.getJunctions())
-			unite(junction.road, junction.joins);
+		for (const RoadNode& node : network.getNodes())
+			for (const RoadEnd& end : node.ends)
+				unite(end.road, node.ends.front().road);
 
 		RoadConnectivity connectivity = { .roadGroups = std::vector<size_t>(road_count), .townGroups = std::vector<std::optional<size_t>>(town_count) };
 		for (size_t road = 0; road < road_count; road++)
@@ -143,7 +321,8 @@ namespace trok
 
 	std::vector<lunar::World::ChunkCoord> ChunksReachedBy(std::span<const glm::vec3> road, const RoadClass& road_class, const lunar::World::WorldSettings& settings)
 	{
-		const float reach = GradingReach(road_class) + settings.vertexSpacing * lunar::World::HEIGHTMAP_BORDER;
+		const float stub  = road_class.halfWidth() * MAX_NODE_RADIUS + STUB_MARGIN;
+		const float reach = GradingReach(road_class) + stub + std::max(ARRIVAL_BLEND, SMOOTHSTEP_PEAK * stub) + settings.vertexSpacing * lunar::World::HEIGHTMAP_BORDER;
 
 		std::unordered_set<lunar::World::ChunkCoord, lunar::World::GridCoordHash> reached;
 		for (size_t point = 1; point < road.size(); point++)
@@ -243,10 +422,11 @@ namespace trok
 	{
 	}
 
-	RoadNetwork::RoadNetwork(std::vector<std::vector<glm::vec3>> centrelines, RoadClass road_class, std::vector<RoadJunction> junctions) noexcept
-		: junctions(std::move(junctions)),
-		roadClass(std::move(road_class))
+	RoadNetwork::RoadNetwork(std::vector<std::vector<glm::vec3>> centrelines, RoadClass road_class) noexcept
+		: roadClass(std::move(road_class))
 	{
+		centrelines = LevelJunctions(std::move(centrelines), roadClass);
+
 		for (const std::vector<glm::vec3>& road : centrelines)
 		{
 			roadStarts.push_back(static_cast<uint32_t>(points.size()));
@@ -276,6 +456,77 @@ namespace trok
 				for (int32_t x = minimum.x; x <= maximum.x; x++)
 					cells[{ x, z }].push_back(segment);
 		}
+
+		nodes = FindNodes(centrelines);
+		roadNodes.resize(centrelines.size());
+		for (uint32_t node = 0; node < nodes.size(); node++)
+			for (const RoadEnd& end : nodes[node].ends)
+				roadNodes[end.road][end.atStart ? 0 : 1] = node;
+
+		for (RoadNode& node : nodes)
+			computeTrims(node);
+	}
+
+	glm::vec2 RoadNetwork::directionOf(const RoadNode& node, const RoadEnd& end) const
+	{
+		const float     length = lengthOf(end.road);
+		const float     probe  = std::min(roadClass.halfWidth(), length);
+		const glm::vec3 toward = pointAlong(end.road, end.atStart ? probe : length - probe);
+		return glm::normalize(glm::vec2(toward.x - node.position.x, toward.z - node.position.z));
+	}
+
+	void RoadNetwork::computeTrims(RoadNode& node) const
+	{
+		if (node.ends.size() < 2)
+			return;
+
+		std::ranges::sort(node.ends, {}, [&](const RoadEnd& end) { return AngleOf(directionOf(node, end)); });
+
+		std::vector<glm::vec2> directions;
+		for (const RoadEnd& end : node.ends)
+			directions.push_back(directionOf(node, end));
+
+		const std::vector<float> trims = TrimsFor(directions, roadClass.halfWidth());
+		for (size_t index = 0; index < node.ends.size(); index++)
+			node.ends[index].trim = trims[index];
+
+		node.radius = std::ranges::max(node.ends, {}, &RoadEnd::trim).trim;
+	}
+
+	std::vector<NodeCorner> RoadNetwork::nodeOutline(size_t index) const
+	{
+		const RoadNode& node   = nodes[index];
+		const float     width  = roadClass.halfWidth();
+		const glm::vec2 centre = { node.position.x, node.position.z };
+
+		std::vector<NodeCorner> outline;
+		for (size_t end_index = 0; end_index < node.ends.size(); end_index++)
+		{
+			const RoadEnd&  end      = node.ends[end_index];
+			const RoadEnd&  next     = node.ends[(end_index + 1) % node.ends.size()];
+			const glm::vec2 forward  = directionOf(node, end);
+			const float     distance = end.atStart ? end.trim : lengthOf(end.road) - end.trim;
+			const glm::vec3 cut      = pointAlong(end.road, distance);
+			const glm::vec3 side     = sideAlong(end.road, distance);
+			const bool      ccw_side = end.atStart;
+
+			outline.push_back({ ccw_side ? cut - side : cut + side, true });
+			outline.push_back({ ccw_side ? cut + side : cut - side, false });
+
+			const float meeting = MeetingDistance(GapBetween(AngleOf(forward), AngleOf(directionOf(node, next))), width);
+			if (meeting > 0.f)
+			{
+				const glm::vec2 corner = centre + forward * meeting + glm::vec2(-forward.y, forward.x) * width;
+				outline.push_back({ { corner.x, node.position.y, corner.y }, false });
+			}
+		}
+
+		std::vector<NodeCorner> merged;
+		for (size_t corner = 0; corner < outline.size(); corner++)
+			if (glm::distance(outline[corner].position, outline[(corner + 1) % outline.size()].position) > CORNER_MERGE)
+				merged.push_back(outline[corner]);
+
+		return merged;
 	}
 
 	bool RoadNetwork::isRoadStart(size_t point) const
@@ -303,9 +554,71 @@ namespace trok
 		return roadOf[point];
 	}
 
-	std::span<const RoadJunction> RoadNetwork::getJunctions() const
+	float RoadNetwork::lengthOf(size_t road) const
 	{
-		return junctions;
+		return distances[roadStarts[road + 1] - 1];
+	}
+
+	std::pair<size_t, float> RoadNetwork::locate(size_t road, float distance) const
+	{
+		const size_t first = roadStarts[road];
+		const size_t last  = roadStarts[road + 1] - 1;
+		if (distance <= 0.f)
+			return { first, 0.f };
+
+		if (distance >= distances[last])
+			return { last - 1, 1.f };
+
+		const auto   next     = std::upper_bound(distances.begin() + static_cast<std::ptrdiff_t>(first), distances.begin() + static_cast<std::ptrdiff_t>(last) + 1, distance);
+		const size_t previous = static_cast<size_t>(next - distances.begin()) - 1;
+		return { previous, (distance - distances[previous]) / (distances[previous + 1] - distances[previous]) };
+	}
+
+	glm::vec3 RoadNetwork::pointAlong(size_t road, float distance) const
+	{
+		const auto [previous, amount] = locate(road, distance);
+		return amount >= 1.f ? points[previous + 1] : glm::mix(points[previous], points[previous + 1], amount);
+	}
+
+	glm::vec3 RoadNetwork::sideAlong(size_t road, float distance) const
+	{
+		const auto [previous, amount] = locate(road, distance);
+		return amount >= 1.f ? sideAt(previous + 1) : glm::mix(sideAt(previous), sideAt(previous + 1), amount);
+	}
+
+	float RoadNetwork::trimAt(size_t road, bool at_start) const
+	{
+		const RoadNode& node = nodes[roadNodes[road][at_start ? 0 : 1]];
+		if (node.ends.size() < 2)
+			return 0.f;
+
+		return std::ranges::find_if(node.ends, [&](const RoadEnd& end) { return end.road == road && end.atStart == at_start; })->trim;
+	}
+
+	std::span<const RoadNode> RoadNetwork::getNodes() const
+	{
+		return nodes;
+	}
+
+	std::vector<uint32_t> RoadNetwork::nodesWithin(const glm::vec2& minimum, const glm::vec2& maximum) const
+	{
+		std::vector<uint32_t> found;
+		for (uint32_t node = 0; node < nodes.size(); node++)
+		{
+			const glm::vec3& position = nodes[node].position;
+			if (nodes[node].ends.size() > 1 && position.x >= minimum.x && position.x < maximum.x && position.z >= minimum.y && position.z < maximum.y)
+				found.push_back(node);
+		}
+
+		return found;
+	}
+
+	std::vector<glm::vec3> ArriveAt(std::vector<glm::vec3> road, const glm::vec3& node, const RoadClass& road_class)
+	{
+		const float rise = node.y - road.back().y;
+		road.back()      = node;
+		BlendTowards(road, rise, BlendLength(rise, road_class));
+		return road;
 	}
 
 	std::vector<lunar::World::ShapeDeclaration> RoadNetwork::shapesReaching(const glm::vec2& minimum, const glm::vec2& maximum) const
@@ -329,6 +642,14 @@ namespace trok
 
 			shapes.back().points.push_back(ShapePointOf(to, core));
 			previous = segment;
+		}
+
+		for (const RoadNode& node : nodes)
+		{
+			const float node_core  = std::hypot(node.radius, roadClass.halfWidth()) + roadClass.gradingMargin;
+			const float node_reach = node_core + roadClass.maxCutDepth * roadClass.cutSpread;
+			if (node.ends.size() > 1 && Reaches(node.position, node.position, minimum, maximum, node_reach))
+				shapes.push_back({ .points = { ShapePointOf(node.position, node_core), ShapePointOf(node.position, node_core) }, .spread = roadClass.cutSpread, .reach = node_reach });
 		}
 
 		return shapes;

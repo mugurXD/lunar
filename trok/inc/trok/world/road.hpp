@@ -6,8 +6,10 @@
 #include <glm/glm.hpp>
 #include <nlohmann/json.hpp>
 
+#include <array>
 #include <cstdint>
 #include <functional>
+#include <utility>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -79,18 +81,31 @@ namespace trok
 		glm::vec2 direction = {};
 	};
 
-	struct RoadJunction
+	struct RoadEnd
 	{
-		uint32_t road  = 0;
-		uint32_t joins = 0;
-		uint32_t point = 0;
+		uint32_t road    = 0;
+		bool     atStart = false;
+		float    trim    = 0.f;
+	};
+
+	struct NodeCorner
+	{
+		glm::vec3 position  = {};
+		bool      opensRoad = false;
+	};
+
+	struct RoadNode
+	{
+		glm::vec3            position = {};
+		std::vector<RoadEnd> ends     = {};
+		float                radius   = 0.f;
 	};
 
 	class RoadNetwork
 	{
 	public:
-		RoadNetwork(std::vector<glm::vec3> centreline, RoadClass road_class) noexcept;
-		RoadNetwork(std::vector<std::vector<glm::vec3>> centrelines, RoadClass road_class, std::vector<RoadJunction> junctions = {}) noexcept;
+		RoadNetwork(std::vector<glm::vec3> centreline, RoadClass road_class)                noexcept;
+		RoadNetwork(std::vector<std::vector<glm::vec3>> centrelines, RoadClass road_class) noexcept;
 
 		std::vector<lunar::World::ShapeDeclaration> shapesReaching(const glm::vec2& minimum, const glm::vec2& maximum) const;
 		std::vector<uint32_t>      segmentsWithin(const glm::vec2& minimum, const glm::vec2& maximum) const;
@@ -101,7 +116,13 @@ namespace trok
 		std::span<const glm::vec3> getRoad(size_t road)                                   const;
 		size_t                     getRoadCount()                                         const;
 		size_t                     getRoadAt(size_t point)                                const;
-		std::span<const RoadJunction> getJunctions()                                      const;
+		float                      lengthOf(size_t road)                                  const;
+		glm::vec3                  pointAlong(size_t road, float distance)                const;
+		glm::vec3                  sideAlong(size_t road, float distance)                 const;
+		float                      trimAt(size_t road, bool at_start)                     const;
+		std::span<const RoadNode>  getNodes()                                             const;
+		std::vector<uint32_t>      nodesWithin(const glm::vec2& minimum, const glm::vec2& maximum) const;
+		std::vector<NodeCorner>    nodeOutline(size_t node)                               const;
 		const RoadClass&           getRoadClass()                                         const;
 
 	private:
@@ -110,12 +131,16 @@ namespace trok
 		std::vector<uint32_t> candidatesWithin(const glm::vec2& minimum, const glm::vec2& maximum) const;
 		bool                  isRoadStart(size_t point)                                         const;
 		bool                  isRoadEnd(size_t point)                                           const;
+		std::pair<size_t, float> locate(size_t road, float distance)                           const;
+		glm::vec2             directionOf(const RoadNode& node, const RoadEnd& end)             const;
+		void                  computeTrims(RoadNode& node)                                      const;
 
 		std::vector<glm::vec3>                                            points;
 		std::vector<float>                                                distances;
 		std::vector<uint32_t>                                             roadOf;
 		std::vector<uint32_t>                                             roadStarts;
-		std::vector<RoadJunction>                                         junctions;
+		std::vector<RoadNode>                                             nodes;
+		std::vector<std::array<uint32_t, 2>>                              roadNodes;
 		RoadClass                                                         roadClass;
 		std::unordered_map<Cell, std::vector<uint32_t>, lunar::World::GridCoordHash> cells;
 	};
@@ -133,6 +158,8 @@ namespace trok
 	};
 
 	using TownLocator = std::function<std::optional<size_t>(const glm::vec3& point)>;
+
+	std::vector<glm::vec3> ArriveAt(std::vector<glm::vec3> road, const glm::vec3& node, const RoadClass& road_class);
 
 	RoadConnectivity ConnectRoads(const RoadNetwork& network, size_t town_count, const TownLocator& town_at);
 

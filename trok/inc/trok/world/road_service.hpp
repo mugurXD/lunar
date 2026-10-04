@@ -49,18 +49,25 @@ namespace trok
 			RegionContext context;
 		};
 
+		struct JoinPoint
+		{
+			glm::vec3               position   = {};
+			std::optional<uint32_t> splitRoad  = std::nullopt;
+			uint32_t                splitPoint = 0;
+		};
+
 		struct PlannedLink
 		{
-			RoadLink                    road      = {};
-			std::optional<RoadJunction> junction  = std::nullopt;
-			std::optional<float>        endHeight = std::nullopt;
+			RoadLink                   road    = {};
+			std::optional<RoadArrival> arrival = std::nullopt;
+			std::optional<JoinPoint>   join    = std::nullopt;
 		};
 
 		bool                       isKnown(const TownLink& link) const;
 		std::optional<PlannedLink> routeOf(const RoadLink& link) const;
 		void                       startNearest(const glm::vec2& focus);
 		void                       planLink(const PlannedLink& link, const HeightSampler& sampler);
-		void                       planSegments(std::vector<RoadSegment> segments, const HeightSampler& sampler, std::optional<RoadJunction> junction);
+		void                       planSegments(std::vector<RoadSegment> segments, const HeightSampler& sampler, std::optional<JoinPoint> join);
 		void finishLink();
 
 		lunar::JobSystem&                       jobs;
@@ -69,7 +76,6 @@ namespace trok
 		RoadPlannerSettings                     settings;
 		std::shared_ptr<RoadLayer>              layer;
 		std::vector<std::vector<glm::vec3>>     roads;
-		std::vector<RoadJunction>               junctions;
 		std::vector<lunar::JobHandle>           handles;
 		std::vector<QueuedLink>                 queue;
 		std::vector<TownLink>                   known;

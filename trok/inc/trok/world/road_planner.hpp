@@ -31,9 +31,16 @@ namespace trok
 
 	struct RoadWaypoint
 	{
-		glm::vec2          position = {};
-		float              height   = 0.f;
-		std::optional<int> heading  = std::nullopt;
+		glm::vec2                position = {};
+		float                    height   = 0.f;
+		std::optional<int>       heading  = std::nullopt;
+		std::optional<glm::vec2> crossing = std::nullopt;
+	};
+
+	struct RoadArrival
+	{
+		float                    height   = 0.f;
+		std::optional<glm::vec2> crossing = std::nullopt;
 	};
 
 	struct RoadSegment
@@ -47,8 +54,8 @@ namespace trok
 	                                                  const glm::vec2&           end,
 	                                                  const RoadClass&           road_class,
 	                                                  const HeightSampler&       sample_height,
-	                                                  const RoadPlannerSettings& settings   = {},
-	                                                  std::optional<float>       end_height = std::nullopt);
+	                                                  const RoadPlannerSettings& settings = {},
+	                                                  std::optional<RoadArrival> arrival  = std::nullopt);
 
 	std::optional<std::vector<glm::vec3>> PlanSegment(const RoadSegment&         segment,
 	                                                  const RoadClass&           road_class,

@@ -21,6 +21,7 @@ namespace trok
 		constexpr size_t HEIGHT_OPTIONS  = 5;
 		constexpr float  GOAL_TOLERANCE  = 2.f;
 		constexpr float  STRAIGHT_COSINE = 0.9998f;
+		constexpr float  MAX_JOIN_COSINE = 0.7071f;
 		constexpr float  HALF            = 0.5f;
 
 		using CrossSection = std::array<float, std::size(ACROSS)>;
@@ -211,7 +212,8 @@ namespace trok
 
 			return remaining >= step * HALF && remaining <= step * GOAL_TOLERANCE &&
 			       glm::dot(heading, (end.position - node.position) / remaining) >= cosine &&
-			       node.heading == end.heading.value_or(node.heading);
+			       node.heading == end.heading.value_or(node.heading) &&
+			       (!end.crossing.has_value() || std::abs(glm::dot(heading, *end.crossing)) <= MAX_JOIN_COSINE);
 		}
 
 		bool IsStraight(const glm::vec3& previous, const glm::vec3& point, const glm::vec3& next)
@@ -391,10 +393,10 @@ namespace trok
 	                                                  const RoadClass&           road_class,
 	                                                  const HeightSampler&       sample_height,
 	                                                  const RoadPlannerSettings& settings,
-	                                                  std::optional<float>       end_height)
+	                                                  std::optional<RoadArrival> arrival)
 	{
 		const RoadWaypoint                     origin   = { start, sample_height(start.x, start.y) };
-		const RoadWaypoint                     target   = { end, end_height.value_or(sample_height(end.x, end.y)) };
+		const RoadWaypoint                     target   = { end, arrival.has_value() ? arrival->height : sample_height(end.x, end.y), std::nullopt, arrival.has_value() ? arrival->crossing : std::nullopt };
 		const float                            distance = glm::distance(start, end);
 		const float                            step     = CurveStep(road_class.minCurveRadius, settings.headings) * settings.coarseScale;
 		const std::optional<std::vector<Node>> route    = distance < step ? std::nullopt
@@ -418,6 +420,8 @@ namespace trok
 			const size_t to   = waypoints[index + 1];
 			segments.push_back({ WaypointAt(*route, from), WaypointAt(*route, to), Points(std::span(*route).subspan(from, to - from + 1)) });
 		}
+
+		segments.back().to.crossing = target.crossing;
 
 		return segments;
 	}

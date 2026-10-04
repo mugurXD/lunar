@@ -36,6 +36,29 @@ namespace trok
 				mesh.indices.push_back(first + index);
 		}
 
+		void AppendTriangle(lunar::Render::MeshData& mesh, glm::vec3 first, glm::vec3 second, glm::vec3 third, bool facing_up, const glm::vec3& origin, const glm::vec3& color)
+		{
+			glm::vec3 facing = glm::cross(second - first, third - first);
+			if ((facing.y > 0.f) != facing_up)
+			{
+				std::swap(second, third);
+				facing = -facing;
+			}
+
+			const glm::vec3 normal = glm::normalize(facing);
+			for (const glm::vec3& corner : { first, second, third })
+			{
+				mesh.indices.push_back(static_cast<uint32_t>(mesh.vertices.size()));
+				mesh.vertices.push_back({ .position = corner - origin, .normal = normal, .color = glm::vec4(color, 1.f) });
+			}
+		}
+
+		void AppendDoubleSided(lunar::Render::MeshData& mesh, const std::array<glm::vec3, QUAD_CORNERS>& corners, const glm::vec3& origin, const glm::vec3& color)
+		{
+			AppendQuad(mesh, corners, origin, color);
+			AppendQuad(mesh, { corners[1], corners[0], corners[3], corners[2] }, origin, color);
+		}
+
 		bool IsBridge(const lunar::World::HeightSampler& ground, const RoadClass& road_class, const glm::vec3& centre)
 		{
 			return centre.y - ground(centre.x, centre.z) > road_class.bridgeHeight;
@@ -159,6 +182,35 @@ namespace trok
 			return network.closestPoint({ point.x, point.z }, network.getRoadClass().halfWidth() + clearance, own_road).has_value();
 		}
 
+		void AppendNode(lunar::Render::MeshData& mesh, const RoadNetwork& network, size_t node_index, const lunar::World::HeightSampler& ground, const glm::vec3& origin)
+		{
+			const RoadClass&              road_class = network.getRoadClass();
+			const RoadNode&               node       = network.getNodes()[node_index];
+			const std::vector<NodeCorner> outline    = network.nodeOutline(node_index);
+			const glm::vec3               lift       = { 0.f, road_class.surfaceOffset, 0.f };
+			const glm::vec3               depth      = { 0.f, road_class.edgeDepth, 0.f };
+			const glm::vec3               centre     = node.position + lift;
+			const bool                    bridge     = IsBridge(ground, road_class, node.position);
+
+			for (size_t index = 0; index < outline.size(); index++)
+			{
+				const NodeCorner& from     = outline[index];
+				const NodeCorner& to       = outline[(index + 1) % outline.size()];
+				const glm::vec3   from_top = from.position + lift;
+				const glm::vec3   to_top   = to.position + lift;
+
+				AppendTriangle(mesh, centre, from_top, to_top, true, origin, road_class.color);
+				if (bridge)
+					AppendTriangle(mesh, centre - depth, from_top - depth, to_top - depth, false, origin, road_class.color);
+
+				if (!from.opensRoad)
+					AppendDoubleSided(mesh, { Underside(ground, road_class, from_top, bridge), from_top, Underside(ground, road_class, to_top, bridge), to_top }, origin, road_class.color);
+			}
+
+			if (bridge)
+				AppendColumn(mesh, centre - depth, ground(centre.x, centre.z) - GROUND_SINK, glm::vec3(1.f, 0.f, 0.f), road_class.pillarWidth, origin, road_class.color);
+		}
+
 		bool IsElevated(const lunar::World::HeightSampler& ground, const RoadClass& road_class, const glm::vec3& surface, const glm::vec3& side, float direction)
 		{
 			const glm::vec3 edge = surface + side * (direction * road_class.halfWidth());
@@ -256,7 +308,6 @@ namespace trok
 		const glm::vec2                  minimum    = { origin.x, origin.z };
 		const glm::vec2                  maximum    = minimum + glm::vec2(settings.getChunkSize());
 		const RoadClass&                 road_class = network->getRoadClass();
-		const std::span<const glm::vec3> centreline = network->getCentreline();
 		const glm::vec3                  lift       = { 0.f, road_class.surfaceOffset, 0.f };
 
 		lunar::Render::MeshData mesh;
@@ -265,16 +316,22 @@ namespace trok
 		lunar::Render::MeshData posts;
 		for (const uint32_t segment : network->segmentsWithin(minimum, maximum))
 		{
-			const glm::vec3& from        = centreline[segment];
-			const glm::vec3& to          = centreline[segment + 1];
-			const bool       from_bridge = IsBridge(ground, road_class, from);
-			const bool       to_bridge   = IsBridge(ground, road_class, to);
-			const glm::vec3  from_side   = network->sideAt(segment);
-			const glm::vec3  to_side     = network->sideAt(segment + 1);
-			const glm::vec3  from_left   = from + lift + from_side;
-			const glm::vec3  from_right  = from + lift - from_side;
-			const glm::vec3  to_left     = to + lift + to_side;
-			const glm::vec3  to_right    = to + lift - to_side;
+			const size_t road  = network->getRoadAt(segment);
+			const float  start = std::max(network->distanceAt(segment), network->trimAt(road, true));
+			const float  end   = std::min(network->distanceAt(segment + 1), network->lengthOf(road) - network->trimAt(road, false));
+			if (start >= end)
+				continue;
+
+			const glm::vec3 from        = network->pointAlong(road, start);
+			const glm::vec3 to          = network->pointAlong(road, end);
+			const bool      from_bridge = IsBridge(ground, road_class, from);
+			const bool      to_bridge   = IsBridge(ground, road_class, to);
+			const glm::vec3 from_side   = network->sideAlong(road, start);
+			const glm::vec3 to_side     = network->sideAlong(road, end);
+			const glm::vec3 from_left   = from + lift + from_side;
+			const glm::vec3 from_right  = from + lift - from_side;
+			const glm::vec3 to_left     = to + lift + to_side;
+			const glm::vec3 to_right    = to + lift - to_side;
 
 			const glm::vec3 from_left_base  = Underside(ground, road_class, from_left, from_bridge);
 			const glm::vec3 from_right_base = Underside(ground, road_class, from_right, from_bridge);
@@ -292,15 +349,15 @@ namespace trok
 				.to       = to + lift,
 				.fromSide = from_side / width,
 				.toSide   = to_side / width,
-				.start    = network->distanceAt(segment),
-				.end      = network->distanceAt(segment + 1)
+				.start    = start,
+				.end      = end
 			};
 			const glm::vec3 along = glm::normalize(glm::vec3(to.x - from.x, 0.f, to.z - from.z));
 
-			AppendMarkings(markings, frame, road_class, origin);
 
-			const size_t own_road  = network->getRoadAt(segment);
-			const auto   clear_of = [&](const glm::vec3& point, float clearance) { return !InsideOtherRoad(*network, point, own_road, clearance); };
+			const auto clear_of = [&](const glm::vec3& point, float clearance) { return !InsideOtherRoad(*network, point, road, clearance); };
+
+			AppendMarkings(markings, frame, road_class, origin);
 
 			for (const float side : { LEFT, RIGHT })
 			{
@@ -334,6 +391,9 @@ namespace trok
 					AppendColumn(mesh, centre + lift - glm::vec3(0.f, road_class.edgeDepth, 0.f), ground(centre.x, centre.z) - GROUND_SINK, along, road_class.pillarWidth, origin, road_class.color);
 			});
 		}
+
+		for (const uint32_t node : network->nodesWithin(minimum, maximum))
+			AppendNode(mesh, *network, node, ground, origin);
 
 		output.push_back({ .mesh = std::move(mesh), .colliderCategory = lunar::Physics::ROAD_CATEGORY });
 

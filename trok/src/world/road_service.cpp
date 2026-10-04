@@ -14,6 +14,16 @@ namespace trok
 	{
 		constexpr float HALF                 = 0.5f;
 		constexpr float TOWN_MATCH_DISTANCE  = 1.f;
+		constexpr float NODE_SNAP_SCALE      = 3.f;
+
+		float PathLength(std::span<const glm::vec3> points)
+		{
+			float length = 0.f;
+			for (size_t point = 1; point < points.size(); point++)
+				length += glm::distance(points[point - 1], points[point]);
+
+			return length;
+		}
 
 		HeightSampler BaseHeight(std::shared_ptr<const TerrainGenerator> generator, RegionContext context)
 		{
@@ -74,7 +84,7 @@ namespace trok
 			return {};
 
 		changed = false;
-		layer->set(std::make_shared<const RoadNetwork>(roads, roadClass, junctions));
+		layer->set(std::make_shared<const RoadNetwork>(roads, roadClass));
 
 		std::vector<std::vector<glm::vec3>> published(roads.begin() + static_cast<std::ptrdiff_t>(publishedRoads), roads.end());
 		publishedRoads = roads.size();
@@ -99,7 +109,7 @@ namespace trok
 				if (std::ranges::find(towns, centre) == towns.end())
 					towns.push_back(centre);
 
-		const RoadNetwork      network      = RoadNetwork(roads, roadClass, junctions);
+		const RoadNetwork      network      = RoadNetwork(roads, roadClass);
 		const RoadConnectivity connectivity = ConnectRoads(network, towns.size(), [&](const glm::vec3& point) -> std::optional<size_t> {
 			const auto found = std::ranges::find_if(towns, [&](const glm::vec2& centre) { return glm::distance(centre, glm::vec2(point.x, point.z)) <= TOWN_MATCH_DISTANCE; });
 			return found == towns.end() ? std::nullopt : std::optional<size_t>(static_cast<size_t>(found - towns.begin()));
@@ -121,28 +131,50 @@ namespace trok
 		const glm::vec2 origin      = leaves_from ? link.from : link.to;
 		const size_t    target      = leaves_from ? *to_group : *from_group;
 
-		std::optional<RoadJunction> junction;
-		glm::vec3                   meeting  = {};
-		float                       shortest = std::numeric_limits<float>::max();
-		for (size_t road = 0; road < network.getRoadCount(); road++)
+		const float              snap     = roadClass.halfWidth() * NODE_SNAP_SCALE;
+		std::optional<JoinPoint> join;
+		float                    shortest = std::numeric_limits<float>::max();
+		for (size_t road = 0; road < roads.size(); road++)
 		{
 			if (connectivity.roadGroups[road] != target)
 				continue;
 
-			const std::span<const glm::vec3> points = network.getRoad(road);
+			const std::vector<glm::vec3>& points    = roads[road];
+			const float                   length    = PathLength(points);
+			float                         travelled = 0.f;
 			for (size_t point = 0; point < points.size(); point++)
 			{
+				travelled += point == 0 ? 0.f : glm::distance(points[point - 1], points[point]);
+
 				const float distance = glm::distance(origin, glm::vec2(points[point].x, points[point].z));
 				if (distance >= shortest)
 					continue;
 
 				shortest = distance;
-				meeting  = points[point];
-				junction = RoadJunction { .joins = static_cast<uint32_t>(road), .point = static_cast<uint32_t>(point) };
+				if (travelled < snap)
+					join = JoinPoint { .position = points.front() };
+				else if (length - travelled < snap)
+					join = JoinPoint { .position = points.back() };
+				else
+					join = JoinPoint { .position = points[point], .splitRoad = static_cast<uint32_t>(road), .splitPoint = static_cast<uint32_t>(point) };
 			}
 		}
 
-		return PlannedLink { .road = { origin, glm::vec2(meeting.x, meeting.z) }, .junction = junction, .endHeight = meeting.y };
+		std::optional<glm::vec2> crossing;
+		if (join->splitRoad.has_value())
+		{
+			const std::vector<glm::vec3>& trunk = roads[*join->splitRoad];
+			const glm::vec3&                 ahead = trunk[join->splitPoint + 1];
+			const glm::vec3&                 back  = trunk[join->splitPoint - 1];
+			crossing = glm::normalize(glm::vec2(ahead.x - back.x, ahead.z - back.z));
+		}
+
+		return PlannedLink
+		{
+			.road    = { origin, glm::vec2(join->position.x, join->position.z) },
+			.arrival = RoadArrival { .height = join->position.y, .crossing = crossing },
+			.join    = join
+		};
 	}
 
 	void RoadService::startNearest(const glm::vec2& focus)
@@ -169,17 +201,17 @@ namespace trok
 	{
 		handles.push_back(jobs.submit(
 			[link, sampler, road_class = roadClass, settings = settings] {
-				return SplitRoad(link.road.from, link.road.to, road_class, sampler, settings, link.endHeight);
+				return SplitRoad(link.road.from, link.road.to, road_class, sampler, settings, link.arrival);
 			},
-			[this, sampler, junction = link.junction](std::optional<std::vector<RoadSegment>> segments) {
+			[this, sampler, join = link.join](std::optional<std::vector<RoadSegment>> segments) {
 				if (segments.has_value())
-					planSegments(std::move(*segments), sampler, junction);
+					planSegments(std::move(*segments), sampler, join);
 				else
 					finishLink();
 			}));
 	}
 
-	void RoadService::planSegments(std::vector<RoadSegment> segments, const HeightSampler& sampler, std::optional<RoadJunction> junction)
+	void RoadService::planSegments(std::vector<RoadSegment> segments, const HeightSampler& sampler, std::optional<JoinPoint> join)
 	{
 		const auto progress = std::make_shared<LinkProgress>(LinkProgress { .pieces = std::vector<std::vector<glm::vec3>>(segments.size()), .remaining = segments.size() });
 
@@ -189,7 +221,7 @@ namespace trok
 				[segment = std::move(segments[index]), sampler, road_class = roadClass, settings = settings] {
 					return PlanSegment(segment, road_class, sampler, settings);
 				},
-				[this, progress, index, junction](std::optional<std::vector<glm::vec3>> piece) {
+				[this, progress, index, join](std::optional<std::vector<glm::vec3>> piece) {
 					if (piece.has_value())
 						progress->pieces[index] = std::move(*piece);
 					else
@@ -200,11 +232,21 @@ namespace trok
 
 					if (!progress->failed)
 					{
-						roads.push_back(JoinSegments(progress->pieces, settings));
-						changed = true;
+						std::vector<glm::vec3> road = JoinSegments(progress->pieces, settings);
+						if (join.has_value())
+						{
+							road = ArriveAt(std::move(road), join->position, roadClass);
+							if (join->splitRoad.has_value())
+							{
+								std::vector<glm::vec3>& trunk = roads[*join->splitRoad];
+								std::vector<glm::vec3>  rest(trunk.begin() + join->splitPoint, trunk.end());
+								trunk.resize(join->splitPoint + 1);
+								roads.push_back(std::move(rest));
+							}
+						}
 
-						if (junction.has_value())
-							junctions.push_back({ .road = static_cast<uint32_t>(roads.size() - 1), .joins = junction->joins, .point = junction->point });
+						roads.push_back(std::move(road));
+						changed = true;
 					}
 
 					finishLink();
