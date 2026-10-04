@@ -67,6 +67,23 @@ target_sources(lunar PRIVATE
     "src/stb_image.cpp"
 )
 
+set(LUNAR_PCH_HEADERS
+    <glm/glm.hpp>
+    <glm/gtc/quaternion.hpp>
+    <array>
+    <chrono>
+    <format>
+    <functional>
+    <memory>
+    <optional>
+    <span>
+    <string>
+    <unordered_map>
+    <vector>
+)
+set(LUNAR_TEST_PCH_HEADERS ${LUNAR_PCH_HEADERS} <gtest/gtest.h>)
+target_precompile_headers(lunar PRIVATE ${LUNAR_PCH_HEADERS})
+
 target_compile_definitions(lunar PUBLIC LUNAR_EXPERIMENTAL) # will be removed
 
 if(ON)
