@@ -4,7 +4,7 @@
 #include <lunar/world/world_settings.hpp>
 
 #include <glm/glm.hpp>
-#include <nlohmann/json.hpp>
+#include <nlohmann/json_fwd.hpp>
 
 #include <array>
 #include <cstdint>

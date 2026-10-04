@@ -1,6 +1,8 @@
 #include <trok/world/biome.hpp>
 #include <trok/json_math.hpp>
 
+#include <lunar/file/json_file.hpp>
+
 #include <algorithm>
 #include <cmath>
 #include <iterator>

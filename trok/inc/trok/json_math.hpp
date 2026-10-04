@@ -1,6 +1,6 @@
 #pragma once
 #include <glm/glm.hpp>
-#include <nlohmann/json.hpp>
+#include <nlohmann/json_fwd.hpp>
 
 namespace trok
 {

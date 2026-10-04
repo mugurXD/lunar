@@ -1,4 +1,5 @@
 #include <trok/json_math.hpp>
+#include <nlohmann/json.hpp>
 
 namespace trok
 {

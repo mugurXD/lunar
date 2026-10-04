@@ -4,6 +4,7 @@
 #include <lunar/debug.hpp>
 
 #include <glm/gtc/constants.hpp>
+#include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <cmath>

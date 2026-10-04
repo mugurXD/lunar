@@ -5,7 +5,7 @@
 #include <lunar/world/terrain_shaping.hpp>
 
 #include <glm/glm.hpp>
-#include <nlohmann/json.hpp>
+#include <nlohmann/json_fwd.hpp>
 
 #include <cstdint>
 #include <optional>

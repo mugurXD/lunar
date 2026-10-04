@@ -1,12 +1,10 @@
 #pragma once
 #include <trok/world/climate.hpp>
 
-#include <lunar/file/json_file.hpp>
-
 #include <glm/glm.hpp>
 
 #include <array>
-#include <nlohmann/json.hpp>
+#include <nlohmann/json_fwd.hpp>
 
 #include <cstddef>
 #include <cstdint>

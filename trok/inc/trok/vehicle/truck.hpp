@@ -6,7 +6,7 @@
 
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
-#include <nlohmann/json.hpp>
+#include <nlohmann/json_fwd.hpp>
 
 #include <optional>
 #include <string>
