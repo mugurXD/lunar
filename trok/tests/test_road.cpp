@@ -435,6 +435,219 @@ TEST(RoadNetwork, ARoadReachesTheChunksItCrossesAndTheirNeighboursOnly)
 	EXPECT_FALSE(contains({ FAR_CHUNKS + 1, 0 }));
 }
 
+namespace
+{
+	constexpr float JUNCTION_X = 300.f;
+	constexpr float BRANCH_Z   = 400.f;
+	constexpr float TRUNK_END  = 600.f;
+
+	std::vector<std::vector<glm::vec3>> TJunction(const glm::vec3& branch_start)
+	{
+		return
+		{
+			{ { 0.f, 0.f, 0.f },        { JUNCTION_X, 0.f, 0.f } },
+			{ { JUNCTION_X, 0.f, 0.f }, { TRUNK_END, 0.f, 0.f } },
+			{ branch_start,             { JUNCTION_X, 0.f, 0.f } }
+		};
+	}
+}
+
+TEST(RoadNetwork, RoadsSharingANodeJoinIntoGroups)
+{
+	constexpr float TOWN_REACH = 10.f;
+
+	const std::vector<glm::vec2> towns = { { 0.f, 0.f }, { TRUNK_END, 0.f }, { JUNCTION_X, BRANCH_Z }, { -500.f, -500.f }, { 2000.f, 0.f }, { 2600.f, 0.f } };
+
+	std::vector<std::vector<glm::vec3>> roads = TJunction({ JUNCTION_X, 0.f, BRANCH_Z });
+	roads.push_back({ { 2000.f, 0.f, 0.f }, { 2600.f, 0.f, 0.f } });
+
+	const trok::RoadNetwork      network(roads, TestRoadClass());
+	const trok::RoadConnectivity connectivity = trok::ConnectRoads(network, towns.size(), [&](const glm::vec3& point) -> std::optional<size_t> {
+		for (size_t town = 0; town < towns.size(); town++)
+			if (glm::distance(towns[town], glm::vec2(point.x, point.z)) <= TOWN_REACH)
+				return town;
+
+		return std::nullopt;
+	});
+
+	const std::vector<std::optional<size_t>>& groups = connectivity.townGroups;
+	ASSERT_TRUE(groups[0].has_value());
+	EXPECT_EQ(groups[1], groups[0]);
+	EXPECT_EQ(groups[2], groups[0]) << "the branch reaches the trunk's towns through the shared node";
+	EXPECT_FALSE(groups[3].has_value()) << "a town without roads belongs to no group";
+	ASSERT_TRUE(groups[4].has_value());
+	EXPECT_NE(groups[4], groups[0]);
+	EXPECT_EQ(groups[5], groups[4]);
+}
+
+TEST(RoadNetwork, NodesFormWhereRoadEndsMeet)
+{
+	const trok::RoadNetwork network(TJunction({ JUNCTION_X, 0.f, BRANCH_Z }), TestRoadClass());
+
+	const auto junction = std::ranges::find_if(network.getNodes(), [](const trok::RoadNode& node) { return node.ends.size() == 3; });
+	ASSERT_NE(junction, network.getNodes().end());
+	EXPECT_EQ(junction->position, glm::vec3(JUNCTION_X, 0.f, 0.f));
+	EXPECT_GE(junction->radius, TestRoadClass().halfWidth()) << "the node is at least as wide as the roads meeting there";
+
+	EXPECT_EQ(network.trimAt(0, true),  0.f) << "a dead end is not trimmed";
+	EXPECT_EQ(network.trimAt(0, false), junction->radius);
+	EXPECT_EQ(network.trimAt(1, true),  junction->radius);
+	EXPECT_EQ(network.trimAt(2, false), junction->radius);
+}
+
+TEST(RoadNetwork, TJunctionsAreSquaresCorneredByTheRoadEdges)
+{
+	constexpr float CORNER_TOLERANCE = 1e-3f;
+	constexpr size_t ROAD_MOUTHS     = 3;
+
+	const trok::RoadNetwork network(TJunction({ JUNCTION_X, 0.f, BRANCH_Z }), TestRoadClass());
+	const float             width = TestRoadClass().halfWidth();
+
+	const auto junction = std::ranges::find_if(network.getNodes(), [](const trok::RoadNode& node) { return node.ends.size() == 3; });
+	ASSERT_NE(junction, network.getNodes().end());
+
+	const std::vector<trok::NodeCorner> outline = network.nodeOutline(static_cast<size_t>(junction - network.getNodes().begin()));
+	ASSERT_EQ(outline.size(), 4u) << "a T junction is a square";
+
+	for (const trok::NodeCorner& corner : outline)
+	{
+		EXPECT_NEAR(std::abs(corner.position.x - JUNCTION_X), width, CORNER_TOLERANCE);
+		EXPECT_NEAR(std::abs(corner.position.z),              width, CORNER_TOLERANCE);
+		EXPECT_EQ(corner.position.y, junction->position.y);
+	}
+
+	EXPECT_EQ(static_cast<size_t>(std::ranges::count_if(outline, &trok::NodeCorner::opensRoad)), ROAD_MOUTHS) << "one side of the square is kerb, the other three open onto roads";
+}
+
+TEST(RoadNetwork, AngledJunctionCornersLieOnTheRoadEdges)
+{
+	constexpr float EDGE_TOLERANCE = 1e-2f;
+
+	const trok::RoadNetwork network(TJunction({ JUNCTION_X + BRANCH_Z, 0.f, BRANCH_Z }), TestRoadClass());
+	const float             width = TestRoadClass().halfWidth();
+
+	const auto junction = std::ranges::find_if(network.getNodes(), [](const trok::RoadNode& node) { return node.ends.size() == 3; });
+	ASSERT_NE(junction, network.getNodes().end());
+
+	for (const trok::NodeCorner& corner : network.nodeOutline(static_cast<size_t>(junction - network.getNodes().begin())))
+	{
+		const std::optional<trok::RoadPoint> closest = network.closestPoint({ corner.position.x, corner.position.z }, width * 2.f);
+		ASSERT_TRUE(closest.has_value());
+		EXPECT_NEAR(glm::distance(glm::vec2(closest->position.x, closest->position.z), glm::vec2(corner.position.x, corner.position.z)), width, EDGE_TOLERANCE)
+			<< "corner (" << corner.position.x << ", " << corner.position.z << ") is not on a road edge";
+	}
+}
+
+TEST(RoadNetwork, SharperJunctionsGetLargerNodes)
+{
+	const trok::RoadNetwork square(TJunction({ JUNCTION_X, 0.f, BRANCH_Z }), TestRoadClass());
+	const trok::RoadNetwork sharp(TJunction({ JUNCTION_X + BRANCH_Z, 0.f, BRANCH_Z }), TestRoadClass());
+
+	const auto radius_of = [](const trok::RoadNetwork& network) {
+		return std::ranges::max(network.getNodes(), {}, &trok::RoadNode::radius).radius;
+	};
+
+	EXPECT_GT(radius_of(sharp), radius_of(square)) << "roads meeting at 45 degrees need more room before their edges separate";
+}
+
+TEST(RoadNetwork, JunctionsAreLevelAndApproachedInStraightLines)
+{
+	constexpr float SLOPE          = 0.04f;
+	constexpr float POINT_SPACING  = 6.f;
+	constexpr float CURVE          = 0.002f;
+	constexpr float BRANCH_HEIGHT  = 3.f;
+	constexpr float LEVEL          = 1e-4f;
+	constexpr float STRAIGHT       = 1e-3f;
+
+	const auto trunk_height = [](float x) { return SLOPE * x; };
+
+	std::vector<glm::vec3> west;
+	std::vector<glm::vec3> east;
+	for (float x = 0.f; x <= JUNCTION_X; x += POINT_SPACING)
+		west.push_back({ x, trunk_height(x), 0.f });
+
+	for (float x = JUNCTION_X; x <= TRUNK_END; x += POINT_SPACING)
+		east.push_back({ x, trunk_height(x), 0.f });
+
+	std::vector<glm::vec3> branch;
+	for (float z = BRANCH_Z; z > 0.f; z -= POINT_SPACING)
+		branch.push_back({ JUNCTION_X + CURVE * z * z, BRANCH_HEIGHT, z });
+
+	branch.push_back(west.back());
+
+	const trok::RoadNetwork network({ west, east, branch }, TestRoadClass());
+	const auto              junction = std::ranges::find_if(network.getNodes(), [](const trok::RoadNode& node) { return node.ends.size() == 3; });
+	ASSERT_NE(junction, network.getNodes().end());
+
+	for (const trok::RoadEnd& end : junction->ends)
+	{
+		const float length   = network.lengthOf(end.road);
+		const auto  from_end = [&](float distance) { return network.pointAlong(end.road, end.atStart ? distance : length - distance); };
+
+		const glm::vec3 cut    = from_end(junction->radius);
+		const glm::vec3 middle = from_end(junction->radius * 0.5f);
+		EXPECT_NEAR(cut.y,    junction->position.y, LEVEL) << "road " << end.road << " is level where it meets the junction";
+		EXPECT_NEAR(middle.y, junction->position.y, LEVEL);
+
+		const glm::vec2 outer = glm::vec2(cut.x, cut.z) - glm::vec2(junction->position.x, junction->position.z);
+		const glm::vec2 inner = glm::vec2(middle.x, middle.z) - glm::vec2(junction->position.x, junction->position.z);
+		EXPECT_NEAR(outer.x * inner.y - outer.y * inner.x, 0.f, STRAIGHT * glm::length(outer) * glm::length(inner)) << "road " << end.road << " approaches the junction in a straight line";
+	}
+
+	EXPECT_EQ(network.getRoad(0).front(), west.front()) << "the far end of the trunk keeps its height";
+	EXPECT_EQ(network.getRoad(1).back(),  east.back());
+}
+
+TEST(RoadNetwork, PointsAlongARoadFollowItsCentreline)
+{
+	const std::vector<glm::vec3> line = { { 0.f, 0.f, 0.f }, { 10.f, 2.f, 0.f }, { 10.f, 2.f, 10.f } };
+	const trok::RoadNetwork      network(line, TestRoadClass());
+	const float                  first = glm::distance(line[0], line[1]);
+
+	EXPECT_EQ(network.pointAlong(0, 0.f),                    line[0]);
+	EXPECT_EQ(network.pointAlong(0, first),                  line[1]);
+	EXPECT_EQ(network.pointAlong(0, network.lengthOf(0)),    line[2]);
+	EXPECT_EQ(network.pointAlong(0, first * 0.5f),           (line[0] + line[1]) * 0.5f);
+	EXPECT_EQ(network.sideAlong(0, network.lengthOf(0)),     network.sideAt(2));
+}
+
+TEST(RoadNetwork, ArrivingRoadsMeetTheNodeExactlyAndBlendIntoIt)
+{
+	constexpr float NODE_HEIGHT     = 2.f;
+	constexpr float POINT_SPACING   = 6.f;
+	constexpr float ROAD_LENGTH     = 120.f;
+	constexpr float GRADE_ALLOWANCE = 1.01f;
+
+	const trok::RoadClass  road_class = TestRoadClass();
+	std::vector<glm::vec3> road;
+	for (float x = 0.f; x <= ROAD_LENGTH; x += POINT_SPACING)
+		road.push_back({ x, 0.f, 0.f });
+
+	const glm::vec3              node    = { ROAD_LENGTH + 0.3f, NODE_HEIGHT, 0.1f };
+	const std::vector<glm::vec3> arrived = trok::ArriveAt(road, node, road_class);
+
+	EXPECT_EQ(arrived.back(), node);
+	EXPECT_EQ(arrived.front(), road.front()) << "the start of the road is untouched";
+
+	for (size_t point = 1; point < arrived.size(); point++)
+		EXPECT_LE(std::abs(arrived[point].y - arrived[point - 1].y), road_class.maxGrade * POINT_SPACING * GRADE_ALLOWANCE) << "the blend stays within the road's grade at point " << point;
+}
+
+TEST(RoadNetwork, ClosestPointCanIgnoreARoad)
+{
+	constexpr float NEAR_ROAD = 5.f;
+	constexpr float FAR_ROAD  = 50.f;
+	constexpr float SEARCH    = 100.f;
+
+	const trok::RoadNetwork network({ { { 0.f, 0.f, NEAR_ROAD }, { 100.f, 0.f, NEAR_ROAD } }, { { 0.f, 0.f, FAR_ROAD }, { 100.f, 0.f, FAR_ROAD } } }, TestRoadClass());
+	const glm::vec2         position = { 50.f, 0.f };
+
+	ASSERT_TRUE(network.closestPoint(position, SEARCH).has_value());
+	EXPECT_NEAR(network.closestPoint(position, SEARCH)->position.z,    NEAR_ROAD, TOLERANCE);
+	EXPECT_NEAR(network.closestPoint(position, SEARCH, 0)->position.z, FAR_ROAD,  TOLERANCE);
+	EXPECT_FALSE(network.closestPoint(position, NEAR_ROAD * 2.f, 0).has_value());
+}
+
 TEST(RoadNetwork, ClosestPointProjectsOntoTheNearestRoad)
 {
 	constexpr float SIDE_OFFSET = 30.f;

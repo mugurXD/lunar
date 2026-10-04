@@ -3,6 +3,7 @@
 #include <trok/world/region_plan.hpp>
 #include <trok/world/shapers.hpp>
 #include <trok/world/terrain_generator.hpp>
+#include <trok/world/towns.hpp>
 #include <lunar/file/json_file.hpp>
 #include <gtest/gtest.h>
 
@@ -39,6 +40,11 @@ namespace
 	trok::RegionPlanner Planner()
 	{
 		return trok::RegionPlanner(GENERATOR_VERSION, WORLD_SEED, BIOMES, CLIMATE, TERRAIN);
+	}
+
+	std::shared_ptr<const trok::RegionPlanner> SharedPlanner()
+	{
+		return std::make_shared<const trok::RegionPlanner>(GENERATOR_VERSION, WORLD_SEED, BIOMES, CLIMATE, TERRAIN);
 	}
 
 	double CellCentre(int32_t region, uint32_t cell)
@@ -299,6 +305,69 @@ TEST(RegionPlanner, RiversAreDeterministic)
 
 
 
+
+TEST(Towns, LinksDoNotDependOnWhereTheSurveyStarts)
+{
+	constexpr int32_t SURVEY_SIZE = 2;
+
+	const trok::Towns      towns(SharedPlanner(), SETTINGS);
+	const trok::TownSurvey here  = towns.survey({ 0, 0 }, SURVEY_SIZE);
+	const trok::TownSurvey there = towns.survey({ 1, 1 }, SURVEY_SIZE);
+	ASSERT_FALSE(here.links.empty()) << "the test world needs towns to link";
+
+	const auto owned_by = [](const trok::TownSurvey& survey, lunar::World::RegionCoord coord) {
+		std::vector<trok::TownLink> owned;
+		std::ranges::copy_if(survey.links, std::back_inserter(owned), [&](const trok::TownLink& link) { return link.from == coord; });
+		return owned;
+	};
+
+	for (int32_t z = 1 - SURVEY_SIZE; z <= SURVEY_SIZE; z++)
+	{
+		for (int32_t x = 1 - SURVEY_SIZE; x <= SURVEY_SIZE; x++)
+		{
+			const std::vector<trok::TownLink> expected = towns.linksOwnedBy({ x, z });
+			for (const trok::TownSurvey* survey : { &here, &there })
+			{
+				const std::vector<trok::TownLink> found = owned_by(*survey, { x, z });
+				ASSERT_EQ(found.size(), expected.size()) << "region (" << x << ", " << z << ")";
+
+				for (size_t link = 0; link < found.size(); link++)
+				{
+					EXPECT_EQ(found[link].to,        expected[link].to);
+					EXPECT_EQ(found[link].road.from, expected[link].road.from);
+					EXPECT_EQ(found[link].road.to,   expected[link].road.to);
+				}
+			}
+		}
+	}
+}
+
+TEST(Towns, LinksJoinTheNearestTownsAlongTheirDirection)
+{
+	constexpr int32_t SURVEY_SIZE = 2;
+
+	const trok::Towns      towns(SharedPlanner(), SETTINGS);
+	const trok::TownSurvey survey = towns.survey({}, SURVEY_SIZE);
+
+	for (const trok::TownLink& link : survey.links)
+	{
+		const std::optional<trok::Settlement> from = towns.townIn(link.from);
+		const std::optional<trok::Settlement> to   = towns.townIn(link.to);
+		ASSERT_TRUE(from.has_value() && to.has_value());
+
+		EXPECT_EQ(link.road.from, glm::vec2(from->center));
+		EXPECT_EQ(link.road.to,   glm::vec2(to->center));
+		EXPECT_NE(std::ranges::find(survey.towns, *to), survey.towns.end()) << "towns outside the survey that a link reaches are still known";
+
+		const glm::ivec2 step = glm::sign(glm::ivec2(link.to.x - link.from.x, link.to.z - link.from.z));
+		for (lunar::World::RegionCoord between = { link.from.x + step.x, link.from.z + step.y }; between != link.to; between = { between.x + step.x, between.z + step.y })
+			EXPECT_FALSE(towns.townIn(between).has_value()) << "a link skipped over a nearer town";
+	}
+
+	for (size_t first = 0; first < survey.links.size(); first++)
+		for (size_t second = first + 1; second < survey.links.size(); second++)
+			EXPECT_FALSE(survey.links[first].from == survey.links[second].from && survey.links[first].to == survey.links[second].to) << "duplicate link";
+}
 
 TEST(RegionPlanner, TownsAreNeverFoundedBelowSeaLevel)
 {

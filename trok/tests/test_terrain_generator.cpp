@@ -12,7 +12,9 @@
 #include <glm/glm.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <iterator>
 #include <memory>
 #include <vector>
 
@@ -404,7 +406,7 @@ TEST(RoadService, PlansInTheBackgroundAndKeepsEveryRoad)
 	const auto finish = [&] {
 		for (int round = 0; round < MAX_ROUNDS; round++)
 		{
-			std::vector<std::vector<glm::vec3>> published = roads.update();
+			std::vector<std::vector<glm::vec3>> published = roads.update({});
 			if (!published.empty())
 				return published;
 
@@ -433,7 +435,150 @@ TEST(RoadService, PlansInTheBackgroundAndKeepsEveryRoad)
 	ASSERT_EQ(second_published.size(), 1u) << "only the newly finished road is reported";
 	EXPECT_EQ(roads.getNetwork()->getRoadCount(), 2u) << "a new road is added to the network instead of replacing it";
 	EXPECT_TRUE(std::ranges::equal(second_published.front(), roads.getNetwork()->getRoad(1)));
-	EXPECT_TRUE(roads.update().empty()) << "nothing new to report";
+	EXPECT_TRUE(roads.update({}).empty()) << "nothing new to report";
+}
+
+TEST(RoadService, RequestedLinksArePlannedOnceNearestFirst)
+{
+	constexpr size_t WORKERS        = 2;
+	constexpr size_t ONE_AT_A_TIME  = 1;
+	constexpr int    MAX_ROUNDS     = 100;
+	constexpr float  SHORT_ROAD     = 150.f;
+	constexpr float  FAR_ROAD_START = 3000.f;
+
+	lunar::JobSystem          jobs(WORKERS);
+	const auto                generator = std::make_shared<trok::TerrainGenerator>(ONLY_FLAT, CLIMATE, FLAT_LAND, WORLD_SEED);
+	trok::RoadService         roads(jobs, generator, trok::RoadClass {}, {}, ONE_AT_A_TIME);
+	const trok::RegionContext context = ContextOf(FLAT_BIOME, FLAT_BIOME);
+
+	const trok::TownLink near_link = { .from = { 0, 0 }, .to = { 1, 0 }, .road = { { 0.f, 0.f }, { SHORT_ROAD, 0.f } } };
+	const trok::TownLink far_link  = { .from = { 5, 0 }, .to = { 6, 0 }, .road = { { FAR_ROAD_START, 0.f }, { FAR_ROAD_START + SHORT_ROAD, 0.f } } };
+	const glm::vec2      focus     = far_link.road.from;
+
+	roads.request(std::array { near_link, far_link }, context);
+	roads.request(std::array { far_link }, context);
+
+	std::vector<std::vector<glm::vec3>> published;
+	for (int round = 0; round < MAX_ROUNDS && published.size() < 2; round++)
+	{
+		std::ranges::move(roads.update(focus), std::back_inserter(published));
+		jobs.waitIdle();
+		jobs.processCompleted();
+	}
+
+	ASSERT_EQ(published.size(), 2u) << "a link requested twice is planned once";
+	EXPECT_NEAR(published.front().front().x, FAR_ROAD_START, HEIGHT_TOLERANCE) << "the link nearest the focus is planned first";
+	EXPECT_NEAR(published.back().front().x,  0.f,            HEIGHT_TOLERANCE);
+}
+
+TEST(RoadService, NewRoadsJoinTheNetworkInsteadOfDuplicatingIt)
+{
+	constexpr size_t WORKERS       = 2;
+	constexpr int    MAX_ROUNDS    = 200;
+	constexpr float  TOWN_REACH    = 1.f;
+
+	lunar::JobSystem          jobs(WORKERS);
+	const auto                generator = std::make_shared<trok::TerrainGenerator>(ONLY_FLAT, CLIMATE, FLAT_LAND, WORLD_SEED);
+	trok::RoadService         roads(jobs, generator, trok::RoadClass {}, {});
+	const trok::RegionContext context = ContextOf(FLAT_BIOME, FLAT_BIOME);
+
+	const glm::vec2 west  = { 0.f, 0.f };
+	const glm::vec2 east  = { 600.f, 0.f };
+	const glm::vec2 north = { 300.f, 400.f };
+
+	const std::array<trok::TownLink, 3> links =
+	{
+		trok::TownLink { .from = { 0, 0 }, .to = { 1, 0 }, .road = { west, east } },
+		trok::TownLink { .from = { 1, 0 }, .to = { 1, 1 }, .road = { east, north } },
+		trok::TownLink { .from = { 0, 0 }, .to = { 0, 1 }, .road = { west, north } }
+	};
+
+	roads.request(links, context);
+	for (int round = 0; round < MAX_ROUNDS; round++)
+	{
+		roads.update(west);
+		jobs.waitIdle();
+		jobs.processCompleted();
+	}
+
+	const std::shared_ptr<const trok::RoadNetwork> network = roads.getNetwork();
+	ASSERT_NE(network, nullptr);
+	EXPECT_EQ(network->getRoadCount(), 3u) << "the first road is split where the second one joins it, and the third link is skipped";
+
+	const auto junction = std::ranges::find_if(network->getNodes(), [](const trok::RoadNode& node) { return node.ends.size() == 3; });
+	ASSERT_NE(junction, network->getNodes().end()) << "three road ends share one junction node";
+
+	for (const trok::RoadEnd& end : junction->ends)
+	{
+		const std::span<const glm::vec3> road = network->getRoad(end.road);
+		EXPECT_EQ(end.atStart ? road.front() : road.back(), junction->position) << "every road meets the node exactly, height included";
+	}
+
+	const std::array<glm::vec2, 3> towns = { west, east, north };
+	const trok::RoadConnectivity   connectivity = trok::ConnectRoads(*network, towns.size(), [&](const glm::vec3& point) -> std::optional<size_t> {
+		for (size_t town = 0; town < towns.size(); town++)
+			if (glm::distance(towns[town], glm::vec2(point.x, point.z)) <= TOWN_REACH)
+				return town;
+
+		return std::nullopt;
+	});
+
+	ASSERT_TRUE(connectivity.townGroups[0].has_value());
+	EXPECT_EQ(connectivity.townGroups[1], connectivity.townGroups[0]);
+	EXPECT_EQ(connectivity.townGroups[2], connectivity.townGroups[0]);
+}
+
+TEST(TrokTerrain, JunctionNodesMeetEveryRoadWithoutGaps)
+{
+	constexpr float ARM_LENGTH    = 200.f;
+	constexpr float POINT_SPACING = 6.f;
+	constexpr size_t SHARED       = 2;
+
+	trok::Biome level = FLAT;
+	level.terrain.amplitude = 0.f;
+
+	const trok::RoadClass     road_class = {};
+	const trok::RegionContext context    = ContextOf(FLAT_BIOME, FLAT_BIOME);
+	const double              centre     = CellCentre(CENTRE_CELL);
+	const auto                roads      = std::make_shared<trok::RoadLayer>();
+	trok::TerrainGenerator    generator  = MakeGenerator(WORLD_SEED, FLAT_LAND, std::make_shared<const trok::BiomeLibrary>(*trok::BiomeLibrary::Create({ level }, level.name)));
+	const float               ground     = generator.sampleHeight(context, centre, centre);
+	const glm::vec3           node       = { static_cast<float>(centre), ground, static_cast<float>(centre) };
+
+	const auto arm = [&](const glm::vec3& direction) {
+		std::vector<glm::vec3> line;
+		for (float along = ARM_LENGTH; along > 0.f; along -= POINT_SPACING)
+			line.push_back(node + direction * along);
+
+		line.push_back(node);
+		return line;
+	};
+
+	const std::vector<std::vector<glm::vec3>> arms = { arm({ -1.f, 0.f, 0.f }), arm({ 1.f, 0.f, 0.f }), arm({ 0.f, 0.f, 1.f }) };
+	const auto                                network = std::make_shared<const trok::RoadNetwork>(arms, road_class);
+	roads->set(network);
+
+	const lunar::World::ChunkCoord               coord    = lunar::World::ChunkAt(node, SETTINGS);
+	const glm::vec3                              origin   = lunar::World::ChunkOrigin(coord, SETTINGS);
+	const std::vector<lunar::World::DressedMesh> dressing = Dress(trok::RoadDresser(roads), generator, context, coord);
+	ASSERT_FALSE(dressing.empty());
+
+	const auto junction = std::ranges::find_if(network->getNodes(), [](const trok::RoadNode& candidate) { return candidate.ends.size() == 3; });
+	ASSERT_NE(junction, network->getNodes().end());
+
+	const glm::vec3 lift = { 0.f, road_class.surfaceOffset, 0.f };
+	for (const trok::RoadEnd& end : junction->ends)
+	{
+		const float     distance = network->lengthOf(end.road) - network->trimAt(end.road, end.atStart);
+		const glm::vec3 cut      = network->pointAlong(end.road, distance) + lift - origin;
+		const glm::vec3 side     = network->sideAlong(end.road, distance);
+
+		for (const glm::vec3& corner : { cut + side, cut - side })
+		{
+			const auto matches = std::ranges::count_if(dressing.front().mesh.vertices, [&](const lunar::Render::Vertex& vertex) { return vertex.position == corner; });
+			EXPECT_GE(static_cast<size_t>(matches), SHARED) << "the road's cut edge and the node share corner (" << corner.x << ", " << corner.z << ")";
+		}
+	}
 }
 
 TEST(TrokTerrain, WithoutARoadTheRoadDresserAddsNothing)
