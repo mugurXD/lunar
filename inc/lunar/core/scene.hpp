@@ -7,21 +7,24 @@
 #include <lunar/core/system.hpp>
 #include <lunar/core/event.hpp>
 #include <lunar/render/common.hpp>
-#include <lunar/file/json_file.hpp>
 #include <lunar/utils/collections.hpp>
-#include <nlohmann/json.hpp>
 #include <unordered_map>
 #include <functional>
 #include <string>
 #include <vector>
 
-#include <lunar/physics/reactphysics.hpp>
+namespace reactphysics3d
+{
+	class PhysicsWorld;
+	class PhysicsCommon;
+}
 
 namespace Render { class LUNAR_API Camera; }
 
 namespace lunar
 {
-	using PhysicsWorld = reactphysics3d::PhysicsWorld;
+	using PhysicsWorld  = reactphysics3d::PhysicsWorld;
+	using PhysicsCommon = reactphysics3d::PhysicsCommon;
 
 	class LUNAR_API Camera;
 	class LUNAR_API Scene : public EventHandler
@@ -37,7 +40,7 @@ namespace lunar
 
 		void                    physicsUpdate(double dt);
 		PhysicsWorld*           getPhysicsWorld();
-		rp3d::PhysicsCommon&    getPhysicsCommon();
+		PhysicsCommon&          getPhysicsCommon();
 		Camera*                 getMainCamera();
 		void                    setMainCamera(GameObject camera_object);
 		void                    updateBehaviours(const FrameTime& frame_time);
@@ -131,7 +134,7 @@ namespace lunar
 
 	private:
 		std::string         name         = "Scene";
-		rp3d::PhysicsWorld* physicsWorld = nullptr;
+		PhysicsWorld*       physicsWorld = nullptr;
 		GameObject          mainCamera   = nullptr;
 
 		Pool<EntityRecord>                            entities          = {};
