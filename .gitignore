@@ -15,3 +15,8 @@ saves/
 imgui.ini
 .DS_Store
 cmake_build/
+cmake-build-debug/
+cmake-build-default/
+cmake-build-minsizerel/
+cmake-build-release/
+cmake-build-relwithdebinfo/
