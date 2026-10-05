@@ -14,6 +14,7 @@
 #include <trok/world/terrain_generator.hpp>
 #include <trok/world/towns.hpp>
 #include <trok/world/world_map.hpp>
+#include <trok/vehicle/ai_vehicle.hpp>
 #include <trok/vehicle/chase_camera.hpp>
 #include <trok/vehicle/truck.hpp>
 #include <trok/vehicle/truck_tuning.hpp>
@@ -67,8 +68,9 @@ namespace
 	constexpr std::string_view        BEACON_FRAGMENT      = "beacon.frag";
 	constexpr std::string_view        BIOME_FILE_NAME      = "biomes.json";
 	constexpr std::string_view        ELEVATION_FILE_NAME  = "elevation.json";
-	constexpr std::string_view        TRUCK_FILE_NAME      = "trucks/box_truck.json";	
-	constexpr std::string_view        TUNED_TRUCK_FILE     = "trucks/box_truck.tuned.json";
+	constexpr std::string_view        TRUCK_FILE_NAME      = "cars/box_truck.json";
+	constexpr std::string_view        TUNED_TRUCK_FILE     = "cars/box_truck.tuned.json";
+	constexpr std::string_view        CAR_FILE_NAME        = "cars/sedan.json";
 	constexpr std::string_view        TUNED_BIOME_FILE     = "biomes.tuned.json";
 	constexpr std::string_view        ROAD_FILE_NAME       = "roads.json";
 	constexpr std::string_view        HUD_DOCUMENT         = "ui/hud.rml";
@@ -97,12 +99,12 @@ namespace
 	constexpr World::WorldInfo        NEW_WORLD_INFO       = { .seed = 1337, .generatorVersion = 1 };
 
 	const glm::vec3 CAMERA_START_POSITION  = { 0.f, 0.f, 30.f };
+	const glm::vec3 CAR_SPAWN_OFFSET       = { 6.f, 0.f, 0.f };
+	const glm::vec3 CAR_SPAWN_POSITION     = CAMERA_START_POSITION + CAR_SPAWN_OFFSET;
 	const glm::vec3 SUN_DIRECTION          = { -0.4f, -1.f, -0.3f };
 	const glm::vec3 SKY_COLOR              = { 0.6f, 0.745f, 0.76f };
 	const glm::vec3 ENDPOINT_MARKER_COLOR  = { 0.9f, 0.1f, 0.1f };
 	const glm::vec3 NODE_MARKER_COLOR      = { 0.1f, 0.9f, 0.2f };
-
-	const Physics::VehicleInput PARKED_INPUT = { .brake = 1.f };
 
 	MeshHandle MakeMarkerMesh(MeshRegistry& meshes, const glm::vec3& color)
 	{
@@ -306,8 +308,9 @@ int main()
 	const auto                          road_class       = LoadGameData<trok::RoadClass>(ROAD_FILE_NAME);
 	std::optional<trok::BiomeLibrary>   loaded_biomes    = LoadGameData<trok::BiomeLibrary>(BIOME_FILE_NAME);
 	std::optional<trok::ElevationCurve> loaded_elevation = LoadGameData<trok::ElevationCurve>(ELEVATION_FILE_NAME);
-	const auto                          truck_definition = LoadGameData<trok::TruckDefinition>(TRUCK_FILE_NAME);
-	if (!loaded_biomes.has_value() || !loaded_elevation.has_value() || !truck_definition.has_value() || !road_class.has_value())
+	const auto                          truck_definition = LoadGameData<trok::VehicleDefinition>(TRUCK_FILE_NAME);
+	const auto                          car_definition   = LoadGameData<trok::VehicleDefinition>(CAR_FILE_NAME);
+	if (!loaded_biomes.has_value() || !loaded_elevation.has_value() || !truck_definition.has_value() || !car_definition.has_value() || !road_class.has_value())
 		return 1;
 
 	std::optional<World::WorldStorage> opened_storage = World::WorldStorage::openOrCreate(Fs::fromBase(WORLD_SAVE_DIRECTORY), NEW_WORLD_INFO);
@@ -355,6 +358,7 @@ int main()
 		hud.emplace(*ui, Fs::fromData(HUD_DOCUMENT));
 	}
 	std::optional<trok::Truck>                 truck;
+	std::optional<trok::AiVehicle>             car;
 
 	GameObject player = scene.createGameObject("Player");
 	player->getTransform().position = CAMERA_START_POSITION;
@@ -391,10 +395,13 @@ int main()
 
 	trok::CargoShock cargo_shock;
 	engine.addSystem(SystemPhase::eFixedUpdate, [&](Scene&, const FrameTime& frame_time) {
+		if (car.has_value())
+			car->update(frame_time.deltaTime);
+
 		if (!truck.has_value())
 			return;
 
-		truck->drive(is_driving() ? ReadDrivingInput(truck->getVehicle().getForwardSpeed()) : PARKED_INPUT, frame_time.deltaTime);
+		truck->drive(is_driving() ? ReadDrivingInput(truck->getVehicle().getForwardSpeed()) : trok::PARKED_INPUT, frame_time.deltaTime);
 		deliveries.damageCargo(cargo_shock.update(truck->getVelocity(), truck->getUp(), frame_time.deltaTime));
 	});
 
@@ -621,6 +628,22 @@ int main()
 		colliders.update(std::span(&truck->getTransform().position, 1));
 		truck->setSimulated(colliders.isReady(truck->getTransform().position));
 		truck->updateWheels(frame_time.fixedAlpha);
+
+		if (!car.has_value())
+		{
+			if (const std::optional<float> ground = GroundHeight(scene, CAR_SPAWN_POSITION.x, CAR_SPAWN_POSITION.z))
+				car.emplace(scene,
+				            engine.getRenderer().getMeshes(),
+				            *car_definition,
+				            glm::vec3(CAR_SPAWN_POSITION.x, *ground + TRUCK_SPAWN_HEIGHT, CAR_SPAWN_POSITION.z),
+				            glm::quat(1.f, 0.f, 0.f, 0.f),
+				            std::make_unique<trok::ParkedController>());
+		}
+		else
+		{
+			car->setSimulated(colliders.isReady(car->getTransform().position));
+			car->updateWheels(frame_time.fixedAlpha);
+		}
 
 		const glm::vec3 truck_position = truck->getTransform().position;
 		const std::optional<int64_t> payout = deliveries.update({ truck_position.x, truck_position.z }, frame_time.deltaTime);

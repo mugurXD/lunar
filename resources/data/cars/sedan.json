@@ -1,0 +1,140 @@
+{
+  "body": {
+    "centerOfMass": [
+      0.0,
+      0.1,
+      0.0
+    ],
+    "colliderHalfExtents": [
+      0.88,
+      0.65,
+      2.35
+    ],
+    "colliderOffset": [
+      0.0,
+      0.33,
+      0.0
+    ],
+    "mass": 1400.0
+  },
+  "engine": {
+    "brakeForce": 17000.0,
+    "dragCoefficient": 0.7,
+    "driveForce": 15000.0,
+    "maxSpeed": 50.0,
+    "power": 155000.0,
+    "rollingResistance": 25.0
+  },
+  "formatVersion": 4,
+  "handling": {
+    "airControl": 3.0,
+    "airControlRate": 1.5,
+    "downforce": 10.0,
+    "extraGravity": 8.4,
+    "selfRighting": 10.0,
+    "selfRightingSpeed": 0.47
+  },
+  "name": "core:sedan",
+  "parts": [
+    {
+      "color": [
+        0.15,
+        0.3,
+        0.65
+      ],
+      "halfExtents": [
+        0.88,
+        0.35,
+        2.35
+      ],
+      "offset": [
+        0.0,
+        0.03,
+        0.0
+      ]
+    },
+    {
+      "color": [
+        0.2,
+        0.22,
+        0.25
+      ],
+      "halfExtents": [
+        0.78,
+        0.3,
+        1.15
+      ],
+      "offset": [
+        0.0,
+        0.68,
+        0.15
+      ]
+    }
+  ],
+  "steering": {
+    "maxAngle": 35.0,
+    "speed": 90.0
+  },
+  "suspension": {
+    "antiRollStiffness": 45000.0,
+    "damping": 4800.0,
+    "restLength": 0.3,
+    "stiffness": 42000.0
+  },
+  "tyres": {
+    "corneringStiffness": 18000.0,
+    "friction": 1.0,
+    "roadGrip": 2.0,
+    "rollInfluence": 0.2
+  },
+  "wheels": {
+    "color": [
+      0.08,
+      0.08,
+      0.08
+    ],
+    "mounts": [
+      {
+        "driven": false,
+        "position": [
+          -0.82,
+          0.0,
+          -1.4
+        ],
+        "radius": 0.32,
+        "steered": true
+      },
+      {
+        "driven": false,
+        "position": [
+          0.82,
+          0.0,
+          -1.4
+        ],
+        "radius": 0.32,
+        "steered": true
+      },
+      {
+        "driven": true,
+        "position": [
+          -0.82,
+          0.0,
+          1.4
+        ],
+        "radius": 0.32,
+        "steered": false
+      },
+      {
+        "driven": true,
+        "position": [
+          0.82,
+          0.0,
+          1.4
+        ],
+        "radius": 0.32,
+        "steered": false
+      }
+    ],
+    "width": 0.24
+  }
+}

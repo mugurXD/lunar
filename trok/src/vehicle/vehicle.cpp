@@ -1,4 +1,4 @@
-#include <trok/vehicle/truck.hpp>
+#include <trok/vehicle/vehicle.hpp>
 #include <trok/json_math.hpp>
 
 #include <lunar/core/scene.hpp>
@@ -13,11 +13,11 @@ namespace trok
 {
 	namespace
 	{
-		constexpr uint32_t TRUCK_FORMAT_VERSION = 4;
-		constexpr float    HALF                 = 0.5f;
+		constexpr uint32_t VEHICLE_FORMAT_VERSION = 4;
+		constexpr float    HALF                   = 0.5f;
 
-		const glm::vec3    CHASSIS_FORWARD      = { 0.f, 0.f, -1.f };
-		const glm::vec3    CHASSIS_UP           = { 0.f, 1.f, 0.f };
+		const glm::vec3    CHASSIS_FORWARD        = { 0.f, 0.f, -1.f };
+		const glm::vec3    CHASSIS_UP             = { 0.f, 1.f, 0.f };
 
 		nlohmann::json SerializeWheel(const lunar::Physics::WheelSettings& wheel)
 		{
@@ -41,7 +41,7 @@ namespace trok
 			};
 		}
 
-		nlohmann::json SerializePart(const TruckPart& part)
+		nlohmann::json SerializePart(const VehiclePart& part)
 		{
 			return nlohmann::json
 			{
@@ -51,9 +51,9 @@ namespace trok
 			};
 		}
 
-		TruckPart DeserializePart(const nlohmann::json& json)
+		VehiclePart DeserializePart(const nlohmann::json& json)
 		{
-			return TruckPart
+			return VehiclePart
 			{
 				.halfExtents = DeserializeVec3(json.at("halfExtents")),
 				.offset      = DeserializeVec3(json.at("offset")),
@@ -61,13 +61,13 @@ namespace trok
 			};
 		}
 
-		bool IsDrivable(const TruckDefinition& definition)
+		bool IsDrivable(const VehicleDefinition& definition)
 		{
 			return definition.mass > 0.f && std::ranges::any_of(definition.vehicle.wheels, &lunar::Physics::WheelSettings::driven);
 		}
 	}
 
-	nlohmann::json TruckDefinition::Serialize(const TruckDefinition& definition)
+	nlohmann::json VehicleDefinition::Serialize(const VehicleDefinition& definition)
 	{
 		const lunar::Physics::VehicleSettings& vehicle = definition.vehicle;
 
@@ -76,12 +76,12 @@ namespace trok
 			wheels.push_back(SerializeWheel(wheel));
 
 		nlohmann::json parts = nlohmann::json::array();
-		for (const TruckPart& part : definition.parts)
+		for (const VehiclePart& part : definition.parts)
 			parts.push_back(SerializePart(part));
 
 		return nlohmann::json
 		{
-			{ "formatVersion", TRUCK_FORMAT_VERSION },
+			{ "formatVersion", VEHICLE_FORMAT_VERSION },
 			{ "name",          definition.name },
 			{ "body",
 				{
@@ -144,9 +144,9 @@ namespace trok
 		};
 	}
 
-	std::optional<TruckDefinition> TruckDefinition::Deserialize(const nlohmann::json& json)
+	std::optional<VehicleDefinition> VehicleDefinition::Deserialize(const nlohmann::json& json)
 	{
-		if (json.at("formatVersion").get<uint32_t>() != TRUCK_FORMAT_VERSION)
+		if (json.at("formatVersion").get<uint32_t>() != VEHICLE_FORMAT_VERSION)
 			return std::nullopt;
 
 		const nlohmann::json& body       = json.at("body");
@@ -157,7 +157,7 @@ namespace trok
 		const nlohmann::json& tyres      = json.at("tyres");
 		const nlohmann::json& handling   = json.at("handling");
 
-		TruckDefinition definition =
+		VehicleDefinition definition =
 		{
 			.name                = json.at("name").get<std::string>(),
 			.mass                = body.at("mass").get<float>(),
@@ -201,17 +201,17 @@ namespace trok
 
 		if (!IsDrivable(definition))
 		{
-			Fs::ReportMalformedJson("a truck needs a positive mass and at least one driven wheel");
+			Fs::ReportMalformedJson("a vehicle needs a positive mass and at least one driven wheel");
 			return std::nullopt;
 		}
 
 		return definition;
 	}
 
-	lunar::Physics::RigidBody CreateTruckBody(lunar::Scene&          scene,
-	                                          const TruckDefinition& definition,
-	                                          const glm::vec3&       position,
-	                                          const glm::quat&       rotation)
+	lunar::Physics::RigidBody CreateVehicleBody(lunar::Scene&            scene,
+	                                            const VehicleDefinition& definition,
+	                                            const glm::vec3&         position,
+	                                            const glm::quat&         rotation)
 	{
 		lunar::Physics::RigidBody body(scene, position, rotation, lunar::Physics::BodyType::eDynamic);
 		body.addBox(definition.colliderHalfExtents, definition.colliderOffset, lunar::Physics::VEHICLE_CATEGORY);
@@ -220,11 +220,11 @@ namespace trok
 		return body;
 	}
 
-	Truck::Truck(lunar::Scene&                scene,
-	             lunar::Render::MeshRegistry& meshes,
-	             const TruckDefinition&       definition,
-	             const glm::vec3&             position,
-	             const glm::quat&             rotation) noexcept
+	Vehicle::Vehicle(lunar::Scene&                scene,
+	                 lunar::Render::MeshRegistry& meshes,
+	                 const VehicleDefinition&     definition,
+	                 const glm::vec3&             position,
+	                 const glm::quat&             rotation) noexcept
 		: meshes(meshes),
 		chassis(scene.createGameObject(definition.name)),
 		vehicle(definition.vehicle),
@@ -232,9 +232,9 @@ namespace trok
 	{
 		chassis->getTransform().position = position;
 		chassis->getTransform().rotation = rotation;
-		chassis->addComponent<lunar::Physics::RigidBody>(CreateTruckBody(scene, definition, position, rotation));
+		chassis->addComponent<lunar::Physics::RigidBody>(CreateVehicleBody(scene, definition, position, rotation));
 
-		for (const TruckPart& part : definition.parts)
+		for (const VehiclePart& part : definition.parts)
 			createBox(part.color, part.halfExtents, part.offset);
 
 		for (const lunar::Physics::WheelSettings& wheel : definition.vehicle.wheels)
@@ -246,14 +246,14 @@ namespace trok
 		updateWheels(1.f);
 	}
 
-	Truck::~Truck() noexcept
+	Vehicle::~Vehicle() noexcept
 	{
 		chassis->destroy();
 		for (const lunar::Render::MeshHandle mesh : ownedMeshes)
 			meshes.destroy(mesh);
 	}
 
-	void Truck::drive(const lunar::Physics::VehicleInput& input, float delta_time)
+	void Vehicle::drive(const lunar::Physics::VehicleInput& input, float delta_time)
 	{
 		lunar::Physics::RigidBody& body = *chassis->getComponent<lunar::Physics::RigidBody>();
 		if (body.getBody().isActive())
@@ -262,7 +262,7 @@ namespace trok
 		captureWheels();
 	}
 
-	void Truck::recover(const glm::vec3& position, std::optional<glm::vec2> facing)
+	void Vehicle::recover(const glm::vec3& position, std::optional<glm::vec2> facing)
 	{
 		lunar::Physics::RigidBody& body    = *chassis->getComponent<lunar::Physics::RigidBody>();
 		const glm::vec3            current = getTransform().rotation * CHASSIS_FORWARD;
@@ -279,7 +279,7 @@ namespace trok
 		captureWheels();
 	}
 
-	void Truck::setSimulated(bool active)
+	void Vehicle::setSimulated(bool active)
 	{
 		rp3d::RigidBody& body = chassis->getComponent<lunar::Physics::RigidBody>()->getBody();
 		if (body.isActive() != active)
@@ -288,7 +288,7 @@ namespace trok
 		simulated = active;
 	}
 
-	void Truck::updateWheels(float alpha)
+	void Vehicle::updateWheels(float alpha)
 	{
 		for (size_t wheel = 0; wheel < wheels.size(); wheel++)
 		{
@@ -298,45 +298,45 @@ namespace trok
 		}
 	}
 
-	void Truck::captureWheels()
+	void Vehicle::captureWheels()
 	{
 		previousWheels = currentWheels;
 		for (size_t wheel = 0; wheel < currentWheels.size(); wheel++)
 			currentWheels[wheel] = { vehicle.getWheelLocalPosition(wheel), vehicle.getWheelLocalRotation(wheel) };
 	}
 
-	const lunar::Transform& Truck::getTransform() const
+	const lunar::Transform& Vehicle::getTransform() const
 	{
 		return chassis->getTransform();
 	}
 
-	glm::vec3 Truck::getVelocity()
+	glm::vec3 Vehicle::getVelocity()
 	{
 		return lunar::Physics::ToGlm(chassis->getComponent<lunar::Physics::RigidBody>()->getBody().getLinearVelocity());
 	}
 
-	glm::vec3 Truck::getUp()
+	glm::vec3 Vehicle::getUp()
 	{
 		const rp3d::Quaternion orientation = chassis->getComponent<lunar::Physics::RigidBody>()->getBody().getTransform().getOrientation();
 		return lunar::Physics::ToGlm(orientation) * CHASSIS_UP;
 	}
 
-	const lunar::Physics::RaycastVehicle& Truck::getVehicle() const
+	const lunar::Physics::RaycastVehicle& Vehicle::getVehicle() const
 	{
 		return vehicle;
 	}
 
-	lunar::Physics::RaycastVehicle& Truck::editVehicle()
+	lunar::Physics::RaycastVehicle& Vehicle::editVehicle()
 	{
 		return vehicle;
 	}
 
-	bool Truck::isSimulated() const
+	bool Vehicle::isSimulated() const
 	{
 		return simulated;
 	}
 
-	lunar::GameObject Truck::createBox(const glm::vec3& color, const glm::vec3& half_extents, const glm::vec3& offset)
+	lunar::GameObject Vehicle::createBox(const glm::vec3& color, const glm::vec3& half_extents, const glm::vec3& offset)
 	{
 		lunar::Render::MeshData data = lunar::Render::CreateCubeMeshData();
 		for (lunar::Render::Vertex& vertex : data.vertices)

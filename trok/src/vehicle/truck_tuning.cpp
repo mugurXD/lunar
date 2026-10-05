@@ -95,7 +95,7 @@ namespace trok
 		}
 	}
 
-	TruckTuningWindow::TruckTuningWindow(TruckDefinition definition, Fs::Path save_path) noexcept
+	TruckTuningWindow::TruckTuningWindow(VehicleDefinition definition, Fs::Path save_path) noexcept
 		: definition(std::move(definition)),
 		savePath(std::move(save_path))
 	{
@@ -153,7 +153,7 @@ namespace trok
 		definition.vehicle = settings;
 
 		Fs::JsonFile file;
-		file.content     = TruckDefinition::Serialize(definition);
+		file.content     = VehicleDefinition::Serialize(definition);
 		file.indentation = READABLE_INDENTATION;
 
 		status = file.toFile(savePath) ? std::format("Saved to {}", savePath.string()) : std::format("Could not save to {}", savePath.string());
