@@ -18,7 +18,7 @@ namespace trok
 {
 	namespace
 	{
-		constexpr uint32_t ROAD_FORMAT_VERSION = 4;
+		constexpr uint32_t ROAD_FORMAT_VERSION = 5;
 		constexpr float    CELL_SIZE           = 64.f;
 		constexpr float    HALF                = 0.5f;
 		constexpr float    MIN_MITRE_SCALE     = 0.5f;
@@ -356,6 +356,7 @@ namespace trok
 			{ "shoulderWidth",   road_class.shoulderWidth },
 			{ "minCurveRadius",  road_class.minCurveRadius },
 			{ "maxGrade",        road_class.maxGrade },
+			{ "speedLimit",      road_class.speedLimit },
 			{ "limitPenalty",    road_class.limitPenalty },
 			{ "turnPenalty",     road_class.turnPenalty },
 			{ "climbCost",       road_class.climbCost },
@@ -388,6 +389,7 @@ namespace trok
 			.shoulderWidth   = json.at("shoulderWidth").get<float>(),
 			.minCurveRadius  = json.at("minCurveRadius").get<float>(),
 			.maxGrade        = json.at("maxGrade").get<float>(),
+			.speedLimit      = json.at("speedLimit").get<float>(),
 			.limitPenalty    = json.at("limitPenalty").get<float>(),
 			.turnPenalty     = json.at("turnPenalty").get<float>(),
 			.climbCost       = json.at("climbCost").get<float>(),
@@ -406,11 +408,11 @@ namespace trok
 			.furniture       = DeserializeFurniture(json.at("furniture"))
 		};
 
-		if (road_class.lanes <= 0 || road_class.laneWidth <= 0.f || road_class.maxGrade <= 0.f || road_class.minCurveRadius <= 0.f ||
+		if (road_class.lanes <= 0 || road_class.laneWidth <= 0.f || road_class.maxGrade <= 0.f || road_class.minCurveRadius <= 0.f || road_class.speedLimit <= 0.f ||
 		    road_class.pillarSpacing <= 0.f || road_class.maxCutDepth <= 0.f || road_class.cutSpread < 0.f ||
 		    road_class.furniture.dashLength <= 0.f || road_class.furniture.dashGap < 0.f || road_class.furniture.postSpacing <= 0.f)
 		{
-			Fs::ReportMalformedJson("a road class needs positive lanes, lane width, grade, curve radius, cut depth, pillar, post and dash spacing, and a non-negative cut spread and dash gap");
+			Fs::ReportMalformedJson("a road class needs positive lanes, lane width, grade, curve radius, speed limit, cut depth, pillar, post and dash spacing, and a non-negative cut spread and dash gap");
 			return std::nullopt;
 		}
 
@@ -422,9 +424,19 @@ namespace trok
 	{
 	}
 
-	RoadNetwork::RoadNetwork(std::vector<std::vector<glm::vec3>> centrelines, RoadClass road_class) noexcept
-		: roadClass(std::move(road_class))
+	RoadNetwork::RoadNetwork(std::vector<std::vector<glm::vec3>> centrelines, RoadClass road_class, std::vector<RoadId> ids) noexcept
+		: roadIds(std::move(ids)),
+		roadClass(std::move(road_class))
 	{
+		if (roadIds.empty())
+		{
+			roadIds.resize(centrelines.size());
+			std::iota(roadIds.begin(), roadIds.end(), RoadId(0));
+		}
+
+		for (uint32_t road = 0; road < roadIds.size(); road++)
+			roadIndices[roadIds[road]] = road;
+
 		centrelines = LevelJunctions(std::move(centrelines), roadClass);
 
 		for (const std::vector<glm::vec3>& road : centrelines)
@@ -552,6 +564,22 @@ namespace trok
 	size_t RoadNetwork::getRoadAt(size_t point) const
 	{
 		return roadOf[point];
+	}
+
+	RoadId RoadNetwork::getRoadId(size_t road) const
+	{
+		return roadIds[road];
+	}
+
+	std::optional<size_t> RoadNetwork::findRoad(RoadId id) const
+	{
+		const auto found = roadIndices.find(id);
+		return found != roadIndices.end() ? std::optional<size_t>(found->second) : std::nullopt;
+	}
+
+	size_t RoadNetwork::getNodeAt(size_t road, bool at_start) const
+	{
+		return roadNodes[road][at_start ? 0 : 1];
 	}
 
 	float RoadNetwork::lengthOf(size_t road) const
@@ -702,7 +730,13 @@ namespace trok
 				continue;
 
 			shortest = distance;
-			closest  = RoadPoint { glm::mix(from, to, amount), glm::normalize(course) };
+			closest  = RoadPoint
+			{
+				.position  = glm::mix(from, to, amount),
+				.direction = glm::normalize(course),
+				.road      = roadOf[segment],
+				.distance  = glm::mix(distances[segment], distances[segment + 1], amount)
+			};
 		}
 
 		return closest;

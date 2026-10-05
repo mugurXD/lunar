@@ -1,11 +1,12 @@
 {
-    "formatVersion": 4,
+    "formatVersion": 5,
     "name": "core:national",
     "lanes": 2,
     "laneWidth": 8,
     "shoulderWidth": 1.0,
     "minCurveRadius": 180.0,
     "maxGrade": 0.05,
+    "speedLimit": 25.0,
     "limitPenalty": 8.0,
     "turnPenalty": 0.22,
     "gradingMargin": 3.0,
