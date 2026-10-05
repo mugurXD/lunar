@@ -26,6 +26,7 @@ namespace lunar::Render
 
 		constexpr std::string_view DEFAULT_VERTEX_SHADER   = "mesh.vert";
 		constexpr std::string_view DEFAULT_FRAGMENT_SHADER = "mesh.frag";
+		constexpr std::string_view LINE_FRAGMENT_SHADER    = "line.frag";
 
 		const glm::vec4 AMBIENT_COLOR = { 0.08f, 0.08f, 0.1f, 0.f };
 
@@ -121,7 +122,10 @@ namespace lunar::Render
 	Renderer::Renderer(RenderDevice& device, Swapchain* swapchain, uint32_t samples) noexcept
 		: device(device),
 		swapchain(swapchain),
-		meshes(device)
+		meshes(device),
+		lineMaterial { .vertexShader   = std::string(DEFAULT_VERTEX_SHADER),
+		               .fragmentShader = std::string(LINE_FRAGMENT_SHADER),
+		               .topology       = PrimitiveTopology::eLineList }
 	{
 		cubeMesh = meshes.create(CreateCubeMeshData());
 		setSamples(samples);
@@ -131,6 +135,7 @@ namespace lunar::Render
 	Renderer::~Renderer() noexcept
 	{
 		destroyTargets();
+		destroyPipelines(lineMaterial);
 		materials.forEach([this](PoolHandle<Material>, Material& material) {
 			destroyPipelines(material);
 		});
@@ -144,9 +149,9 @@ namespace lunar::Render
 
 		sampleCount = supported;
 		destroyTargets();
+		recreatePipelines(lineMaterial);
 		materials.forEach([this](PoolHandle<Material>, Material& material) {
-			destroyPipelines(material);
-			createPipelines(material);
+			recreatePipelines(material);
 		});
 	}
 
@@ -160,6 +165,12 @@ namespace lunar::Render
 		const PoolHandle<Material> material = materials.create(Material { .vertexShader = std::string(desc.vertexShader), .fragmentShader = std::string(desc.fragmentShader) });
 		createPipelines(*materials.get(material));
 		return ToGpuHandle<MaterialTag>(material);
+	}
+
+	void Renderer::recreatePipelines(Material& material)
+	{
+		destroyPipelines(material);
+		createPipelines(material);
 	}
 
 	void Renderer::createPipelines(Material& material)
@@ -177,6 +188,7 @@ namespace lunar::Render
 			.fragmentShader = std::as_bytes(std::span(fragment_shader)),
 			.colorFormats   = std::span(&color_format, 1),
 			.depthFormat    = DEPTH_FORMAT,
+			.topology       = material.topology,
 			.cullMode       = CullMode::eBack,
 			.frontFace      = FrontFace::eCounterClockwise,
 			.depthTest      = true,
@@ -218,6 +230,7 @@ namespace lunar::Render
 		}
 
 		device.endFrame(frame);
+		lineVertices.clear();
 	}
 
 	MeshRegistry& Renderer::getMeshes()
@@ -228,6 +241,13 @@ namespace lunar::Render
 	MeshHandle Renderer::getCubeMesh() const
 	{
 		return cubeMesh;
+	}
+
+	void Renderer::drawLine(std::span<const glm::vec3> points, const glm::vec4& color)
+	{
+		for (size_t i = 1; i < points.size(); ++i)
+			for (const glm::vec3& point : { points[i - 1], points[i] })
+				lineVertices.push_back(Vertex { .position = point, .color = color });
 	}
 
 	void Renderer::resizeTargets(Extent2D extent)
@@ -300,6 +320,8 @@ namespace lunar::Render
 						const PipelineHandle pipeline = translucent ? material.translucentPipeline : material.opaquePipeline;
 						drawMeshes(frame, scene, scene_address, frustum, ToGpuHandle<MaterialTag>(handle), pipeline, translucent);
 					});
+
+				drawLines(frame, scene_address);
 			}
 		}
 
@@ -357,5 +379,21 @@ namespace lunar::Render
 			DrawInstanced(frame, scene_address, *mesh, draws);
 			first = last;
 		}
+	}
+
+	void Renderer::drawLines(Frame& frame, uint64_t scene_address)
+	{
+		if (lineVertices.empty() || lineMaterial.opaquePipeline == PipelineHandle {})
+			return;
+
+		const uint64_t vertex_address = frame.writeTransient(std::span<const Vertex>(lineVertices));
+		const uint64_t draw_address   = frame.writeTransient(DrawData {});
+		if (vertex_address == 0 || draw_address == 0)
+			return;
+
+		CommandList& commands = frame.commandList();
+		commands.bindPipeline(lineMaterial.opaquePipeline);
+		commands.pushConstants(MeshConstants { scene_address, draw_address, vertex_address });
+		commands.draw(static_cast<uint32_t>(lineVertices.size()));
 	}
 }
