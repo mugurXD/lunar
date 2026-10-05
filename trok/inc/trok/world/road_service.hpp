@@ -76,12 +76,14 @@ namespace trok
 		RoadPlannerSettings                     settings;
 		std::shared_ptr<RoadLayer>              layer;
 		std::vector<std::vector<glm::vec3>>     roads;
+		std::vector<RoadId>                     roadIds;
 		std::vector<lunar::JobHandle>           handles;
 		std::vector<QueuedLink>                 queue;
 		std::vector<TownLink>                   known;
 		size_t                                  maxLinksInFlight = 0;
 		size_t                                  pendingLinks     = 0;
 		size_t                                  publishedRoads   = 0;
+		RoadId                                  nextRoadId       = 0;
 		bool                                    changed          = false;
 	};
 }

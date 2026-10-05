@@ -84,7 +84,7 @@ namespace trok
 			return {};
 
 		changed = false;
-		layer->set(std::make_shared<const RoadNetwork>(roads, roadClass));
+		layer->set(std::make_shared<const RoadNetwork>(roads, roadClass, roadIds));
 
 		std::vector<std::vector<glm::vec3>> published(roads.begin() + static_cast<std::ptrdiff_t>(publishedRoads), roads.end());
 		publishedRoads = roads.size();
@@ -241,11 +241,14 @@ namespace trok
 								std::vector<glm::vec3>& trunk = roads[*join->splitRoad];
 								std::vector<glm::vec3>  rest(trunk.begin() + join->splitPoint, trunk.end());
 								trunk.resize(join->splitPoint + 1);
+								roadIds[*join->splitRoad] = nextRoadId++;
 								roads.push_back(std::move(rest));
+								roadIds.push_back(nextRoadId++);
 							}
 						}
 
 						roads.push_back(std::move(road));
+						roadIds.push_back(nextRoadId++);
 						changed = true;
 					}
 
