@@ -8,6 +8,8 @@
 
 #include <algorithm>
 #include <bit>
+#include <iterator>
+#include <span>
 #include <string_view>
 #include <vector>
 
@@ -49,6 +51,12 @@ namespace lunar::Render
 			uint64_t sceneAddress  = 0;
 			uint64_t drawAddress   = 0;
 			uint64_t vertexAddress = 0;
+		};
+
+		struct MeshInstance
+		{
+			const Mesh* mesh = nullptr;
+			DrawData    draw = {};
 		};
 
 		template<typename T>
@@ -95,6 +103,18 @@ namespace lunar::Render
 				return glm::mat4(1.f);
 
 			return glm::transpose(glm::inverse(model));
+		}
+
+		void DrawInstanced(Frame& frame, uint64_t scene_address, const Mesh& mesh, std::span<const DrawData> draws)
+		{
+			const uint64_t draw_address = frame.writeTransient(draws);
+			if (draw_address == 0)
+				return;
+
+			CommandList& commands = frame.commandList();
+			commands.pushConstants(MeshConstants { scene_address, draw_address, mesh.vertexAddress });
+			commands.bindIndexBuffer(mesh.indexBuffer, 0, IndexType::eUint32);
+			commands.drawIndexed(mesh.indexCount, static_cast<uint32_t>(draws.size()));
 		}
 	}
 
@@ -307,9 +327,7 @@ namespace lunar::Render
 		if (pipeline == PipelineHandle {})
 			return;
 
-		CommandList& commands = frame.commandList();
-		commands.bindPipeline(pipeline);
-
+		std::vector<MeshInstance> instances;
 		scene.forEach<MeshRenderer>([&](Entity entity, const MeshRenderer& mesh_renderer) {
 			const Mesh*          mesh  = meshes.get(mesh_renderer.mesh);
 			const MaterialHandle drawn = mesh_renderer.material == MaterialHandle {} ? defaultMaterial : mesh_renderer.material;
@@ -317,16 +335,27 @@ namespace lunar::Render
 				return;
 
 			const glm::mat4 model = scene.resolveWorldTransform(entity).matrix;
-			if (!frustum.intersects(mesh->bounds.transformed(model)))
-				return;
-
-			const uint64_t draw_address = frame.writeTransient(DrawData { model, NormalMatrix(model) });
-			if (draw_address == 0)
-				return;
-
-			commands.pushConstants(MeshConstants { scene_address, draw_address, mesh->vertexAddress });
-			commands.bindIndexBuffer(mesh->indexBuffer, 0, IndexType::eUint32);
-			commands.drawIndexed(mesh->indexCount);
+			if (frustum.intersects(mesh->bounds.transformed(model)))
+				instances.push_back({ mesh, { model, NormalMatrix(model) } });
 		});
+
+		if (instances.empty())
+			return;
+
+		// Stable so translucent instances of the same mesh keep a consistent blend order between frames.
+		std::ranges::stable_sort(instances, {}, &MeshInstance::mesh);
+		frame.commandList().bindPipeline(pipeline);
+
+		std::vector<DrawData> draws;
+		for (auto first = instances.begin(); first != instances.end();)
+		{
+			const Mesh* mesh = first->mesh;
+			const auto  last = std::ranges::find_if(first, instances.end(), [mesh](const Mesh* other) { return other != mesh; }, &MeshInstance::mesh);
+
+			draws.clear();
+			std::ranges::transform(first, last, std::back_inserter(draws), &MeshInstance::draw);
+			DrawInstanced(frame, scene_address, *mesh, draws);
+			first = last;
+		}
 	}
 }

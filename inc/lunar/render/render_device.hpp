@@ -80,13 +80,19 @@ namespace lunar::Render
 		template<typename T>
 		uint64_t writeTransient(const T& value)
 		{
+			return writeTransient(std::span<const T>(&value, 1));
+		}
+
+		template<typename T>
+		uint64_t writeTransient(std::span<const T> values)
+		{
 			static_assert(std::is_trivially_copyable_v<T>, "Transient data must be trivially copyable");
 
-			const TransientAllocation allocation = allocateTransient(sizeof(T));
+			const TransientAllocation allocation = allocateTransient(values.size_bytes());
 			if (allocation.data.empty())
 				return 0;
 
-			std::memcpy(allocation.data.data(), &value, sizeof(T));
+			std::memcpy(allocation.data.data(), values.data(), values.size_bytes());
 			return allocation.address;
 		}
 	};

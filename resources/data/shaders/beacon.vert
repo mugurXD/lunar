@@ -8,9 +8,10 @@ layout(location = 1) out float outHeight;
 
 void main()
 {
-	const Vertex vertex = constants.vertexBuffer.vertices[gl_VertexIndex];
+	const Vertex   vertex = constants.vertexBuffer.vertices[gl_VertexIndex];
+	const DrawData draw   = constants.drawBuffer.draws[gl_InstanceIndex];
 
 	outColor    = vertex.color;
 	outHeight   = vertex.position.y * HALF + HALF;
-	gl_Position = constants.scene.viewProjection * constants.draw.model * vec4(vertex.position, 1.0);
+	gl_Position = constants.scene.viewProjection * draw.model * vec4(vertex.position, 1.0);
 }
