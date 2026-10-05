@@ -1,3 +1,19 @@
+This project is composed of two core parts:
+1. **lunar** - the game engine written in C++. This engine uses the dependencies from the folder "deps". Notably, it is an engine that uses Vulkan for rendering, an ECS system, and other custom functionalities in order to be flexible and easy to mod.
+2. **trok** - the game built on top of **lunar**. This game is still in a very early alpha state, but there are a few core concepts which it is built around:
+    * The world is meant to be infinite, with different climates, biomes and features;
+    * There are many towns scattered throughout this world. Right now, towns are only implemented as "center points", but actual town generation is not done. Actual random town generation is meant to be implemented sooner or later.
+    * Roads are also generated randomly. There are different types of roads, defined in a json file, such as a national road. Based on the properties defined, a pathfinding algorithm is used to generate roads the player has to drive on. Right now, this is in a relatively decent state.
+    * The player drives a truck. This is the core of the game. Right now, the player gets to do deliveries from a town to another. The main accent of the game is **exploration**. The player has to have a reason to leave a town and go explore, besides just doing deliveries, which will probably be implemented by the user getting "heat" from the police and being chased if they did too many deliveries around a specific city.
+    * The player will not receive a GPS with a huge map telling them where to go. A minimap will likely be present, but the player will have to guide themselves on the map based on their knowledge and navigation skills. There will be many routes with different risk/reward ratios.
+    * The player must keep the cargo intact.
+    * Right now, the player can only drive. One idea would be for the player to unlock different "abilities", that don't really have to be realistic, similar to the two games of The Legend of Zelda on the Nintendo Switch (BOTW and TOTK). They will be able to use these abilities to traverse the map and avoid obstacles.
+    * Some obstacle ideas: police, wildlife (if off-road), roadworks
+
+The files for **lunar** are in the "src" and "inc" folders.
+The files for **trok** are in the "trok" folder.
+The folder "resources" contains data necessary at runtime for the game.
+
 Do not write any code at all unless explicitly requested. The main reason you are used is for guidance and tips, not actual implementation.
 
 When you do write code, follow these guidelines:
