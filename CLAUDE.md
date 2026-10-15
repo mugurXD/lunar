@@ -39,3 +39,4 @@ When you do write code, follow these guidelines:
 14. Ask for clarification if you are unsure about the requirements or the expected behavior of a certain piece of code.
 15. Ask for permission whenever doing something that may have a significant impact on the project, such as changing the architecture, adding a new dependency, or modifying a core component.
 16. Prefer using modern C++ features and idioms over older C++ constructs.
+17. If a test is failing, focus on fixing the changed code rather than modifying the test.
