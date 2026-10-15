@@ -65,6 +65,8 @@ namespace trok
 		float         pillarWidth         = 2.f;
 		float         surfaceOffset       = 0.06f;
 		float         edgeDepth           = 0.5f;
+		float         edgeSpread          = 3.f;
+		float         maxEdgeRun          = 2.f;
 		glm::vec3     color               = { 0.16f, 0.16f, 0.17f };
 		RoadFurniture furniture           = {};
 

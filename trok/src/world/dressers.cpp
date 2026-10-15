@@ -64,10 +64,24 @@ namespace trok
 			return centre.y - ground(centre.x, centre.z) > road_class.bridgeHeight;
 		}
 
-		glm::vec3 Underside(const lunar::World::HeightSampler& ground, const RoadClass& road_class, const glm::vec3& top, bool bridge)
+		glm::vec3 Outward(const glm::vec3& centre, const glm::vec3& edge)
+		{
+			return glm::normalize(glm::vec3(edge.x - centre.x, 0.f, edge.z - centre.z));
+		}
+
+		glm::vec3 Underside(const lunar::World::HeightSampler& ground, const RoadClass& road_class, const glm::vec3& top, const glm::vec3& outward, float sink, bool bridge)
 		{
 			const float deck = top.y - road_class.edgeDepth;
-			return { top.x, bridge ? deck : std::min(ground(top.x, top.z) - GROUND_SINK, deck), top.z };
+			if (bridge)
+				return { top.x, deck, top.z };
+
+			const float edge_ground = ground(top.x, top.z);
+			const float drop        = std::max(top.y - edge_ground, 0.f);
+			if (drop * road_class.edgeSpread > road_class.maxEdgeRun)
+				return { top.x, std::min(edge_ground - GROUND_SINK, deck), top.z };
+
+			const glm::vec3 foot = top + outward * ((drop + sink) * road_class.edgeSpread);
+			return { foot.x, std::min(edge_ground, ground(foot.x, foot.z)) - sink, foot.z };
 		}
 
 		void AppendColumn(lunar::Render::MeshData& mesh,
@@ -182,7 +196,7 @@ namespace trok
 			return network.closestPoint({ point.x, point.z }, network.getRoadClass().halfWidth() + clearance, own_road).has_value();
 		}
 
-		void AppendNode(lunar::Render::MeshData& mesh, const RoadNetwork& network, size_t node_index, const lunar::World::HeightSampler& ground, const glm::vec3& origin)
+		void AppendNode(lunar::Render::MeshData& mesh, const RoadNetwork& network, size_t node_index, const lunar::World::HeightSampler& ground, float sink, const glm::vec3& origin)
 		{
 			const RoadClass&              road_class = network.getRoadClass();
 			const RoadNode&               node       = network.getNodes()[node_index];
@@ -204,7 +218,11 @@ namespace trok
 					AppendTriangle(mesh, centre - depth, from_top - depth, to_top - depth, false, origin, road_class.color);
 
 				if (!from.opensRoad)
-					AppendDoubleSided(mesh, { Underside(ground, road_class, from_top, bridge), from_top, Underside(ground, road_class, to_top, bridge), to_top }, origin, road_class.color);
+				{
+					const glm::vec3 from_base = Underside(ground, road_class, from_top, Outward(node.position, from_top), sink, bridge);
+					const glm::vec3 to_base   = Underside(ground, road_class, to_top, Outward(node.position, to_top), sink, bridge);
+					AppendDoubleSided(mesh, { from_base, from_top, to_base, to_top }, origin, road_class.color);
+				}
 			}
 
 			if (bridge)
@@ -309,6 +327,7 @@ namespace trok
 		const glm::vec2                  maximum    = minimum + glm::vec2(settings.getChunkSize());
 		const RoadClass&                 road_class = network->getRoadClass();
 		const glm::vec3                  lift       = { 0.f, road_class.surfaceOffset, 0.f };
+		const float                      ramp_sink  = std::max(GROUND_SINK, settings.maxFacetError);
 
 		lunar::Render::MeshData mesh;
 		lunar::Render::MeshData rails;
@@ -333,10 +352,10 @@ namespace trok
 			const glm::vec3 to_left     = to + lift + to_side;
 			const glm::vec3 to_right    = to + lift - to_side;
 
-			const glm::vec3 from_left_base  = Underside(ground, road_class, from_left, from_bridge);
-			const glm::vec3 from_right_base = Underside(ground, road_class, from_right, from_bridge);
-			const glm::vec3 to_left_base    = Underside(ground, road_class, to_left, to_bridge);
-			const glm::vec3 to_right_base   = Underside(ground, road_class, to_right, to_bridge);
+			const glm::vec3 from_left_base  = Underside(ground, road_class, from_left, Outward(from, from_left), ramp_sink, from_bridge);
+			const glm::vec3 from_right_base = Underside(ground, road_class, from_right, Outward(from, from_right), ramp_sink, from_bridge);
+			const glm::vec3 to_left_base    = Underside(ground, road_class, to_left, Outward(to, to_left), ramp_sink, to_bridge);
+			const glm::vec3 to_right_base   = Underside(ground, road_class, to_right, Outward(to, to_right), ramp_sink, to_bridge);
 
 			AppendQuad(mesh, { from_left, from_right, to_left, to_right }, origin, road_class.color);
 			AppendQuad(mesh, { from_left_base, from_left, to_left_base, to_left }, origin, road_class.color);
@@ -393,7 +412,7 @@ namespace trok
 		}
 
 		for (const uint32_t node : network->nodesWithin(minimum, maximum))
-			AppendNode(mesh, *network, node, ground, origin);
+			AppendNode(mesh, *network, node, ground, ramp_sink, origin);
 
 		output.push_back({ .mesh = std::move(mesh), .colliderCategory = lunar::Physics::ROAD_CATEGORY });
 

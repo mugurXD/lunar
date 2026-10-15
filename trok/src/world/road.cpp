@@ -18,7 +18,7 @@ namespace trok
 {
 	namespace
 	{
-		constexpr uint32_t ROAD_FORMAT_VERSION = 5;
+		constexpr uint32_t ROAD_FORMAT_VERSION = 6;
 		constexpr float    CELL_SIZE           = 64.f;
 		constexpr float    HALF                = 0.5f;
 		constexpr float    MIN_MITRE_SCALE     = 0.5f;
@@ -371,6 +371,8 @@ namespace trok
 			{ "pillarWidth",     road_class.pillarWidth },
 			{ "surfaceOffset",   road_class.surfaceOffset },
 			{ "edgeDepth",       road_class.edgeDepth },
+			{ "edgeSpread",      road_class.edgeSpread },
+			{ "maxEdgeRun",      road_class.maxEdgeRun },
 			{ "color",           SerializeVec3(road_class.color) },
 			{ "furniture",       SerializeFurniture(road_class.furniture) }
 		};
@@ -404,15 +406,17 @@ namespace trok
 			.pillarWidth     = json.at("pillarWidth").get<float>(),
 			.surfaceOffset   = json.at("surfaceOffset").get<float>(),
 			.edgeDepth       = json.at("edgeDepth").get<float>(),
+			.edgeSpread      = json.at("edgeSpread").get<float>(),
+			.maxEdgeRun      = json.at("maxEdgeRun").get<float>(),
 			.color           = DeserializeVec3(json.at("color")),
 			.furniture       = DeserializeFurniture(json.at("furniture"))
 		};
 
 		if (road_class.lanes <= 0 || road_class.laneWidth <= 0.f || road_class.maxGrade <= 0.f || road_class.minCurveRadius <= 0.f || road_class.speedLimit <= 0.f ||
-		    road_class.pillarSpacing <= 0.f || road_class.maxCutDepth <= 0.f || road_class.cutSpread < 0.f ||
+		    road_class.pillarSpacing <= 0.f || road_class.maxCutDepth <= 0.f || road_class.cutSpread < 0.f || road_class.edgeSpread < 0.f || road_class.maxEdgeRun < 0.f ||
 		    road_class.furniture.dashLength <= 0.f || road_class.furniture.dashGap < 0.f || road_class.furniture.postSpacing <= 0.f)
 		{
-			Fs::ReportMalformedJson("a road class needs positive lanes, lane width, grade, curve radius, speed limit, cut depth, pillar, post and dash spacing, and a non-negative cut spread and dash gap");
+			Fs::ReportMalformedJson("a road class needs positive lanes, lane width, grade, curve radius, speed limit, cut depth, pillar, post and dash spacing, and a non-negative cut spread, edge spread, edge run and dash gap");
 			return std::nullopt;
 		}
 
