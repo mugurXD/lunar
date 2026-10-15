@@ -14,8 +14,8 @@
 #include <trok/world/terrain_generator.hpp>
 #include <trok/world/towns.hpp>
 #include <trok/world/world_map.hpp>
-#include <trok/vehicle/ai_vehicle.hpp>
 #include <trok/vehicle/chase_camera.hpp>
+#include <trok/vehicle/traffic.hpp>
 #include <trok/vehicle/truck.hpp>
 #include <trok/vehicle/truck_tuning.hpp>
 
@@ -99,8 +99,6 @@ namespace
 	constexpr World::WorldInfo        NEW_WORLD_INFO       = { .seed = 1337, .generatorVersion = 1 };
 
 	const glm::vec3 CAMERA_START_POSITION  = { 0.f, 0.f, 30.f };
-	const glm::vec3 CAR_SPAWN_OFFSET       = { 6.f, 0.f, 0.f };
-	const glm::vec3 CAR_SPAWN_POSITION     = CAMERA_START_POSITION + CAR_SPAWN_OFFSET;
 	const glm::vec3 SUN_DIRECTION          = { -0.4f, -1.f, -0.3f };
 	const glm::vec3 SKY_COLOR              = { 0.6f, 0.745f, 0.76f };
 	const glm::vec3 ENDPOINT_MARKER_COLOR  = { 0.9f, 0.1f, 0.1f };
@@ -358,7 +356,7 @@ int main()
 		hud.emplace(*ui, Fs::fromData(HUD_DOCUMENT));
 	}
 	std::optional<trok::Truck>                 truck;
-	std::optional<trok::AiVehicle>             car;
+	trok::Traffic                              traffic(engine, roads, terrain, colliders, world_settings, *car_definition, static_cast<uint64_t>(world_storage->getInfo().seed), { .planner = { .seaLevel = elevation.seaLevel } });
 
 	GameObject player = scene.createGameObject("Player");
 	player->getTransform().position = CAMERA_START_POSITION;
@@ -395,9 +393,6 @@ int main()
 
 	trok::CargoShock cargo_shock;
 	engine.addSystem(SystemPhase::eFixedUpdate, [&](Scene&, const FrameTime& frame_time) {
-		if (car.has_value())
-			car->update(frame_time.deltaTime);
-
 		if (!truck.has_value())
 			return;
 
@@ -439,6 +434,7 @@ int main()
 						known_towns.push_back(town);
 
 				deliveries.setTowns(known_towns);
+				traffic.setTowns(known_towns);
 				roads.request(survey.links, trok::RegionContext(world_settings, std::move(survey.regions)));
 			});
 	};
@@ -621,29 +617,20 @@ int main()
 				return;
 
 			truck.emplace(scene, engine.getRenderer().getMeshes(), *truck_definition, glm::vec3(CAMERA_START_POSITION.x, *ground + TRUCK_SPAWN_HEIGHT, CAMERA_START_POSITION.z), glm::quat(1.f, 0.f, 0.f, 0.f));
+			scene.addComponent<trok::TrafficFocus>(truck->getEntity());
 			chase.snap(chase_camera->getTransform(), truck->getTransform());
 			scene.setMainCamera(chase_camera);
 		}
 
-		colliders.update(std::span(&truck->getTransform().position, 1));
+		std::vector<glm::vec3> vehicle_positions;
+		scene.forEach<trok::TrafficBody, Transform>([&](Entity, const trok::TrafficBody&, const Transform& transform) {
+			vehicle_positions.push_back(transform.position);
+		});
+
+		colliders.update(vehicle_positions);
+
 		truck->setSimulated(colliders.isReady(truck->getTransform().position));
 		truck->updateWheels(frame_time.fixedAlpha);
-
-		if (!car.has_value())
-		{
-			if (const std::optional<float> ground = GroundHeight(scene, CAR_SPAWN_POSITION.x, CAR_SPAWN_POSITION.z))
-				car.emplace(scene,
-				            engine.getRenderer().getMeshes(),
-				            *car_definition,
-				            glm::vec3(CAR_SPAWN_POSITION.x, *ground + TRUCK_SPAWN_HEIGHT, CAR_SPAWN_POSITION.z),
-				            glm::quat(1.f, 0.f, 0.f, 0.f),
-				            std::make_unique<trok::ParkedController>());
-		}
-		else
-		{
-			car->setSimulated(colliders.isReady(car->getTransform().position));
-			car->updateWheels(frame_time.fixedAlpha);
-		}
 
 		const glm::vec3 truck_position = truck->getTransform().position;
 		const std::optional<int64_t> payout = deliveries.update({ truck_position.x, truck_position.z }, frame_time.deltaTime);

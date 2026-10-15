@@ -233,6 +233,7 @@ namespace trok
 		chassis->getTransform().position = position;
 		chassis->getTransform().rotation = rotation;
 		chassis->addComponent<lunar::Physics::RigidBody>(CreateVehicleBody(scene, definition, position, rotation));
+		chassis->addComponent<TrafficBody>(TrafficBody { .halfLength = definition.colliderHalfExtents.z });
 
 		for (const VehiclePart& part : definition.parts)
 			createBox(part.color, part.halfExtents, part.offset);
@@ -267,7 +268,7 @@ namespace trok
 		lunar::Physics::RigidBody& body    = *chassis->getComponent<lunar::Physics::RigidBody>();
 		const glm::vec3            current = getTransform().rotation * CHASSIS_FORWARD;
 		const glm::vec2            forward = facing.value_or(glm::vec2(current.x, current.z));
-		const glm::quat            upright = glm::angleAxis(std::atan2(forward.x, -forward.y), CHASSIS_UP);
+		const glm::quat            upright = glm::angleAxis(std::atan2(-forward.x, -forward.y), CHASSIS_UP);
 
 		body.getBody().setTransform(rp3d::Transform(lunar::Physics::ToPhysics(position), lunar::Physics::ToPhysics(upright)));
 		body.getBody().setLinearVelocity(rp3d::Vector3::zero());
@@ -329,6 +330,11 @@ namespace trok
 	lunar::Physics::RaycastVehicle& Vehicle::editVehicle()
 	{
 		return vehicle;
+	}
+
+	lunar::Entity Vehicle::getEntity() const
+	{
+		return chassis.getEntity();
 	}
 
 	bool Vehicle::isSimulated() const

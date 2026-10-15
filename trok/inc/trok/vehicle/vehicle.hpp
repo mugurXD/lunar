@@ -46,6 +46,11 @@ namespace trok
 		static std::optional<VehicleDefinition> Deserialize(const nlohmann::json& json);
 	};
 
+	struct TrafficBody
+	{
+		float halfLength = 0.f;
+	};
+
 	inline const lunar::Physics::VehicleInput PARKED_INPUT = { .brake = 1.f };
 
 	lunar::Physics::RigidBody CreateVehicleBody(lunar::Scene&            scene,
@@ -66,6 +71,7 @@ namespace trok
 		Vehicle(const Vehicle&)            = delete;
 		Vehicle& operator=(const Vehicle&) = delete;
 
+		void drive(const lunar::Physics::VehicleInput& input, float delta_time);
 		void recover(const glm::vec3& position, std::optional<glm::vec2> facing = std::nullopt);
 		void setSimulated(bool simulated);
 		void updateWheels(float alpha);
@@ -75,10 +81,8 @@ namespace trok
 		lunar::Physics::RaycastVehicle&       editVehicle();
 		glm::vec3                             getVelocity();
 		glm::vec3                             getUp();
+		lunar::Entity                         getEntity()     const;
 		bool                                  isSimulated()   const;
-
-	protected:
-		void drive(const lunar::Physics::VehicleInput& input, float delta_time);
 
 	private:
 		struct WheelPose
