@@ -16,6 +16,7 @@
 #include <cmath>
 #include <iterator>
 #include <memory>
+#include <utility>
 #include <vector>
 
 namespace
@@ -252,6 +253,63 @@ TEST(TrokTerrain, LowFillDropsStraightDownToTheGround)
 
 	EXPECT_LT(base.y, top.y - 1.f) << "the side should reach down to the natural ground";
 	EXPECT_NEAR(glm::distance(glm::vec2(base.x, base.z), glm::vec2(top.x, top.z)), 0.f, 0.001f) << "the side should drop straight down";
+}
+
+TEST(TrokTerrain, LowEdgesBecomeRampsAndHighEdgesStayWalls)
+{
+	constexpr float CUT_DEPTH     = 2.f;
+	constexpr float FAR_FROM_ROAD = 400.f;
+	constexpr float POINT_SPACING = 8.f;
+
+	constexpr std::array<std::pair<size_t, size_t>, 2> SIDE_EDGES =
+	{ {
+		{ trok::QUAD_CORNERS + 1, trok::QUAD_CORNERS },
+		{ trok::QUAD_CORNERS * 2, trok::QUAD_CORNERS * 2 + 1 }
+	} };
+
+	const trok::RoadClass     road_class = {};
+	const trok::RegionContext context    = ContextOf(FLAT_BIOME, FLAT_BIOME);
+	const double              centre     = CellCentre(CENTRE_CELL);
+	const auto                roads      = std::make_shared<trok::RoadLayer>();
+	trok::TerrainGenerator    generator  = MakeGenerator(WORLD_SEED);
+	generator.addShaper(std::make_shared<const trok::RoadShaper>(roads));
+
+	std::vector<glm::vec3> sunken;
+	for (double along = -FAR_FROM_ROAD; along <= FAR_FROM_ROAD; along += POINT_SPACING)
+		sunken.emplace_back(centre + along, generator.sampleHeight(context, centre + along, centre) - CUT_DEPTH, centre);
+
+	roads->set(std::make_shared<const trok::RoadNetwork>(std::move(sunken), road_class));
+
+	const lunar::World::ChunkCoord               coord    = lunar::World::ChunkAt(glm::vec3(centre, 0.f, centre), SETTINGS);
+	const glm::vec3                              origin   = lunar::World::ChunkOrigin(coord, SETTINGS);
+	const std::vector<lunar::World::DressedMesh> dressing = Dress(trok::RoadDresser(roads), generator, context, coord);
+	ASSERT_FALSE(dressing.empty()) << "the road surface is always the first mesh";
+
+	const lunar::Render::MeshData& mesh = dressing.front().mesh;
+	ASSERT_EQ(mesh.vertices.size() % VERTICES_PER_SEGMENT, 0u) << "ramps reuse the side quads";
+
+	size_t ramps = 0;
+	for (size_t segment = 0; segment < mesh.vertices.size(); segment += VERTICES_PER_SEGMENT)
+	{
+		for (const auto& [top_index, foot_index] : SIDE_EDGES)
+		{
+			const glm::vec3 top   = origin + mesh.vertices[segment + top_index].position;
+			const glm::vec3 foot  = origin + mesh.vertices[segment + foot_index].position;
+			const float     reach = (top.y - generator.sampleHeight(context, top.x, top.z)) * road_class.edgeSpread;
+			const float     run   = glm::distance(glm::vec2(foot.x, foot.z), glm::vec2(top.x, top.z));
+			if (reach > road_class.maxEdgeRun)
+			{
+				EXPECT_NEAR(run, 0.f, GEOMETRY_TOLERANCE) << "an edge too far above the ground should stay a wall";
+				continue;
+			}
+
+			ramps++;
+			EXPECT_GE(run, reach - GEOMETRY_TOLERANCE) << "a ramp should reach the ground no steeper than its spread";
+			EXPECT_LT(foot.y, generator.sampleHeight(context, foot.x, foot.z)) << "a ramp should end below the ground so no gap shows under it";
+		}
+	}
+
+	EXPECT_GT(ramps, 0u) << "the graded side of a sunken road should get ramps";
 }
 
 TEST(TrokTerrain, HighRoadsBecomeBridgesOnPillars)
@@ -504,6 +562,10 @@ TEST(RoadService, NewRoadsJoinTheNetworkInsteadOfDuplicatingIt)
 	const std::shared_ptr<const trok::RoadNetwork> network = roads.getNetwork();
 	ASSERT_NE(network, nullptr);
 	EXPECT_EQ(network->getRoadCount(), 3u) << "the first road is split where the second one joins it, and the third link is skipped";
+	EXPECT_FALSE(network->findRoad(0).has_value()) << "the split road retires its id instead of keeping it for a shorter road";
+	for (size_t road = 0; road < network->getRoadCount(); road++)
+		EXPECT_EQ(network->findRoad(network->getRoadId(road)), road);
+
 
 	const auto junction = std::ranges::find_if(network->getNodes(), [](const trok::RoadNode& node) { return node.ends.size() == 3; });
 	ASSERT_NE(junction, network->getNodes().end()) << "three road ends share one junction node";

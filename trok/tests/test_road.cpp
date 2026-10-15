@@ -109,10 +109,14 @@ TEST(RoadClass, MalformedClassesAreRejected)
 	nlohmann::json without_lanes = trok::RoadClass::Serialize(TestRoadClass());
 	without_lanes["lanes"] = 0;
 
+	nlohmann::json without_speed = trok::RoadClass::Serialize(TestRoadClass());
+	without_speed["speedLimit"] = 0.f;
+
 	nlohmann::json future_format = trok::RoadClass::Serialize(TestRoadClass());
 	future_format["formatVersion"] = future_format["formatVersion"].get<uint32_t>() + 1;
 
 	EXPECT_FALSE(Fs::DeserializeJson<trok::RoadClass>(without_lanes).has_value());
+	EXPECT_FALSE(Fs::DeserializeJson<trok::RoadClass>(without_speed).has_value());
 	EXPECT_FALSE(Fs::DeserializeJson<trok::RoadClass>(future_format).has_value());
 }
 

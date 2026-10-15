@@ -37,9 +37,9 @@ namespace
 		return std::filesystem::path(TROK_DATA_DIRECTORY) / name;
 	}
 
-	trok::TruckDefinition ShippedTruck()
+	trok::VehicleDefinition ShippedTruck()
 	{
-		return *Fs::LoadJson<trok::TruckDefinition>(DataFile("trucks/box_truck.json"));
+		return *Fs::LoadJson<trok::VehicleDefinition>(DataFile("trucks/box_truck.json"));
 	}
 
 	struct TruckRig
@@ -49,9 +49,9 @@ namespace
 		RigidBody      chassis;
 		RaycastVehicle vehicle;
 
-		TruckRig(const trok::TruckDefinition& definition)
+		TruckRig(const trok::VehicleDefinition& definition)
 			: ground(scene, {}, IDENTITY, BodyType::eStatic),
-			chassis(trok::CreateTruckBody(scene, definition, UP * SPAWN_HEIGHT, IDENTITY)),
+			chassis(trok::CreateVehicleBody(scene, definition, UP * SPAWN_HEIGHT, IDENTITY)),
 			vehicle(definition.vehicle)
 		{
 			ground.addBox(GROUND_HALF_EXTENTS, GROUND_OFFSET, TERRAIN_CATEGORY);
@@ -77,40 +77,41 @@ TEST(Truck, ShippedDataFilesLoad)
 {
 	EXPECT_TRUE(Fs::LoadJson<trok::BiomeLibrary>(DataFile("biomes.json")).has_value());
 	EXPECT_TRUE(Fs::LoadJson<trok::ElevationCurve>(DataFile("elevation.json")).has_value());
-	EXPECT_TRUE(Fs::LoadJson<trok::TruckDefinition>(DataFile("trucks/box_truck.json")).has_value());
+	EXPECT_TRUE(Fs::LoadJson<trok::VehicleDefinition>(DataFile("trucks/box_truck.json")).has_value());
+	EXPECT_TRUE(Fs::LoadJson<trok::VehicleDefinition>(DataFile("cars/sedan.json")).has_value());
 }
 
 TEST(Truck, DefinitionsRoundTripThroughJson)
 {
-	const trok::TruckDefinition definition = ShippedTruck();
+	const trok::VehicleDefinition definition = ShippedTruck();
 
-	EXPECT_EQ(Fs::DeserializeJson<trok::TruckDefinition>(trok::TruckDefinition::Serialize(definition)), definition);
+	EXPECT_EQ(Fs::DeserializeJson<trok::VehicleDefinition>(trok::VehicleDefinition::Serialize(definition)), definition);
 }
 
 TEST(Truck, MalformedDefinitionsAreRejected)
 {
-	nlohmann::json weightless = trok::TruckDefinition::Serialize(ShippedTruck());
+	nlohmann::json weightless = trok::VehicleDefinition::Serialize(ShippedTruck());
 	weightless["body"]["mass"] = 0.f;
 
-	nlohmann::json undriven = trok::TruckDefinition::Serialize(ShippedTruck());
+	nlohmann::json undriven = trok::VehicleDefinition::Serialize(ShippedTruck());
 	for (nlohmann::json& mount : undriven["wheels"]["mounts"])
 		mount["driven"] = false;
 
-	nlohmann::json missing_engine = trok::TruckDefinition::Serialize(ShippedTruck());
+	nlohmann::json missing_engine = trok::VehicleDefinition::Serialize(ShippedTruck());
 	missing_engine.erase("engine");
 
-	nlohmann::json future_format = trok::TruckDefinition::Serialize(ShippedTruck());
+	nlohmann::json future_format = trok::VehicleDefinition::Serialize(ShippedTruck());
 	future_format["formatVersion"] = future_format["formatVersion"].get<uint32_t>() + 1;
 
-	EXPECT_FALSE(Fs::DeserializeJson<trok::TruckDefinition>(weightless).has_value());
-	EXPECT_FALSE(Fs::DeserializeJson<trok::TruckDefinition>(undriven).has_value());
-	EXPECT_FALSE(Fs::DeserializeJson<trok::TruckDefinition>(missing_engine).has_value());
-	EXPECT_FALSE(Fs::DeserializeJson<trok::TruckDefinition>(future_format).has_value());
+	EXPECT_FALSE(Fs::DeserializeJson<trok::VehicleDefinition>(weightless).has_value());
+	EXPECT_FALSE(Fs::DeserializeJson<trok::VehicleDefinition>(undriven).has_value());
+	EXPECT_FALSE(Fs::DeserializeJson<trok::VehicleDefinition>(missing_engine).has_value());
+	EXPECT_FALSE(Fs::DeserializeJson<trok::VehicleDefinition>(future_format).has_value());
 }
 
 TEST(Truck, ShippedTruckSettlesDrivesAndStops)
 {
-	const trok::TruckDefinition definition = ShippedTruck();
+	const trok::VehicleDefinition definition = ShippedTruck();
 	TruckRig                    rig(definition);
 
 	rig.simulate({}, SETTLE_STEPS);
