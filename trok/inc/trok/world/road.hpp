@@ -49,7 +49,7 @@ namespace trok
 		float         shoulderWidth       = 1.f;
 		float         minCurveRadius      = 60.f;
 		float         maxGrade            = 0.08f;
-		float         speedLimit          = 25.f;
+		float         speedLimit          = 90.f;
 		float         limitPenalty        = 40.f;
 		float         turnPenalty         = 0.15f;
 		float         climbCost           = 1.f;
@@ -70,7 +70,8 @@ namespace trok
 		glm::vec3     color               = { 0.16f, 0.16f, 0.17f };
 		RoadFurniture furniture           = {};
 
-		float halfWidth() const;
+		float halfWidth()                 const;
+		float speedLimitMetresPerSecond() const;
 
 		bool operator==(const RoadClass&) const = default;
 
