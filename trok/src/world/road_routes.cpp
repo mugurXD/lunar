@@ -52,7 +52,7 @@ namespace trok
 		if (!start_road.has_value())
 			return std::nullopt;
 
-		const float     speed  = network.getRoadClass().speedLimit;
+		const float     speed  = network.getRoadClass().speedLimitMetresPerSecond();
 		const glm::vec3 target = network.getNodes()[destination].position;
 
 		const auto estimate = [&](size_t state) { return glm::distance(network.getNodes()[EndNodeOf(network, state)].position, target) / speed; };

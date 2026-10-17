@@ -30,6 +30,7 @@ namespace trok
 		constexpr float    STUB_MARGIN         = 6.f;
 		constexpr float    STUB_SPACING        = 6.f;
 		constexpr float    CORNER_MERGE        = 0.01f;
+		constexpr float    KMH_PER_MPS         = 3.6f;
 
 		float AngleOf(const glm::vec2& direction)
 		{
@@ -343,6 +344,11 @@ namespace trok
 	float RoadClass::halfWidth() const
 	{
 		return static_cast<float>(lanes) * laneWidth * HALF + shoulderWidth;
+	}
+
+	float RoadClass::speedLimitMetresPerSecond() const
+	{
+		return speedLimit / KMH_PER_MPS;
 	}
 
 	nlohmann::json RoadClass::Serialize(const RoadClass& road_class)
