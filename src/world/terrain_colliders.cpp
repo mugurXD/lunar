@@ -24,15 +24,11 @@ namespace lunar::World
 
 		for (const ChunkCoord focus : focus_chunks)
 		{
-			for (int32_t offset_z = -radiusChunks; offset_z <= radiusChunks; offset_z++)
+			for (const ChunkCoord coord : chunksAround(focus))
 			{
-				for (int32_t offset_x = -radiusChunks; offset_x <= radiusChunks; offset_x++)
-				{
-					const ChunkCoord coord     = { focus.x + offset_x, focus.z + offset_z };
-					const Heightmap* heightmap = terrain.findHeightmap(coord);
-					if (heightmap != nullptr && !colliders.contains(coord))
-						create(coord, *heightmap);
-				}
+				const Heightmap* heightmap = terrain.findHeightmap(coord);
+				if (heightmap != nullptr && !colliders.contains(coord))
+					create(coord, *heightmap);
 			}
 		}
 	}
@@ -44,14 +40,12 @@ namespace lunar::World
 
 	bool TerrainColliders::isReady(const glm::vec3& position) const
 	{
-		const ChunkCoord focus = ChunkAt(position, settings);
+		return std::ranges::all_of(chunksAround(ChunkAt(position, settings)), [&](ChunkCoord coord) { return colliders.contains(coord); });
+	}
 
-		for (int32_t offset_z = -radiusChunks; offset_z <= radiusChunks; offset_z++)
-			for (int32_t offset_x = -radiusChunks; offset_x <= radiusChunks; offset_x++)
-				if (!colliders.contains({ focus.x + offset_x, focus.z + offset_z }))
-					return false;
-
-		return true;
+	bool TerrainColliders::isTerrainLoaded(const glm::vec3& position) const
+	{
+		return std::ranges::all_of(chunksAround(ChunkAt(position, settings)), [&](ChunkCoord coord) { return terrain.findHeightmap(coord) != nullptr; });
 	}
 
 	size_t TerrainColliders::getColliderCount() const
@@ -62,6 +56,16 @@ namespace lunar::World
 	bool TerrainColliders::isNeeded(ChunkCoord coord, std::span<const ChunkCoord> focus_chunks) const
 	{
 		return std::ranges::any_of(focus_chunks, [&](ChunkCoord focus) { return IsInsideSquare(coord, focus, radiusChunks); });
+	}
+
+	std::vector<ChunkCoord> TerrainColliders::chunksAround(ChunkCoord focus) const
+	{
+		std::vector<ChunkCoord> chunks;
+		for (int32_t offset_z = -radiusChunks; offset_z <= radiusChunks; offset_z++)
+			for (int32_t offset_x = -radiusChunks; offset_x <= radiusChunks; offset_x++)
+				chunks.push_back({ focus.x + offset_x, focus.z + offset_z });
+
+		return chunks;
 	}
 
 	void TerrainColliders::create(ChunkCoord coord, const Heightmap& heightmap)

@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <span>
 #include <unordered_map>
+#include <vector>
 
 namespace lunar
 {
@@ -29,8 +30,9 @@ namespace lunar::World
 
 		void   update(std::span<const glm::vec3> focus_positions);
 		void   clear();
-		bool   isReady(const glm::vec3& position) const;
-		size_t getColliderCount()                 const;
+		bool   isReady(const glm::vec3& position)         const;
+		bool   isTerrainLoaded(const glm::vec3& position) const;
+		size_t getColliderCount()                         const;
 
 	private:
 		struct ChunkCollider
@@ -39,8 +41,9 @@ namespace lunar::World
 			uint64_t           revision = 0;
 		};
 
-		bool isNeeded(ChunkCoord coord, std::span<const ChunkCoord> focus_chunks) const;
-		void create(ChunkCoord coord, const Heightmap& heightmap);
+		bool                    isNeeded(ChunkCoord coord, std::span<const ChunkCoord> focus_chunks) const;
+		std::vector<ChunkCoord> chunksAround(ChunkCoord focus)                                      const;
+		void                    create(ChunkCoord coord, const Heightmap& heightmap);
 
 		Scene&                                                            scene;
 		const TerrainWorld&                                               terrain;
