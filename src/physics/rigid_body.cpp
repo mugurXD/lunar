@@ -139,6 +139,56 @@ namespace lunar::Physics
 		body->setLocalCenterOfMass(Physics::ToPhysics(center_of_mass));
 	}
 
+	void RigidBody::setTransform(const glm::vec3& position, const glm::quat& rotation)
+	{
+		body->setTransform(rp3d::Transform(Physics::ToPhysics(position), Physics::ToPhysics(rotation)));
+	}
+
+	void RigidBody::setLinearVelocity(const glm::vec3& velocity)
+	{
+		body->setLinearVelocity(Physics::ToPhysics(velocity));
+	}
+
+	void RigidBody::setAngularVelocity(const glm::vec3& velocity)
+	{
+		body->setAngularVelocity(Physics::ToPhysics(velocity));
+	}
+
+	void RigidBody::setActive(bool active)
+	{
+		body->setIsActive(active);
+	}
+
+	void RigidBody::setSleepAllowed(bool allowed)
+	{
+		body->setIsAllowedToSleep(allowed);
+	}
+
+	glm::vec3 RigidBody::getPosition() const
+	{
+		return ToGlm(body->getTransform().getPosition());
+	}
+
+	glm::quat RigidBody::getRotation() const
+	{
+		return ToGlm(body->getTransform().getOrientation());
+	}
+
+	glm::vec3 RigidBody::getLinearVelocity() const
+	{
+		return ToGlm(body->getLinearVelocity());
+	}
+
+	glm::vec3 RigidBody::getAngularVelocity() const
+	{
+		return ToGlm(body->getAngularVelocity());
+	}
+
+	bool RigidBody::isActive() const
+	{
+		return body->isActive();
+	}
+
 	rp3d::RigidBody& RigidBody::getBody()
 	{
 		return *body;

@@ -59,6 +59,17 @@ namespace lunar::Physics
 		rp3d::Collider* addTriangleMesh(const TriangleMeshDesc& desc, uint16_t category);
 		void            setMass(float mass, const glm::vec3& center_of_mass);
 
+		void      setTransform(const glm::vec3& position, const glm::quat& rotation);
+		void      setLinearVelocity(const glm::vec3& velocity);
+		void      setAngularVelocity(const glm::vec3& velocity);
+		void      setActive(bool active);
+		void      setSleepAllowed(bool allowed);
+		glm::vec3 getPosition()        const;
+		glm::quat getRotation()        const;
+		glm::vec3 getLinearVelocity()  const;
+		glm::vec3 getAngularVelocity() const;
+		bool      isActive()           const;
+
 		rp3d::RigidBody&    getBody();
 		rp3d::PhysicsWorld& getWorld();
 

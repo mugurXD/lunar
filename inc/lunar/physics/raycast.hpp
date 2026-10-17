@@ -7,6 +7,11 @@
 #include <cstdint>
 #include <optional>
 
+namespace lunar
+{
+	class Scene;
+}
+
 namespace lunar::Physics
 {
 	struct LUNAR_API RaycastHit
@@ -18,4 +23,5 @@ namespace lunar::Physics
 	};
 
 	LUNAR_API std::optional<RaycastHit> CastRay(const rp3d::PhysicsWorld& world, const glm::vec3& from, const glm::vec3& to, uint16_t category_mask);
+	LUNAR_API std::optional<RaycastHit> CastRay(Scene& scene,                    const glm::vec3& from, const glm::vec3& to, uint16_t category_mask);
 }

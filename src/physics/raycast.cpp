@@ -1,5 +1,6 @@
 #include <lunar/physics/raycast.hpp>
 #include <lunar/physics/conversions.hpp>
+#include <lunar/core/scene.hpp>
 
 namespace lunar::Physics
 {
@@ -23,5 +24,10 @@ namespace lunar::Physics
 		ClosestHit callback;
 		world.raycast(rp3d::Ray(ToPhysics(from), ToPhysics(to)), &callback, category_mask);
 		return callback.hit;
+	}
+
+	std::optional<RaycastHit> CastRay(Scene& scene, const glm::vec3& from, const glm::vec3& to, uint16_t category_mask)
+	{
+		return CastRay(*scene.getPhysicsWorld(), from, to, category_mask);
 	}
 }
