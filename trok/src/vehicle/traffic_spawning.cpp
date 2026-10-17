@@ -30,19 +30,27 @@ namespace trok
 		return glm::dot(offset / distance, viewer.forward) < std::cos(glm::radians(viewer.viewAngle));
 	}
 
-	float LaneKilometresNear(const RoadNetwork& network, const glm::vec3& centre, float radius)
+	std::vector<uint32_t> SegmentsAround(const RoadNetwork& network, const glm::vec3& centre, float inner_radius, float outer_radius)
 	{
 		const std::span<const glm::vec3> points = network.getCentreline();
 		const glm::vec2                  middle = Flat(centre);
 
+		std::vector<uint32_t> segments = network.segmentsWithin(middle - outer_radius, middle + outer_radius);
+		std::erase_if(segments, [&](uint32_t segment) {
+			const float distance = glm::distance((Flat(points[segment]) + Flat(points[segment + 1])) * HALF, middle);
+			return distance < inner_radius || distance > outer_radius;
+		});
+
+		return segments;
+	}
+
+	float LaneKilometresNear(const RoadNetwork& network, const glm::vec3& centre, float radius)
+	{
+		const std::span<const glm::vec3> points = network.getCentreline();
+
 		float metres = 0.f;
-		for (const uint32_t segment : network.segmentsWithin(middle - radius, middle + radius))
-		{
-			const glm::vec2 from = Flat(points[segment]);
-			const glm::vec2 to   = Flat(points[segment + 1]);
-			if (glm::distance((from + to) * HALF, middle) <= radius)
-				metres += glm::distance(from, to);
-		}
+		for (const uint32_t segment : SegmentsAround(network, centre, 0.f, radius))
+			metres += glm::distance(Flat(points[segment]), Flat(points[segment + 1]));
 
 		return metres * static_cast<float>(network.getRoadClass().lanes) / METRES_PER_KILOMETRE;
 	}
