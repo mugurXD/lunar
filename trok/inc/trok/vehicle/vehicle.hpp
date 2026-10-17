@@ -72,7 +72,7 @@ namespace trok
 		Vehicle& operator=(const Vehicle&) = delete;
 
 		void drive(const lunar::Physics::VehicleInput& input, float delta_time);
-		void recover(const glm::vec3& position, std::optional<glm::vec2> facing = std::nullopt);
+		void recover(const glm::vec3& position, std::optional<glm::vec2> facing = std::nullopt, float speed = 0.f);
 		void setSimulated(bool simulated);
 		void updateWheels(float alpha);
 
@@ -101,7 +101,9 @@ namespace trok
 		std::vector<WheelPose>                 currentWheels  = {};
 		std::vector<lunar::Render::MeshHandle> ownedMeshes = {};
 		lunar::Physics::RaycastVehicle         vehicle;
-		float                                  wheelWidth  = 0.f;
-		bool                                   simulated   = true;
+		float                                  wheelWidth   = 0.f;
+		glm::vec3                              heldVelocity = {};
+		glm::vec3                              heldSpin     = {};
+		bool                                   simulated    = true;
 	};
 }

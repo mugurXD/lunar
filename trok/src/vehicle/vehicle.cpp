@@ -263,16 +263,19 @@ namespace trok
 		captureWheels();
 	}
 
-	void Vehicle::recover(const glm::vec3& position, std::optional<glm::vec2> facing)
+	void Vehicle::recover(const glm::vec3& position, std::optional<glm::vec2> facing, float speed)
 	{
 		lunar::Physics::RigidBody& body    = *chassis->getComponent<lunar::Physics::RigidBody>();
 		const glm::vec3            current = getTransform().rotation * CHASSIS_FORWARD;
 		const glm::vec2            forward = facing.value_or(glm::vec2(current.x, current.z));
 		const glm::quat            upright = glm::angleAxis(std::atan2(-forward.x, -forward.y), CHASSIS_UP);
 
+		heldVelocity = upright * CHASSIS_FORWARD * speed;
+		heldSpin     = glm::vec3(0.f);
+
 		body.getBody().setTransform(rp3d::Transform(lunar::Physics::ToPhysics(position), lunar::Physics::ToPhysics(upright)));
-		body.getBody().setLinearVelocity(rp3d::Vector3::zero());
-		body.getBody().setAngularVelocity(rp3d::Vector3::zero());
+		body.getBody().setLinearVelocity(lunar::Physics::ToPhysics(heldVelocity));
+		body.getBody().setAngularVelocity(lunar::Physics::ToPhysics(heldSpin));
 
 		body.capturePose();
 		body.capturePose();
@@ -283,10 +286,23 @@ namespace trok
 	void Vehicle::setSimulated(bool active)
 	{
 		rp3d::RigidBody& body = chassis->getComponent<lunar::Physics::RigidBody>()->getBody();
-		if (body.isActive() != active)
-			body.setIsActive(active);
-
 		simulated = active;
+		if (body.isActive() == active)
+			return;
+
+		if (!active)
+		{
+			heldVelocity = lunar::Physics::ToGlm(body.getLinearVelocity());
+			heldSpin     = lunar::Physics::ToGlm(body.getAngularVelocity());
+		}
+
+		// Sleeping bodies lose their velocity, so it is carried across the pause to keep a car from stopping dead.
+		body.setIsActive(active);
+		if (active)
+		{
+			body.setLinearVelocity(lunar::Physics::ToPhysics(heldVelocity));
+			body.setAngularVelocity(lunar::Physics::ToPhysics(heldSpin));
+		}
 	}
 
 	void Vehicle::updateWheels(float alpha)
