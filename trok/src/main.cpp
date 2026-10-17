@@ -16,6 +16,7 @@
 #include <trok/world/world_map.hpp>
 #include <trok/vehicle/chase_camera.hpp>
 #include <trok/vehicle/traffic.hpp>
+#include <trok/vehicle/traffic_stats.hpp>
 #include <trok/vehicle/truck.hpp>
 #include <trok/vehicle/truck_tuning.hpp>
 
@@ -231,7 +232,7 @@ namespace
 	std::optional<float> GroundHeight(Scene& scene, float x, float z)
 	{
 		const glm::vec3                          top = { x, GROUND_RAY_HEIGHT, z };
-		const std::optional<Physics::RaycastHit> hit = Physics::CastRay(*scene.getPhysicsWorld(), top, { x, -GROUND_RAY_HEIGHT, z }, GROUND_RAY_MASK);
+		const std::optional<Physics::RaycastHit> hit = Physics::CastRay(scene, top, { x, -GROUND_RAY_HEIGHT, z }, GROUND_RAY_MASK);
 		return hit.has_value() ? std::optional<float>(hit->point.y) : std::nullopt;
 	}
 
@@ -643,7 +644,10 @@ int main()
 		beacon.update((is_driving() ? chase_camera : player)->getTransform().position, deliveries.getTarget());
 
 		if (engine.isDebugMode())
+		{
 			tuning.draw(*truck);
+			trok::DrawTrafficStats(traffic, scene);
+		}
 
 		if (window.getActionDown("toggle_camera"))
 		{
