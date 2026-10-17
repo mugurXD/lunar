@@ -1,6 +1,7 @@
 #include <trok/vehicle/traffic.hpp>
 
 #include <lunar/physics/conversions.hpp>
+#include <lunar/render/components.hpp>
 #include <lunar/utils/geometry.hpp>
 #include <lunar/world/terrain.hpp>
 
@@ -20,8 +21,6 @@ namespace trok
 	{
 		constexpr float HALF               = 0.5f;
 		constexpr float SPAWN_HEIGHT       = 1.5f;
-		constexpr float IDM_EXPONENT       = 4.f;
-		constexpr float MIN_GAP            = 0.1f;
 		constexpr float MIN_REACH          = 1.f;
 		constexpr float MIN_SPEED          = 0.1f;
 		constexpr float MIN_SEGMENT_LENGTH = 1e-4f;
@@ -43,10 +42,8 @@ namespace trok
 
 		struct Body
 		{
-			lunar::Entity entity     = nullptr;
-			glm::vec3     position   = {};
-			glm::vec3     velocity   = {};
-			float         halfLength = 0.f;
+			lunar::Entity entity  = nullptr;
+			LaneVehicle   vehicle = {};
 		};
 
 		glm::vec2 Flat(const glm::vec3& point)
@@ -205,15 +202,6 @@ namespace trok
 			return std::clamp(angle / glm::radians(vehicle_settings.maxSteerAngle), -FULL_LOCK, FULL_LOCK);
 		}
 
-		float Acceleration(const Leader& leader, float speed, float desired_speed, const DriverSettings& settings)
-		{
-			const float closing     = speed - leader.speed;
-			const float braking_gap = settings.minimumGap + std::max(0.f, speed * settings.timeHeadway + speed * closing / (2.f * std::sqrt(settings.acceleration * settings.comfortableBraking)));
-			const float interaction = braking_gap / std::max(leader.gap, MIN_GAP);
-
-			return settings.acceleration * (1.f - std::pow(speed / desired_speed, IDM_EXPONENT) - interaction * interaction);
-		}
-
 		lunar::Physics::VehicleInput Decide(const Vehicle& vehicle, DrivePath& path, const Leader& leader, const DriverSettings& settings)
 		{
 			if (path.points.size() < 2)
@@ -224,7 +212,7 @@ namespace trok
 			const float speed        = vehicle.getVehicle().getForwardSpeed();
 			const float steering     = Steering(vehicle, path, speed, settings);
 			const float desired      = std::abs(steering) >= FULL_LOCK ? std::min(DesiredSpeed(path), settings.manoeuvreSpeed) : DesiredSpeed(path);
-			const float acceleration = Acceleration(leader, std::max(speed, 0.f), desired, settings);
+			const float acceleration = FollowingAcceleration(std::max(speed, 0.f), desired, leader.gap, leader.speed, settings);
 			if (acceleration <= 0.f && speed < HOLD_SPEED)
 				return { .brake = 1.f, .steering = steering };
 
@@ -257,13 +245,14 @@ namespace trok
 
 				std::optional<Leader> closest;
 				VisitBodies(grid, glm::min(from, to) - tolerance, glm::max(from, to) + tolerance, [&](size_t candidate) {
-					const Body& body    = bodies[candidate];
-					float       amount  = 0.f;
-					const float lateral = lunar::DistanceToSegment(Flat(body.position), from, to, amount);
-					const float along   = glm::mix(path.distances[index], path.distances[index + 1], amount);
-					const float gap     = along - path.progress - half_length - body.halfLength;
+					const Body&        body    = bodies[candidate];
+					const LaneVehicle& other   = body.vehicle;
+					float              amount  = 0.f;
+					const float        lateral = lunar::DistanceToSegment(Flat(other.position), from, to, amount);
+					const float        along   = glm::mix(path.distances[index], path.distances[index + 1], amount);
+					const float        gap     = along - path.progress - half_length - other.halfLength;
 					if (body.entity != self && lateral <= tolerance && amount > 0.f && along > path.progress && (!closest.has_value() || gap < closest->gap))
-						closest = Leader { .gap = gap, .speed = glm::dot(body.velocity, heading) };
+						closest = Leader { .gap = gap, .speed = glm::dot(other.velocity, heading) };
 				});
 
 				if (closest.has_value())
@@ -302,6 +291,20 @@ namespace trok
 			return target;
 		}
 
+		template<typename Visit>
+		void ForEachVehicle(lunar::Scene& scene, Visit&& visit)
+		{
+			scene.forEach<TrafficBody, lunar::Physics::RigidBody>([&](lunar::Entity entity, const TrafficBody& body, lunar::Physics::RigidBody& rigid_body) {
+				const rp3d::RigidBody& physics = rigid_body.getBody();
+				visit(entity, LaneVehicle
+				{
+					.position   = lunar::Physics::ToGlm(physics.getTransform().getPosition()),
+					.velocity   = lunar::Physics::ToGlm(physics.getLinearVelocity()),
+					.halfLength = body.halfLength
+				});
+			});
+		}
+
 		void DrawLifted(lunar::Render::Renderer& renderer, std::span<const glm::vec3> points, const glm::vec4& color)
 		{
 			if (points.size() < 2)
@@ -327,15 +330,24 @@ namespace trok
 		definition(std::move(definition)),
 		settings(settings),
 		planner([&terrain, world](const glm::vec2& position) { return GroundAt(terrain, world, position); }, settings.planner),
-		random(seed)
+		random(seed),
+		density([uniform = settings.defaultDensity](const glm::vec3&) { return uniform; })
 	{
 		engine.addSystem(lunar::SystemPhase::eFixedUpdate, [this](lunar::Scene& scene, const lunar::FrameTime& frame_time) { fixedUpdate(scene, frame_time); });
 		engine.addSystem(lunar::SystemPhase::eUpdate,      [this](lunar::Scene& scene, const lunar::FrameTime& frame_time) { update(scene, frame_time); });
+
+		// Late, so it sees the terrain colliders the game builds around every vehicle during the update phase.
+		engine.addSystem(lunar::SystemPhase::eLateUpdate,  [this](lunar::Scene& scene, const lunar::FrameTime& frame_time) { present(scene, frame_time.fixedAlpha); });
 	}
 
 	void Traffic::setTowns(std::vector<Settlement> known_towns)
 	{
 		towns = std::move(known_towns);
+	}
+
+	void Traffic::setDensity(TrafficDensity sampler)
+	{
+		density = std::move(sampler);
 	}
 
 	void Traffic::fixedUpdate(lunar::Scene& scene, const lunar::FrameTime& frame_time)
@@ -354,20 +366,18 @@ namespace trok
 		if (network == nullptr)
 			return;
 
-		populate(scene, *network);
+		populate(scene, *network, frame_time.deltaTime);
 		navigate(scene, *network);
 		replan(scene, *network, frame_time.deltaTime);
-		present(scene, frame_time.fixedAlpha);
 	}
 
 	void Traffic::perceive(lunar::Scene& scene, const RoadNetwork& network) const
 	{
 		std::vector<Body> bodies;
 		BodyGrid          grid;
-		scene.forEach<TrafficBody, lunar::Physics::RigidBody>([&](lunar::Entity entity, const TrafficBody& body, lunar::Physics::RigidBody& rigid_body) {
-			const glm::vec3 position = lunar::Physics::ToGlm(rigid_body.getBody().getTransform().getPosition());
-			grid[BodyCellAt(Flat(position))].push_back(bodies.size());
-			bodies.push_back({ .entity = entity, .position = position, .velocity = lunar::Physics::ToGlm(rigid_body.getBody().getLinearVelocity()), .halfLength = body.halfLength });
+		ForEachVehicle(scene, [&](lunar::Entity entity, const LaneVehicle& vehicle) {
+			grid[BodyCellAt(Flat(vehicle.position))].push_back(bodies.size());
+			bodies.push_back({ .entity = entity, .vehicle = vehicle });
 		});
 
 		const float tolerance = network.getRoadClass().laneWidth * HALF;
@@ -379,62 +389,99 @@ namespace trok
 	void Traffic::drive(lunar::Scene& scene, float delta_time) const
 	{
 		scene.forEach<TrafficCar, DrivePath, Leader>([&](lunar::Entity, TrafficCar& car, DrivePath& path, const Leader& leader) {
-			path.lostFor = path.points.size() < 2 ? path.lostFor + delta_time : 0.f;
+			const bool stalled = car.vehicle->isSimulated() && std::abs(car.vehicle->getVehicle().getForwardSpeed()) < settings.stallSpeed;
+			path.lostFor   = path.points.size() < 2 ? path.lostFor + delta_time : 0.f;
+			car.stalledFor = stalled ? car.stalledFor + delta_time : 0.f;
 			car.vehicle->drive(Decide(*car.vehicle, path, leader, settings.driver), delta_time);
 		});
 	}
 
-	void Traffic::populate(lunar::Scene& scene, const RoadNetwork& network)
+	void Traffic::populate(lunar::Scene& scene, const RoadNetwork& network, float delta_time)
 	{
 		std::vector<glm::vec3> foci;
 		scene.forEach<TrafficFocus, lunar::Transform>([&](lunar::Entity, const TrafficFocus&, const lunar::Transform& transform) {
 			foci.push_back(transform.position);
 		});
 
-		if (foci.empty())
+		const std::optional<TrafficViewer> viewer = viewerOf(scene);
+		if (foci.empty() || !viewer.has_value())
 			return;
 
-		size_t kept = 0;
-		scene.forEach<TrafficCar, DrivePath>([&](lunar::Entity entity, const TrafficCar& car, const DrivePath& path) {
-			const float distance = DistanceToNearest(foci, car.vehicle->getTransform().position);
-			const bool  lost     = path.lostFor > settings.lostTimeout;
-			if (distance > settings.despawnRadius || (lost && distance > settings.lostDespawnRadius))
-				scene.destroyEntity(entity);
-			else
-				kept++;
-		});
+		despawn(scene, *viewer, foci);
 
-		if (kept < settings.vehicleCount)
-			spawn(scene, network, foci[std::uniform_int_distribution<size_t>(0, foci.size() - 1)(random)]);
+		std::vector<LaneVehicle> vehicles;
+		ForEachVehicle(scene, [&](lunar::Entity, const LaneVehicle& vehicle) { vehicles.push_back(vehicle); });
+
+		cullIn -= delta_time;
+		if (cullIn <= 0.f)
+		{
+			cullIn = settings.cullInterval;
+			cullSurplus(scene, network, *viewer, vehicles);
+		}
+
+		spawnAttempts = std::min(spawnAttempts + settings.spawnAttemptsPerSecond * delta_time, settings.spawnAttemptsPerSecond);
+		for (; spawnAttempts >= 1.f; spawnAttempts -= 1.f)
+			spawn(scene, network, *viewer, foci[std::uniform_int_distribution<size_t>(0, foci.size() - 1)(random)], vehicles);
 	}
 
-	void Traffic::spawn(lunar::Scene& scene, const RoadNetwork& network, const glm::vec3& focus)
+	void Traffic::despawn(lunar::Scene& scene, const TrafficViewer& viewer, std::span<const glm::vec3> foci) const
 	{
-		std::uniform_real_distribution<float> heading(0.f, glm::two_pi<float>());
-		std::uniform_real_distribution<float> reach(0.f, settings.spawnRadius);
-		std::bernoulli_distribution           direction;
+		scene.forEach<TrafficCar, DrivePath>([&](lunar::Entity entity, const TrafficCar& car, const DrivePath& path) {
+			const glm::vec3& position = car.vehicle->getTransform().position;
+			const bool       far      = DistanceToNearest(foci, position) > settings.despawnRadius;
+			const bool       lost     = path.lostFor > settings.lostTimeout;
+			const bool       stalled  = car.stalledFor > settings.stallTimeout;
+			const bool       frozen   = !car.vehicle->isSimulated();
+			if ((far || lost || stalled || frozen) && IsHidden(viewer, position))
+				scene.destroyEntity(entity);
+		});
+	}
 
-		const float                    angle = heading(random);
-		const glm::vec2                probe = Flat(focus) + glm::vec2(std::cos(angle), std::sin(angle)) * reach(random);
-		const std::optional<RoadPoint> road  = network.closestPoint(probe, settings.roadSearch);
-		if (!road.has_value())
+	void Traffic::cullSurplus(lunar::Scene& scene, const RoadNetwork& network, const TrafficViewer& viewer, std::span<const LaneVehicle> vehicles) const
+	{
+		bool culled = false;
+		scene.forEach<TrafficCar>([&](lunar::Entity entity, const TrafficCar& car) {
+			const glm::vec3& position = car.vehicle->getTransform().position;
+			if (culled || !IsHidden(viewer, position) || !isCrowded(network, vehicles, position, settings.surplusFactor))
+				return;
+
+			scene.destroyEntity(entity);
+			culled = true;
+		});
+	}
+
+	void Traffic::spawn(lunar::Scene& scene, const RoadNetwork& network, const TrafficViewer& viewer, const glm::vec3& focus, std::vector<LaneVehicle>& vehicles)
+	{
+		const std::optional<LaneSpot> spot = pickSpot(network, focus);
+		if (!spot.has_value())
 			return;
 
-		const bool      forward  = direction(random);
-		const glm::vec3 position = LanePoint(network, road->road, forward, road->distance) + UP * SPAWN_HEIGHT;
-		if (isCrowded(scene, position))
+		const glm::vec3 position = LanePoint(network, spot->road, spot->forward, spot->distance) + UP * SPAWN_HEIGHT;
+		if (glm::distance(Flat(position), Flat(focus)) > settings.spawnRadius || !IsHidden(viewer, position) || !colliders.isTerrainLoaded(position) || isCrowded(network, vehicles, position, 1.f))
 			return;
 
-		std::optional<Trip> trip = planTrip(network, { .road = network.getRoadId(road->road), .forward = forward }, road->distance);
-		if (!trip.has_value())
+		std::optional<Trip> trip = planTrip(network, { .road = network.getRoadId(spot->road), .forward = spot->forward }, spot->distance);
+		if (!trip.has_value() || trip->checkpoints.empty())
 			return;
 
-		auto vehicle = std::make_unique<Vehicle>(scene, engine.getRenderer().getMeshes(), definition, position, IDENTITY);
-		vehicle->recover(position, forward ? road->direction : -road->direction);
+		DrivePath path;
+		planCourse(path, *trip, position, network);
+		if (path.points.size() < 2)
+			return;
+
+		const float                half_length = definition.colliderHalfExtents.z;
+		const std::optional<float> speed       = SpawnSpeed(GapsAround(network, *spot, vehicles, half_length), path.speeds.front(), settings.driver);
+		if (!speed.has_value())
+			return;
+
+		const glm::vec2 facing  = glm::normalize(Flat(path.points[1]) - Flat(path.points.front()));
+		auto            vehicle = std::make_unique<Vehicle>(scene, engine.getRenderer().getMeshes(), definition, position, IDENTITY);
+		vehicle->recover(position, facing, *speed);
+		vehicles.push_back({ .position = position, .velocity = glm::vec3(facing.x, 0.f, facing.y) * *speed, .halfLength = half_length });
 
 		const lunar::Entity entity = vehicle->getEntity();
 		scene.addComponent<Trip>(entity, std::move(*trip));
-		scene.addComponent<DrivePath>(entity);
+		scene.addComponent<DrivePath>(entity, std::move(path));
 		scene.addComponent<Leader>(entity);
 		scene.addComponent<TrafficCar>(entity, TrafficCar { .vehicle = std::move(vehicle) });
 	}
@@ -466,10 +513,14 @@ namespace trok
 				return;
 
 			budget--;
-			const glm::vec3 position = car.vehicle->getTransform().position;
-			const size_t    target   = PlanTarget(trip, position, settings.planReach);
-			SetCourse(path, planner.plan(network, position, trip.checkpoints[target]), std::span(trip.checkpoints).subspan(target + 1), network.getRoadClass().speedLimit, settings);
+			planCourse(path, trip, car.vehicle->getTransform().position, network);
 		});
+	}
+
+	void Traffic::planCourse(DrivePath& path, const Trip& trip, const glm::vec3& position, const RoadNetwork& network)
+	{
+		const size_t target = PlanTarget(trip, position, settings.planReach);
+		SetCourse(path, planner.plan(network, position, trip.checkpoints[target]), std::span(trip.checkpoints).subspan(target + 1), network.getRoadClass().speedLimitMetresPerSecond(), settings);
 	}
 
 	void Traffic::present(lunar::Scene& scene, float alpha)
@@ -484,6 +535,40 @@ namespace trok
 			DrawLifted(engine.getRenderer(), path.points, PATH_COLOR);
 			DrawLifted(engine.getRenderer(), std::span(trip.checkpoints).subspan(std::min(trip.next, trip.checkpoints.size())), ROUTE_COLOR);
 		});
+	}
+
+	std::optional<TrafficViewer> Traffic::viewerOf(lunar::Scene& scene) const
+	{
+		const lunar::Camera* camera = scene.getMainCamera();
+		if (camera == nullptr)
+			return std::nullopt;
+
+		TrafficViewer viewer = { .position = camera->position, .forward = camera->front, .nearDistance = settings.nearDistance, .viewAngle = settings.viewAngle };
+		scene.forEach<lunar::DistanceFog>([&](lunar::Entity, const lunar::DistanceFog& fog) {
+			viewer.hiddenDistance = glm::mix(fog.startDistance, fog.endDistance, settings.fogConcealment);
+		});
+
+		return viewer;
+	}
+
+	std::optional<LaneSpot> Traffic::pickSpot(const RoadNetwork& network, const glm::vec3& focus)
+	{
+		std::uniform_real_distribution<float> heading(0.f, glm::two_pi<float>());
+		std::uniform_real_distribution<float> reach(settings.nearDistance, settings.spawnRadius);
+		std::bernoulli_distribution           direction;
+
+		const float                    angle = heading(random);
+		const glm::vec2                probe = Flat(focus) + glm::vec2(std::cos(angle), std::sin(angle)) * reach(random);
+		const std::optional<RoadPoint> road  = network.closestPoint(probe, settings.roadSearch);
+		if (!road.has_value())
+			return std::nullopt;
+
+		const float head = network.trimAt(road->road, true) + settings.junctionClearance;
+		const float tail = network.lengthOf(road->road) - network.trimAt(road->road, false) - settings.junctionClearance;
+		if (road->distance < head || road->distance > tail)
+			return std::nullopt;
+
+		return LaneSpot { .road = road->road, .forward = direction(random), .distance = road->distance };
 	}
 
 	std::optional<Trip> Traffic::continueTrip(const RoadNetwork& network, const lunar::Transform& transform)
@@ -544,13 +629,9 @@ namespace trok
 		return candidates[std::uniform_int_distribution<size_t>(0, candidates.size() - 1)(random)];
 	}
 
-	bool Traffic::isCrowded(lunar::Scene& scene, const glm::vec3& position) const
+	bool Traffic::isCrowded(const RoadNetwork& network, std::span<const LaneVehicle> vehicles, const glm::vec3& position, float allowance) const
 	{
-		bool crowded = false;
-		scene.forEach<TrafficBody, lunar::Transform>([&](lunar::Entity, const TrafficBody&, const lunar::Transform& transform) {
-			crowded = crowded || glm::distance(transform.position, position) < settings.spawnSpacing;
-		});
-
-		return crowded;
+		const float target = density ? std::max(density(position), 0.f) : 0.f;
+		return static_cast<float>(VehiclesNear(vehicles, position, settings.densityRadius)) >= target * LaneKilometresNear(network, position, settings.densityRadius) * allowance;
 	}
 }

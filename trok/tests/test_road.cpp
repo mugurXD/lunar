@@ -104,6 +104,16 @@ TEST(RoadClass, RoundTripsThroughJson)
 	EXPECT_FLOAT_EQ(road_class.halfWidth(), road_class.laneWidth + road_class.shoulderWidth);
 }
 
+TEST(RoadClass, SpeedLimitIsInKilometresPerHour)
+{
+	constexpr float LIMIT_KMH = 36.f;
+	constexpr float LIMIT_MPS = 10.f;
+
+	const trok::RoadClass road_class = { .name = "test:road", .speedLimit = LIMIT_KMH };
+
+	EXPECT_FLOAT_EQ(road_class.speedLimitMetresPerSecond(), LIMIT_MPS);
+}
+
 TEST(RoadClass, MalformedClassesAreRejected)
 {
 	nlohmann::json without_lanes = trok::RoadClass::Serialize(TestRoadClass());

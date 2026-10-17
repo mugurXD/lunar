@@ -1,4 +1,6 @@
 #pragma once
+#include <trok/vehicle/car_following.hpp>
+#include <trok/vehicle/traffic_spawning.hpp>
 #include <trok/vehicle/vehicle.hpp>
 #include <trok/world/drive_planner.hpp>
 #include <trok/world/region_plan.hpp>
@@ -19,6 +21,7 @@
 #include <memory>
 #include <optional>
 #include <random>
+#include <span>
 #include <vector>
 
 namespace trok
@@ -29,7 +32,8 @@ namespace trok
 
 	struct TrafficCar
 	{
-		std::unique_ptr<Vehicle> vehicle = nullptr;
+		std::unique_ptr<Vehicle> vehicle    = nullptr;
+		float                    stalledFor = 0.f;
 	};
 
 	struct Trip
@@ -55,29 +59,19 @@ namespace trok
 		float speed = 0.f;
 	};
 
-	struct DriverSettings
-	{
-		float minimumGap          = 2.f;
-		float timeHeadway         = 1.5f;
-		float acceleration        = 1.5f;
-		float comfortableBraking  = 2.f;
-		float lateralAcceleration = 2.f;
-		float curvatureSpan       = 20.f;
-		float offRoadSpeed        = 8.f;
-		float manoeuvreSpeed      = 4.f;
-		float pedalAcceleration   = 6.f;
-		float pedalBraking        = 8.f;
-		float lookaheadTime       = 0.8f;
-		float minimumLookahead    = 6.f;
-		float scanDistance        = 120.f;
-	};
-
 	struct TrafficSettings
 	{
-		size_t               vehicleCount           = 200;
-		float                spawnRadius            = 50.f;
-		float                despawnRadius          = 200.f;
-		float                spawnSpacing           = 10.f;
+		float                defaultDensity         = 100.f;
+		float                densityRadius          = 200.f;
+		float                surplusFactor          = 1.5f;
+		float                cullInterval           = 1.f;
+		float                spawnAttemptsPerSecond = 100.f;
+		float                nearDistance           = 80.f;
+		float                spawnRadius            = 500.f;
+		float                despawnRadius          = 600.f;
+		float                fogConcealment         = 0.5f;
+		float                viewAngle              = 75.f;
+		float                junctionClearance      = 30.f;
 		float                roadSearch             = 40.f;
 		float                destinationRadius      = 20000.f;
 		float                minimumTrip            = 300.f;
@@ -89,7 +83,8 @@ namespace trok
 		float                replanInterval         = 1.f;
 		size_t               plansPerFrame          = 4;
 		float                lostTimeout            = 10.f;
-		float                lostDespawnRadius      = 150.f;
+		float                stallSpeed             = 1.f;
+		float                stallTimeout           = 30.f;
 		DriverSettings       driver                 = {};
 		DrivePlannerSettings planner                = {};
 	};
@@ -110,21 +105,27 @@ namespace trok
 		Traffic& operator=(const Traffic&) = delete;
 
 		void setTowns(std::vector<Settlement> known_towns);
+		void setDensity(TrafficDensity sampler);
 
 	private:
-		void                  fixedUpdate(lunar::Scene& scene, const lunar::FrameTime& frame_time);
-		void                  update(lunar::Scene& scene, const lunar::FrameTime& frame_time);
-		void                  perceive(lunar::Scene& scene, const RoadNetwork& network)                         const;
-		void                  drive(lunar::Scene& scene, float delta_time)                                      const;
-		void                  populate(lunar::Scene& scene, const RoadNetwork& network);
-		void                  spawn(lunar::Scene& scene, const RoadNetwork& network, const glm::vec3& focus);
-		void                  navigate(lunar::Scene& scene, const RoadNetwork& network);
-		void                  replan(lunar::Scene& scene, const RoadNetwork& network, float delta_time);
-		void                  present(lunar::Scene& scene, float alpha);
-		std::optional<Trip>   continueTrip(const RoadNetwork& network, const lunar::Transform& transform);
-		std::optional<Trip>   planTrip(const RoadNetwork& network, const RouteStep& from, float start_distance);
-		std::optional<size_t> pickDestination(const RoadNetwork& network, const glm::vec3& origin);
-		bool                  isCrowded(lunar::Scene& scene, const glm::vec3& position)                         const;
+		void                         fixedUpdate(lunar::Scene& scene, const lunar::FrameTime& frame_time);
+		void                         update(lunar::Scene& scene, const lunar::FrameTime& frame_time);
+		void                         perceive(lunar::Scene& scene, const RoadNetwork& network)                                                                         const;
+		void                         drive(lunar::Scene& scene, float delta_time)                                                                                      const;
+		void                         populate(lunar::Scene& scene, const RoadNetwork& network, float delta_time);
+		void                         despawn(lunar::Scene& scene, const TrafficViewer& viewer, std::span<const glm::vec3> foci)                                        const;
+		void                         cullSurplus(lunar::Scene& scene, const RoadNetwork& network, const TrafficViewer& viewer, std::span<const LaneVehicle> vehicles)   const;
+		void                         spawn(lunar::Scene& scene, const RoadNetwork& network, const TrafficViewer& viewer, const glm::vec3& focus, std::vector<LaneVehicle>& vehicles);
+		void                         navigate(lunar::Scene& scene, const RoadNetwork& network);
+		void                         replan(lunar::Scene& scene, const RoadNetwork& network, float delta_time);
+		void                         planCourse(DrivePath& path, const Trip& trip, const glm::vec3& position, const RoadNetwork& network);
+		void                         present(lunar::Scene& scene, float alpha);
+		std::optional<TrafficViewer> viewerOf(lunar::Scene& scene)                                                                                                     const;
+		std::optional<LaneSpot>      pickSpot(const RoadNetwork& network, const glm::vec3& focus);
+		std::optional<Trip>          continueTrip(const RoadNetwork& network, const lunar::Transform& transform);
+		std::optional<Trip>          planTrip(const RoadNetwork& network, const RouteStep& from, float start_distance);
+		std::optional<size_t>        pickDestination(const RoadNetwork& network, const glm::vec3& origin);
+		bool                         isCrowded(const RoadNetwork& network, std::span<const LaneVehicle> vehicles, const glm::vec3& position, float allowance)        const;
 
 		lunar::Engine&                        engine;
 		const RoadService&                    roads;
@@ -133,6 +134,9 @@ namespace trok
 		TrafficSettings                       settings;
 		DrivePlanner                          planner;
 		std::mt19937_64                       random;
-		std::vector<Settlement>               towns = {};
+		TrafficDensity                        density;
+		std::vector<Settlement>               towns         = {};
+		float                                 spawnAttempts = 0.f;
+		float                                 cullIn        = 0.f;
 	};
 }
