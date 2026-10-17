@@ -45,6 +45,7 @@ namespace lunar::Physics
 		world(other.world),
 		body(std::exchange(other.body, nullptr)),
 		shapes(std::move(other.shapes)),
+		triangleMeshes(std::move(other.triangleMeshes)),
 		previousPosition(other.previousPosition),
 		currentPosition(other.currentPosition),
 		previousRotation(other.previousRotation),
