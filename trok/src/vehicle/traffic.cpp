@@ -1,6 +1,5 @@
 #include <trok/vehicle/traffic.hpp>
 
-#include <lunar/physics/conversions.hpp>
 #include <lunar/render/components.hpp>
 #include <lunar/utils/geometry.hpp>
 #include <lunar/world/terrain.hpp>
@@ -292,12 +291,11 @@ namespace trok
 		template<typename Visit>
 		void ForEachVehicle(lunar::Scene& scene, Visit&& visit)
 		{
-			scene.forEach<TrafficBody, lunar::Physics::RigidBody>([&](lunar::Entity entity, const TrafficBody& body, lunar::Physics::RigidBody& rigid_body) {
-				const rp3d::RigidBody& physics = rigid_body.getBody();
+			scene.forEach<TrafficBody, lunar::Physics::RigidBody>([&](lunar::Entity entity, const TrafficBody& body, const lunar::Physics::RigidBody& rigid_body) {
 				visit(entity, LaneVehicle
 				{
-					.position   = lunar::Physics::ToGlm(physics.getTransform().getPosition()),
-					.velocity   = lunar::Physics::ToGlm(physics.getLinearVelocity()),
+					.position   = rigid_body.getPosition(),
+					.velocity   = rigid_body.getLinearVelocity(),
 					.halfLength = body.halfLength
 				});
 			});

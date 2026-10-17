@@ -2,7 +2,6 @@
 #include <trok/json_math.hpp>
 
 #include <lunar/core/scene.hpp>
-#include <lunar/physics/conversions.hpp>
 #include <lunar/file/json_file.hpp>
 #include <lunar/render/components.hpp>
 
@@ -216,7 +215,7 @@ namespace trok
 		lunar::Physics::RigidBody body(scene, position, rotation, lunar::Physics::BodyType::eDynamic);
 		body.addBox(definition.colliderHalfExtents, definition.colliderOffset, lunar::Physics::VEHICLE_CATEGORY);
 		body.setMass(definition.mass, definition.centerOfMass);
-		body.getBody().setIsAllowedToSleep(false);
+		body.setSleepAllowed(false);
 		return body;
 	}
 
@@ -257,7 +256,7 @@ namespace trok
 	void Vehicle::drive(const lunar::Physics::VehicleInput& input, float delta_time)
 	{
 		lunar::Physics::RigidBody& body = *chassis->getComponent<lunar::Physics::RigidBody>();
-		if (body.getBody().isActive())
+		if (body.isActive())
 			vehicle.update(body, input, delta_time);
 
 		captureWheels();
@@ -273,9 +272,9 @@ namespace trok
 		heldVelocity = upright * CHASSIS_FORWARD * speed;
 		heldSpin     = glm::vec3(0.f);
 
-		body.getBody().setTransform(rp3d::Transform(lunar::Physics::ToPhysics(position), lunar::Physics::ToPhysics(upright)));
-		body.getBody().setLinearVelocity(lunar::Physics::ToPhysics(heldVelocity));
-		body.getBody().setAngularVelocity(lunar::Physics::ToPhysics(heldSpin));
+		body.setTransform(position, upright);
+		body.setLinearVelocity(heldVelocity);
+		body.setAngularVelocity(heldSpin);
 
 		body.capturePose();
 		body.capturePose();
@@ -285,23 +284,23 @@ namespace trok
 
 	void Vehicle::setSimulated(bool active)
 	{
-		rp3d::RigidBody& body = chassis->getComponent<lunar::Physics::RigidBody>()->getBody();
+		lunar::Physics::RigidBody& body = *chassis->getComponent<lunar::Physics::RigidBody>();
 		simulated = active;
 		if (body.isActive() == active)
 			return;
 
 		if (!active)
 		{
-			heldVelocity = lunar::Physics::ToGlm(body.getLinearVelocity());
-			heldSpin     = lunar::Physics::ToGlm(body.getAngularVelocity());
+			heldVelocity = body.getLinearVelocity();
+			heldSpin     = body.getAngularVelocity();
 		}
 
 		// Sleeping bodies lose their velocity, so it is carried across the pause to keep a car from stopping dead.
-		body.setIsActive(active);
+		body.setActive(active);
 		if (active)
 		{
-			body.setLinearVelocity(lunar::Physics::ToPhysics(heldVelocity));
-			body.setAngularVelocity(lunar::Physics::ToPhysics(heldSpin));
+			body.setLinearVelocity(heldVelocity);
+			body.setAngularVelocity(heldSpin);
 		}
 	}
 
@@ -329,13 +328,12 @@ namespace trok
 
 	glm::vec3 Vehicle::getVelocity()
 	{
-		return lunar::Physics::ToGlm(chassis->getComponent<lunar::Physics::RigidBody>()->getBody().getLinearVelocity());
+		return chassis->getComponent<lunar::Physics::RigidBody>()->getLinearVelocity();
 	}
 
 	glm::vec3 Vehicle::getUp()
 	{
-		const rp3d::Quaternion orientation = chassis->getComponent<lunar::Physics::RigidBody>()->getBody().getTransform().getOrientation();
-		return lunar::Physics::ToGlm(orientation) * CHASSIS_UP;
+		return chassis->getComponent<lunar::Physics::RigidBody>()->getRotation() * CHASSIS_UP;
 	}
 
 	const lunar::Physics::RaycastVehicle& Vehicle::getVehicle() const

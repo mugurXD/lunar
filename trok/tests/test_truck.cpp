@@ -4,7 +4,6 @@
 
 #include <lunar/core/scene.hpp>
 #include <lunar/file/json_file.hpp>
-#include <lunar/physics/conversions.hpp>
 #include <gtest/gtest.h>
 
 #include <algorithm>
@@ -68,7 +67,7 @@ namespace
 
 		float uprightness()
 		{
-			return (ToGlm(chassis.getBody().getTransform().getOrientation()) * UP).y;
+			return (chassis.getRotation() * UP).y;
 		}
 	};
 }
