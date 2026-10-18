@@ -8,6 +8,7 @@
 #include <lunar/core/event.hpp>
 #include <lunar/render/common.hpp>
 #include <lunar/utils/collections.hpp>
+#include <glm/glm.hpp>
 #include <unordered_map>
 #include <functional>
 #include <string>
@@ -59,6 +60,10 @@ namespace lunar
 		void                    flushDestroyedEntities();
 		void                    setParent(const Entity& child, const Entity& parent);
 		const WorldTransform&   resolveWorldTransform(const Entity& entity);
+		glm::dvec3              getOrigin() const;
+		glm::vec3               toScene(const glm::dvec3& absolute) const;
+		glm::dvec3              toAbsolute(const glm::vec3& position) const;
+		void                    shiftOrigin(const glm::dvec3& offset);
 
 		template<typename T, typename... Args>
 		T& addComponent(const Entity& entity, Args&&... args)
@@ -136,6 +141,7 @@ namespace lunar
 		std::string         name         = "Scene";
 		PhysicsWorld*       physicsWorld = nullptr;
 		GameObject          mainCamera   = nullptr;
+		glm::dvec3          origin       = {};
 
 		Pool<EntityRecord>                            entities          = {};
 		vector<std::unique_ptr<ComponentStorageBase>> componentStorages = {};

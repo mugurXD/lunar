@@ -1,4 +1,5 @@
 #include <lunar/world/terrain_colliders.hpp>
+#include <lunar/world/floating_origin.hpp>
 #include <lunar/core/scene.hpp>
 
 #include <algorithm>
@@ -18,7 +19,7 @@ namespace lunar::World
 	{
 		std::vector<ChunkCoord> focus_chunks;
 		for (const glm::vec3& position : focus_positions)
-			focus_chunks.push_back(ChunkAt(position, settings));
+			focus_chunks.push_back(SceneChunkAt(scene, position, settings));
 
 		std::erase_if(colliders, [&](const auto& entry) { return !isNeeded(entry.first, focus_chunks) || entry.second.revision != terrain.getRevision(entry.first); });
 
@@ -40,12 +41,12 @@ namespace lunar::World
 
 	bool TerrainColliders::isReady(const glm::vec3& position) const
 	{
-		return std::ranges::all_of(chunksAround(ChunkAt(position, settings)), [&](ChunkCoord coord) { return colliders.contains(coord); });
+		return std::ranges::all_of(chunksAround(SceneChunkAt(scene, position, settings)), [&](ChunkCoord coord) { return colliders.contains(coord); });
 	}
 
 	bool TerrainColliders::isTerrainLoaded(const glm::vec3& position) const
 	{
-		return std::ranges::all_of(chunksAround(ChunkAt(position, settings)), [&](ChunkCoord coord) { return terrain.findHeightmap(coord) != nullptr; });
+		return std::ranges::all_of(chunksAround(SceneChunkAt(scene, position, settings)), [&](ChunkCoord coord) { return terrain.findHeightmap(coord) != nullptr; });
 	}
 
 	size_t TerrainColliders::getColliderCount() const
@@ -78,7 +79,7 @@ namespace lunar::World
 			for (int32_t x = 0; x < samples_per_side; x++)
 				heights.push_back(heightmap.sample(x, z));
 
-		Physics::RigidBody body(scene, ChunkOrigin(coord, settings), glm::quat(1.f, 0.f, 0.f, 0.f), Physics::BodyType::eStatic);
+		Physics::RigidBody body(scene, SceneChunkOrigin(scene, coord, settings), glm::quat(1.f, 0.f, 0.f, 0.f), Physics::BodyType::eStatic);
 		body.addHeightfield({ .heights = heights, .samplesPerSide = static_cast<uint32_t>(samples_per_side), .spacing = settings.vertexSpacing }, Physics::TERRAIN_CATEGORY);
 
 		for (const DressedMesh& solid : terrain.findSolids(coord))

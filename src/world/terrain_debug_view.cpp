@@ -1,4 +1,5 @@
 #include <lunar/world/terrain_debug_view.hpp>
+#include <lunar/world/floating_origin.hpp>
 #include <lunar/render/components.hpp>
 #include <lunar/core/scene.hpp>
 
@@ -95,7 +96,7 @@ namespace lunar::World
 
 	void TerrainDebugView::update(const glm::vec3& focus)
 	{
-		const ChunkCoord centre = ChunkAt(focus, settings);
+		const ChunkCoord centre = SceneChunkAt(scene, focus, settings);
 
 		std::erase_if(overlays, [&](auto& entry) {
 			auto& [coord, overlay] = entry;
@@ -135,7 +136,7 @@ namespace lunar::World
 			.revision = terrain.getRevision(coord)
 		};
 
-		overlay.object->getTransform().position = ChunkOrigin(coord, settings);
+		overlay.object->getTransform().position = SceneChunkOrigin(scene, coord, settings);
 		overlay.object->addComponent<MeshRenderer>(overlay.mesh);
 		overlays.emplace(coord, std::move(overlay));
 	}

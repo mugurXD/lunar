@@ -4,6 +4,7 @@
 #include <lunar/render/components.hpp>
 
 #include <lunar/physics/reactphysics.hpp>
+#include <lunar/physics/rigid_body.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 
@@ -118,6 +119,34 @@ namespace lunar
 
 		if (parent != nullptr)
 			attachChild(parent, child);
+	}
+
+	glm::dvec3 Scene::getOrigin() const
+	{
+		return origin;
+	}
+
+	glm::vec3 Scene::toScene(const glm::dvec3& absolute) const
+	{
+		return glm::vec3(absolute - origin);
+	}
+
+	glm::dvec3 Scene::toAbsolute(const glm::vec3& position) const
+	{
+		return glm::dvec3(position) + origin;
+	}
+
+	void Scene::shiftOrigin(const glm::dvec3& offset)
+	{
+		const glm::vec3 shift = glm::vec3(-offset);
+		origin += offset;
+
+		forEach<Transform, Hierarchy>([&shift](Entity, Transform& transform, const Hierarchy& hierarchy) {
+			if (hierarchy.parent == nullptr)
+				transform.position += shift;
+		});
+
+		Physics::ShiftPhysics(*this, shift);
 	}
 
 	const WorldTransform& Scene::resolveWorldTransform(const Entity& entity)

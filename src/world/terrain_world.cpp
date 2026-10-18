@@ -1,4 +1,5 @@
 #include <lunar/world/terrain_world.hpp>
+#include <lunar/world/floating_origin.hpp>
 #include <lunar/render/components.hpp>
 
 #include <algorithm>
@@ -37,7 +38,7 @@ namespace lunar::World
 
 	void TerrainWorld::update(const glm::vec3& focus_position)
 	{
-		const ChunkCoord center = ChunkAt(focus_position, settings);
+		const ChunkCoord center = SceneChunkAt(scene, focus_position, settings);
 
 		unloadDistantChunks(center);
 		requestMissingChunks(center);
@@ -168,7 +169,7 @@ namespace lunar::World
 		chunk.heightmap    = std::move(data.heightmap);
 		chunk.object       = scene.createGameObject(std::format(CHUNK_NAME_FORMAT, coord.x, coord.z));
 
-		chunk.object->getTransform().position = ChunkOrigin(coord, settings);
+		chunk.object->getTransform().position = SceneChunkOrigin(scene, coord, settings);
 		chunk.object->addComponent<MeshRenderer>(chunk.mesh, true, false, material);
 		chunk.object->addComponent<TerrainChunk>(coord);
 

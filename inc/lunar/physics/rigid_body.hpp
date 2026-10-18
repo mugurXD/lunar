@@ -75,6 +75,7 @@ namespace lunar::Physics
 
 		void capturePose();
 		void applyPose(Transform& transform, float alpha) const;
+		void shiftPoses(const glm::vec3& offset);
 
 	private:
 		void release();
@@ -92,4 +93,5 @@ namespace lunar::Physics
 
 	LUNAR_API void CapturePhysicsPoses(Scene& scene, const FrameTime& frame_time);
 	LUNAR_API void ApplyPhysicsPoses(Scene& scene, const FrameTime& frame_time);
+	LUNAR_API void ShiftPhysics(Scene& scene, const glm::vec3& offset);
 }

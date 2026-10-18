@@ -215,6 +215,12 @@ namespace lunar::Physics
 		transform.rotation = glm::slerp(previousRotation, currentRotation, alpha);
 	}
 
+	void RigidBody::shiftPoses(const glm::vec3& offset)
+	{
+		previousPosition += offset;
+		currentPosition  += offset;
+	}
+
 	void RigidBody::release()
 	{
 		if (body == nullptr)
@@ -258,6 +264,25 @@ namespace lunar::Physics
 	{
 		scene.forEach<RigidBody, Transform>([&frame_time](Entity, const RigidBody& body, Transform& transform) {
 			body.applyPose(transform, frame_time.fixedAlpha);
+		});
+	}
+
+	void ShiftPhysics(Scene& scene, const glm::vec3& offset)
+	{
+		PhysicsWorld& world = *scene.getPhysicsWorld();
+		for (uint32_t index = 0; index < world.getNbRigidBodies(); index++)
+		{
+			rp3d::RigidBody&       body      = *world.getRigidBody(index);
+			const rp3d::Vector3    velocity  = body.getLinearVelocity();
+			const rp3d::Transform& transform = body.getTransform();
+
+			// rp3d adds spin × displacement to the velocity on setTransform, which would fling every rotating body across a multi-kilometre shift.
+			body.setTransform(rp3d::Transform(transform.getPosition() + Physics::ToPhysics(offset), transform.getOrientation()));
+			body.setLinearVelocity(velocity);
+		}
+
+		scene.forEach<RigidBody>([&offset](Entity, RigidBody& body) {
+			body.shiftPoses(offset);
 		});
 	}
 }
