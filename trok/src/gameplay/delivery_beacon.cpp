@@ -46,12 +46,13 @@ namespace trok
 		if (!target.has_value())
 			return;
 
-		const float bottom     = eye.y - settings.depthBelowEye;
-		const float top        = eye.y + settings.heightAboveEye;
-		const float distance   = glm::distance(glm::vec2(eye.x, eye.z), glm::vec2(*target));
-		const float half_width = settings.halfWidth * std::max(1.f, distance / settings.constantWidthDistance);
+		const glm::vec3 spot       = beacon->getScene()->toScene({ target->x, 0.0, target->y });
+		const float     bottom     = eye.y - settings.depthBelowEye;
+		const float     top        = eye.y + settings.heightAboveEye;
+		const float     distance   = glm::distance(glm::vec2(eye.x, eye.z), glm::vec2(spot.x, spot.z));
+		const float     half_width = settings.halfWidth * std::max(1.f, distance / settings.constantWidthDistance);
 
-		beacon->getTransform().position = { static_cast<float>(target->x), (bottom + top) * HALF, static_cast<float>(target->y) };
+		beacon->getTransform().position = { spot.x, (bottom + top) * HALF, spot.z };
 		beacon->getTransform().scale    = { half_width, (top - bottom) * HALF, half_width };
 	}
 }

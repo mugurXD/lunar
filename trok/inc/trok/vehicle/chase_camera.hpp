@@ -28,6 +28,7 @@ namespace trok
 
 		void orbit(const glm::vec2& rotation, float scroll);
 		void snap(lunar::Transform& camera, const lunar::Transform& target);
+		void rebase(const glm::dvec3& scene_origin);
 		void update(lunar::Transform& camera, const lunar::Transform& target, float target_speed, float delta_time);
 
 		float getDistance() const;
@@ -36,6 +37,7 @@ namespace trok
 		void place(lunar::Transform& camera) const;
 
 		ChaseCameraSettings settings;
+		glm::dvec3          origin    = {};
 		glm::vec3           focus     = {};
 		float               heading   = 0.f;
 		float               yawOffset = 0.f;

@@ -135,15 +135,18 @@ namespace
 	}
 
 	bool PlaceAboveTerrain(Transform&                            transform,
+	                       const Scene&                          scene,
 	                       World::RegionStore<trok::RegionPlan>& regions,
 	                       const trok::TerrainGenerator&         generator,
 	                       const World::WorldSettings&           settings)
 	{
-		const std::optional<trok::RegionContext> context = regions.gatherContext(World::ChunkAt(transform.position, settings));
+		const glm::dvec3                         absolute = scene.toAbsolute(transform.position);
+		const std::optional<trok::RegionContext> context  = regions.gatherContext(World::ChunkAt(absolute.x, absolute.z, settings));
 		if (!context.has_value())
 			return false;
 
-		transform.position.y = generator.sampleHeight(*context, transform.position.x, transform.position.z) + CAMERA_START_HEIGHT;
+		const float height = generator.sampleHeight(*context, absolute.x, absolute.z) + CAMERA_START_HEIGHT;
+		transform.position = scene.toScene({ absolute.x, height, absolute.z });
 		return true;
 	}
 
@@ -166,6 +169,7 @@ namespace
 
 	std::optional<glm::vec3> PickTerrain(const glm::vec3&                      from,
 	                                     const glm::vec3&                      direction,
+	                                     const Scene&                          scene,
 	                                     World::RegionStore<trok::RegionPlan>& regions,
 	                                     const trok::TerrainGenerator&         generator,
 	                                     const World::WorldSettings&           settings)
@@ -176,11 +180,12 @@ namespace
 		for (float travelled = 0.f; travelled <= PICK_MAX_DISTANCE; travelled += PICK_STEP)
 		{
 			const glm::vec3                          position = from + direction * travelled;
-			const std::optional<trok::RegionContext> context  = regions.gatherContext(World::ChunkAt(position, settings));
+			const glm::dvec3                         absolute = scene.toAbsolute(position);
+			const std::optional<trok::RegionContext> context  = regions.gatherContext(World::ChunkAt(absolute.x, absolute.z, settings));
 			if (!context.has_value())
 				return std::nullopt;
 
-			const float height = position.y - generator.sampleHeight(*context, position.x, position.z);
+			const auto height = static_cast<float>(absolute.y - generator.sampleHeight(*context, absolute.x, absolute.z));
 			if (height <= 0.f && travelled > 0.f)
 				return glm::mix(previous, position, above / (above - height));
 
@@ -451,11 +456,12 @@ int main()
 			road_end.reset();
 		}
 
-		const bool is_start = !road_start.has_value();
+		const bool      is_start = !road_start.has_value();
+		const glm::vec3 absolute = glm::vec3(scene.toAbsolute(point));
 
-		(is_start ? road_start : road_end) = glm::vec2(point.x, point.z);
+		(is_start ? road_start : road_end) = glm::vec2(absolute.x, absolute.z);
 		road_markers.push_back(PlaceMarker(scene, endpoint_marker_mesh, point, ENDPOINT_MARKER_SIZE));
-		DEBUG_LOG("Road {} set to ({:.0f}, {:.0f})", is_start ? "start" : "end", point.x, point.z);
+		DEBUG_LOG("Road {} set to ({:.0f}, {:.0f})", is_start ? "start" : "end", absolute.x, absolute.z);
 	};
 
 	const auto build_road = [&] {
@@ -478,7 +484,7 @@ int main()
 			return;
 
 		for (const glm::vec3& point : *road)
-			road_markers.push_back(PlaceMarker(scene, node_marker_mesh, point, NODE_MARKER_SIZE));
+			road_markers.push_back(PlaceMarker(scene, node_marker_mesh, scene.toScene(glm::dvec3(point)), NODE_MARKER_SIZE));
 
 		awaited_road.reset();
 	};
@@ -486,9 +492,10 @@ int main()
 	bool                      placed_above_terrain = false;
 	std::optional<glm::dvec2> travelling;
 	engine.addSystem(SystemPhase::eUpdate, [&](Scene&, const FrameTime&) {
-		const glm::vec3 viewer = is_driving() ? chase_camera->getTransform().position : player->getTransform().position;
+		const glm::vec3 viewer          = is_driving() ? chase_camera->getTransform().position : player->getTransform().position;
+		const glm::vec3 absolute_viewer = glm::vec3(scene.toAbsolute(viewer));
 		chunk_source.setStorageEnabled(!engine.isDebugMode() && roads.getNetwork() == nullptr);
-		regions.update(viewer);
+		regions.update(absolute_viewer);
 		terrain.update(viewer);
 
 		if (engine.isDebugMode() && biome_tuning.draw())
@@ -496,10 +503,10 @@ int main()
 
 		if (engine.isDebugMode())
 		{
-			const std::optional<glm::dvec2> target = world_map.draw(viewer, roads.getNetwork().get());
+			const std::optional<glm::dvec2> target = world_map.draw(absolute_viewer, roads.getNetwork().get());
 			if (target.has_value())
 			{
-				player->getTransform().position = { static_cast<float>(target->x), 0.f, static_cast<float>(target->y) };
+				player->getTransform().position = scene.toScene({ target->x, 0.0, target->y });
 				placed_above_terrain            = false;
 				travelling                      = target;
 
@@ -529,11 +536,11 @@ int main()
 				renderer.visible = false;
 			});
 
-		const World::RegionCoord viewer_region = World::RegionAt(viewer, world_settings);
+		const World::RegionCoord viewer_region = World::RegionAt(absolute_viewer, world_settings);
 		if (surveyed_region != viewer_region)
 			survey_towns(viewer_region);
 
-		const std::vector<std::vector<glm::vec3>> new_roads = roads.update({ viewer.x, viewer.z });
+		const std::vector<std::vector<glm::vec3>> new_roads = roads.update({ absolute_viewer.x, absolute_viewer.z });
 		if (!new_roads.empty())
 		{
 			deliveries.setRoads(roads.getNetwork());
@@ -552,7 +559,7 @@ int main()
 			if (camera == nullptr)
 				DEBUG_ERROR("There is no active camera to aim with");
 			else if (const ScreenRay ray = CursorRay(*camera, window.getCursorUv(), window.getRenderWidth(), window.getRenderHeight());
-			         const std::optional<glm::vec3> point = PickTerrain(ray.origin, ray.direction, regions, *terrain_generator, world_settings))
+			         const std::optional<glm::vec3> point = PickTerrain(ray.origin, ray.direction, scene, regions, *terrain_generator, world_settings))
 				place_road_point(*point);
 			else
 				DEBUG_ERROR("There is no terrain under the cursor");
@@ -562,14 +569,15 @@ int main()
 			build_road();
 
 		if (!placed_above_terrain)
-			placed_above_terrain = PlaceAboveTerrain(player->getTransform(), regions, *terrain_generator, world_settings);
+			placed_above_terrain = PlaceAboveTerrain(player->getTransform(), scene, regions, *terrain_generator, world_settings);
 		else if (travelling.has_value())
 		{
-			const float ground = player->getTransform().position.y - CAMERA_START_HEIGHT;
+			const float     ground  = player->getTransform().position.y - CAMERA_START_HEIGHT;
+			const glm::vec3 arrival = scene.toScene({ travelling->x, 0.0, travelling->y });
 
 			if (truck.has_value())
 			{
-				truck->recover({ static_cast<float>(travelling->x), ground + TRUCK_SPAWN_HEIGHT, static_cast<float>(travelling->y) });
+				truck->recover({ arrival.x, ground + TRUCK_SPAWN_HEIGHT, arrival.z });
 				cargo_shock.reset(truck->getVelocity(), truck->getUp());
 			}
 
@@ -578,16 +586,17 @@ int main()
 	});
 
 	const auto reset_truck = [&] {
-		const glm::vec3                                stuck   = truck->getTransform().position;
-		const std::shared_ptr<const trok::RoadNetwork> network = roads.getNetwork();
-		const std::optional<trok::RoadPoint>           road    = network != nullptr ? network->closestPoint({ stuck.x, stuck.z }, RECOVER_ROAD_REACH) : std::nullopt;
+		const glm::vec3                                stuck    = truck->getTransform().position;
+		const glm::vec3                                absolute = glm::vec3(scene.toAbsolute(stuck));
+		const std::shared_ptr<const trok::RoadNetwork> network  = roads.getNetwork();
+		const std::optional<trok::RoadPoint>           road     = network != nullptr ? network->closestPoint({ absolute.x, absolute.z }, RECOVER_ROAD_REACH) : std::nullopt;
 
 		if (road.has_value())
 		{
 			const glm::vec3 heading = truck->getTransform().rotation * glm::vec3(0.f, 0.f, -1.f);
 			const glm::vec2 facing  = glm::dot(road->direction, glm::vec2(heading.x, heading.z)) >= 0.f ? road->direction : -road->direction;
 
-			truck->recover(road->position + glm::vec3(0.f, network->getRoadClass().surfaceOffset + TRUCK_SPAWN_HEIGHT, 0.f), facing);
+			truck->recover(scene.toScene(glm::dvec3(road->position)) + glm::vec3(0.f, network->getRoadClass().surfaceOffset + TRUCK_SPAWN_HEIGHT, 0.f), facing);
 		}
 		else if (const std::optional<float> ground = GroundHeight(scene, stuck.x, stuck.z))
 		{
@@ -609,15 +618,17 @@ int main()
 	float recover_held    = 0.f;
 	bool  recover_handled = false;
 	engine.addSystem(SystemPhase::eUpdate, [&](Scene&, const FrameTime& frame_time) {
+		chase.rebase(scene.getOrigin());
 		if (!truck.has_value())
 		{
-			colliders.update(std::span(&CAMERA_START_POSITION, 1));
+			const glm::vec3 spawn = scene.toScene(glm::dvec3(CAMERA_START_POSITION));
+			colliders.update(std::span(&spawn, 1));
 
-			const std::optional<float> ground = GroundHeight(scene, CAMERA_START_POSITION.x, CAMERA_START_POSITION.z);
+			const std::optional<float> ground = GroundHeight(scene, spawn.x, spawn.z);
 			if (!ground.has_value())
 				return;
 
-			truck.emplace(scene, engine.getRenderer().getMeshes(), *truck_definition, glm::vec3(CAMERA_START_POSITION.x, *ground + TRUCK_SPAWN_HEIGHT, CAMERA_START_POSITION.z), glm::quat(1.f, 0.f, 0.f, 0.f));
+			truck.emplace(scene, engine.getRenderer().getMeshes(), *truck_definition, glm::vec3(spawn.x, *ground + TRUCK_SPAWN_HEIGHT, spawn.z), glm::quat(1.f, 0.f, 0.f, 0.f));
 			scene.addComponent<trok::TrafficFocus>(truck->getEntity());
 			chase.snap(chase_camera->getTransform(), truck->getTransform());
 			scene.setMainCamera(chase_camera);
@@ -633,8 +644,8 @@ int main()
 		truck->setSimulated(colliders.isReady(truck->getTransform().position));
 		truck->updateWheels(frame_time.fixedAlpha);
 
-		const glm::vec3 truck_position = truck->getTransform().position;
-		const std::optional<int64_t> payout = deliveries.update({ truck_position.x, truck_position.z }, frame_time.deltaTime);
+		const glm::dvec3             absolute_truck = scene.toAbsolute(truck->getTransform().position);
+		const std::optional<int64_t> payout         = deliveries.update({ absolute_truck.x, absolute_truck.z }, frame_time.deltaTime);
 		if (payout.has_value())
 			DEBUG_LOG("Delivered for {}, earned {} in total", *payout, deliveries.getMoney());
 

@@ -57,6 +57,12 @@ namespace trok
 		place(camera);
 	}
 
+	void ChaseCamera::rebase(const glm::dvec3& scene_origin)
+	{
+		focus  += glm::vec3(origin - scene_origin);
+		origin  = scene_origin;
+	}
+
 	void ChaseCamera::update(lunar::Transform& camera, const lunar::Transform& target, float target_speed, float delta_time)
 	{
 		const float follow = Smoothing(settings.followSharpness, delta_time);
