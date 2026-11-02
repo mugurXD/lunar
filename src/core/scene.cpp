@@ -3,31 +3,25 @@
 #include <lunar/debug/log.hpp>
 #include <lunar/render/components.hpp>
 
-#include <lunar/physics/reactphysics.hpp>
 #include <lunar/physics/rigid_body.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 
 namespace lunar
 {
-	reactphysics3d::PhysicsCommon PHYSICS_COMMON;
-
 	Scene::Scene(const std::string_view& name) noexcept
-		: name(name),
-		physicsWorld(PHYSICS_COMMON.createPhysicsWorld())
+		: name(name)
 	{
 
 	}
 
 	Scene::Scene() noexcept
-		: physicsWorld(PHYSICS_COMMON.createPhysicsWorld())
 	{
 	}
 
 	Scene::~Scene() noexcept
 	{
 		componentStorages.clear();
-		PHYSICS_COMMON.destroyPhysicsWorld(physicsWorld);
 	}
 
 	GameObject Scene::getGameObject(const std::string_view& name)
@@ -268,17 +262,12 @@ namespace lunar
 
 	void Scene::physicsUpdate(double dt)
 	{
-		this->physicsWorld->update(dt);
+		this->physicsWorld.step(static_cast<float>(dt));
 	}
 
-	PhysicsWorld* Scene::getPhysicsWorld()
+	Physics::PhysicsWorld& Scene::getPhysicsWorld()
 	{
 		return this->physicsWorld;
-	}
-
-	rp3d::PhysicsCommon& Scene::getPhysicsCommon()
-	{
-		return PHYSICS_COMMON;
 	}
 }
 

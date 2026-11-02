@@ -30,6 +30,7 @@ namespace
 	const glm::vec3 GROUND_OFFSET       = { 0.f, -1.f, 0.f };
 	const glm::vec3 UP                  = { 0.f, 1.f, 0.f };
 	const glm::quat IDENTITY            = glm::quat(1.f, 0.f, 0.f, 0.f);
+	const ShapeDesc GROUND_SHAPE        = { .geometry = BoxDesc { .halfExtents = GROUND_HALF_EXTENTS, .offset = GROUND_OFFSET }, .category = TERRAIN_CATEGORY };
 
 	std::filesystem::path DataFile(std::string_view name)
 	{
@@ -49,11 +50,10 @@ namespace
 		RaycastVehicle vehicle;
 
 		TruckRig(const trok::VehicleDefinition& definition)
-			: ground(scene, {}, IDENTITY, BodyType::eStatic),
+			: ground(scene, { .shapes = { &GROUND_SHAPE, 1 } }),
 			chassis(trok::CreateVehicleBody(scene, definition, UP * SPAWN_HEIGHT, IDENTITY)),
 			vehicle(definition.vehicle)
 		{
-			ground.addBox(GROUND_HALF_EXTENTS, GROUND_OFFSET, TERRAIN_CATEGORY);
 		}
 
 		void simulate(const VehicleInput& input, int steps)

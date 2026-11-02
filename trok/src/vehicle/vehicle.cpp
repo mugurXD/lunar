@@ -212,11 +212,21 @@ namespace trok
 	                                            const glm::vec3&         position,
 	                                            const glm::quat&         rotation)
 	{
-		lunar::Physics::RigidBody body(scene, position, rotation, lunar::Physics::BodyType::eDynamic);
-		body.addBox(definition.colliderHalfExtents, definition.colliderOffset, lunar::Physics::VEHICLE_CATEGORY);
-		body.setMass(definition.mass, definition.centerOfMass);
-		body.setSleepAllowed(false);
-		return body;
+		const lunar::Physics::ShapeDesc chassis_shape =
+		{
+			.geometry = lunar::Physics::BoxDesc { .halfExtents = definition.colliderHalfExtents, .offset = definition.colliderOffset },
+			.category = lunar::Physics::VEHICLE_CATEGORY
+		};
+
+		return lunar::Physics::RigidBody(scene,
+		{
+			.position     = position,
+			.rotation     = rotation,
+			.type         = lunar::Physics::BodyType::eDynamic,
+			.shapes       = { &chassis_shape, 1 },
+			.massOverride = lunar::Physics::MassDesc { .mass = definition.mass, .centerOfMass = definition.centerOfMass },
+			.sleepAllowed = false
+		});
 	}
 
 	Vehicle::Vehicle(lunar::Scene&                scene,

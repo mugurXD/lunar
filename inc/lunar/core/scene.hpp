@@ -7,6 +7,7 @@
 #include <lunar/core/system.hpp>
 #include <lunar/core/event.hpp>
 #include <lunar/render/common.hpp>
+#include <lunar/physics/physics_world.hpp>
 #include <lunar/utils/collections.hpp>
 #include <glm/glm.hpp>
 #include <unordered_map>
@@ -14,19 +15,10 @@
 #include <string>
 #include <vector>
 
-namespace reactphysics3d
-{
-	class PhysicsWorld;
-	class PhysicsCommon;
-}
-
 namespace Render { class LUNAR_API Camera; }
 
 namespace lunar
 {
-	using PhysicsWorld  = reactphysics3d::PhysicsWorld;
-	using PhysicsCommon = reactphysics3d::PhysicsCommon;
-
 	class LUNAR_API Camera;
 	class LUNAR_API Scene : public EventHandler
 	{
@@ -40,8 +32,7 @@ namespace lunar
 		~Scene()                            noexcept;
 
 		void                    physicsUpdate(double dt);
-		PhysicsWorld*           getPhysicsWorld();
-		PhysicsCommon&          getPhysicsCommon();
+		Physics::PhysicsWorld&  getPhysicsWorld();
 		Camera*                 getMainCamera();
 		void                    setMainCamera(GameObject camera_object);
 		void                    updateBehaviours(const FrameTime& frame_time);
@@ -138,10 +129,10 @@ namespace lunar
 		Scene& operator=(Scene&&)      = delete;
 
 	private:
-		std::string         name         = "Scene";
-		PhysicsWorld*       physicsWorld = nullptr;
-		GameObject          mainCamera   = nullptr;
-		glm::dvec3          origin       = {};
+		std::string           name         = "Scene";
+		Physics::PhysicsWorld physicsWorld = {};
+		GameObject            mainCamera   = nullptr;
+		glm::dvec3            origin       = {};
 
 		Pool<EntityRecord>                            entities          = {};
 		vector<std::unique_ptr<ComponentStorageBase>> componentStorages = {};

@@ -79,19 +79,24 @@ namespace lunar::World
 			for (int32_t x = 0; x < samples_per_side; x++)
 				heights.push_back(heightmap.sample(x, z));
 
-		Physics::RigidBody body(scene, SceneChunkOrigin(scene, coord, settings), glm::quat(1.f, 0.f, 0.f, 0.f), Physics::BodyType::eStatic);
-		body.addHeightfield({ .heights = heights, .samplesPerSide = static_cast<uint32_t>(samples_per_side), .spacing = settings.vertexSpacing }, Physics::TERRAIN_CATEGORY);
-
-		for (const DressedMesh& solid : terrain.findSolids(coord))
+		const std::span<const DressedMesh>  solids = terrain.findSolids(coord);
+		std::vector<std::vector<glm::vec3>> solid_positions(solids.size());
+		std::vector<Physics::ShapeDesc>     shapes =
 		{
-			std::vector<glm::vec3> positions;
-			positions.reserve(solid.mesh.vertices.size());
-			for (const Render::Vertex& vertex : solid.mesh.vertices)
-				positions.push_back(vertex.position);
+			{ .geometry = Physics::HeightfieldDesc { .heights = heights, .samplesPerSide = static_cast<uint32_t>(samples_per_side), .spacing = settings.vertexSpacing }, .category = Physics::TERRAIN_CATEGORY }
+		};
 
-			body.addTriangleMesh({ .vertices = positions, .indices = solid.mesh.indices }, solid.colliderCategory);
+		for (size_t index = 0; index < solids.size(); index++)
+		{
+			const Render::MeshData& mesh = solids[index].mesh;
+			solid_positions[index].reserve(mesh.vertices.size());
+			for (const Render::Vertex& vertex : mesh.vertices)
+				solid_positions[index].push_back(vertex.position);
+
+			shapes.push_back({ .geometry = Physics::TriangleMeshDesc { .vertices = solid_positions[index], .indices = mesh.indices }, .category = solids[index].colliderCategory });
 		}
 
+		Physics::RigidBody body(scene, { .position = SceneChunkOrigin(scene, coord, settings), .shapes = shapes });
 		colliders.emplace(coord, ChunkCollider { std::move(body), terrain.getRevision(coord) });
 	}
 }

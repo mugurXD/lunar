@@ -1,5 +1,4 @@
 #include <lunar/core/scene.hpp>
-#include <lunar/physics/conversions.hpp>
 #include <lunar/physics/raycast.hpp>
 #include <lunar/physics/raycast_vehicle.hpp>
 #include <lunar/physics/rigid_body.hpp>
@@ -69,18 +68,22 @@ namespace
 
 	RigidBody CreateGround(lunar::Scene& scene)
 	{
-		RigidBody ground(scene, {}, IDENTITY, BodyType::eStatic);
-		ground.addBox(GROUND_HALF_EXTENTS, GROUND_OFFSET, TERRAIN_CATEGORY);
-		return ground;
+		const ShapeDesc ground = { .geometry = BoxDesc { .halfExtents = GROUND_HALF_EXTENTS, .offset = GROUND_OFFSET }, .category = TERRAIN_CATEGORY };
+		return RigidBody(scene, { .shapes = { &ground, 1 } });
 	}
 
 	RigidBody CreateChassis(lunar::Scene& scene, const glm::quat& rotation = IDENTITY)
 	{
-		RigidBody chassis(scene, UP * SPAWN_HEIGHT, rotation, BodyType::eDynamic);
-		chassis.addBox(CHASSIS_HALF_EXTENTS, {}, VEHICLE_CATEGORY);
-		chassis.setMass(TRUCK_MASS, CENTER_OF_MASS);
-		chassis.getBody().setIsAllowedToSleep(false);
-		return chassis;
+		const ShapeDesc box = { .geometry = BoxDesc { .halfExtents = CHASSIS_HALF_EXTENTS }, .category = VEHICLE_CATEGORY };
+		return RigidBody(scene,
+		{
+			.position     = UP * SPAWN_HEIGHT,
+			.rotation     = rotation,
+			.type         = BodyType::eDynamic,
+			.shapes       = { &box, 1 },
+			.massOverride = MassDesc { .mass = TRUCK_MASS, .centerOfMass = CENTER_OF_MASS },
+			.sleepAllowed = false
+		});
 	}
 
 	void Simulate(lunar::Scene& scene, RaycastVehicle& vehicle, RigidBody& chassis, const VehicleInput& input, int steps)
@@ -90,16 +93,6 @@ namespace
 			vehicle.update(chassis, input, STEP);
 			scene.physicsUpdate(STEP);
 		}
-	}
-
-	glm::vec3 Position(RigidBody& body)
-	{
-		return ToGlm(body.getBody().getTransform().getPosition());
-	}
-
-	glm::quat Rotation(RigidBody& body)
-	{
-		return ToGlm(body.getBody().getTransform().getOrientation());
 	}
 
 	float AverageCompression(const RaycastVehicle& vehicle)
@@ -127,11 +120,11 @@ namespace
 		const glm::vec3 push = glm::vec3(1.f, 0.f, 0.f) * TRUCK_MASS * GRAVITY * PUSH_FRACTION;
 		for (int step = 0; step < PUSH_STEPS; step++)
 		{
-			chassis.getBody().applyWorldForceAtWorldPosition(ToPhysics(push), ToPhysics(Position(chassis) + UP * PUSH_HEIGHT));
+			chassis.applyForce(push, chassis.getPosition() + UP * PUSH_HEIGHT);
 			Simulate(scene, vehicle, chassis, { .brake = 1.f }, 1);
 		}
 
-		return std::abs((Rotation(chassis) * UP).x);
+		return std::abs((chassis.getRotation() * UP).x);
 	}
 }
 
@@ -151,8 +144,8 @@ TEST(RaycastVehicle, SettlesOnItsSuspension)
 		EXPECT_NEAR(wheel.compression, expected_compression, expected_compression * LOAD_TOLERANCE);
 	}
 
-	EXPECT_LT(glm::length(ToGlm(chassis.getBody().getLinearVelocity())), REST_SPEED);
-	EXPECT_GT((Rotation(chassis) * UP).y, UPRIGHT);
+	EXPECT_LT(glm::length(chassis.getLinearVelocity()), REST_SPEED);
+	EXPECT_GT((chassis.getRotation() * UP).y, UPRIGHT);
 }
 
 TEST(RaycastVehicle, ThrottleDrivesForwardAndBrakesStop)
@@ -163,10 +156,10 @@ TEST(RaycastVehicle, ThrottleDrivesForwardAndBrakesStop)
 	RaycastVehicle vehicle(TestTruck());
 
 	Simulate(scene, vehicle, chassis, {}, SETTLE_STEPS);
-	const glm::vec3 start = Position(chassis);
+	const glm::vec3 start = chassis.getPosition();
 
 	Simulate(scene, vehicle, chassis, { .throttle = 1.f }, DRIVE_STEPS);
-	const glm::vec3 travelled = Position(chassis) - start;
+	const glm::vec3 travelled = chassis.getPosition() - start;
 
 	EXPECT_GT(vehicle.getForwardSpeed(), MIN_DRIVE_SPEED);
 	EXPECT_GT(glm::dot(travelled, FORWARD), MIN_DISTANCE);
@@ -186,8 +179,8 @@ TEST(RaycastVehicle, SteeringRightTurnsTheVehicleRight)
 	Simulate(scene, vehicle, chassis, {}, SETTLE_STEPS);
 	Simulate(scene, vehicle, chassis, { .throttle = HALF_THROTTLE, .steering = 1.f }, DRIVE_STEPS);
 
-	EXPECT_GT((Rotation(chassis) * FORWARD).x, MIN_TURN);
-	EXPECT_GT((Rotation(chassis) * UP).y, UPRIGHT);
+	EXPECT_GT((chassis.getRotation() * FORWARD).x, MIN_TURN);
+	EXPECT_GT((chassis.getRotation() * UP).y, UPRIGHT);
 }
 
 TEST(RaycastVehicle, TheGovernorCapsTopSpeed)
@@ -220,7 +213,7 @@ TEST(RaycastVehicle, WheelsWithoutGroundHaveNoGrip)
 	Simulate(scene, vehicle, chassis, { .throttle = 1.f }, SETTLE_STEPS);
 
 	EXPECT_TRUE(std::ranges::none_of(vehicle.getWheels(), &WheelState::grounded));
-	EXPECT_LT(Position(chassis).y, SPAWN_HEIGHT);
+	EXPECT_LT(chassis.getPosition().y, SPAWN_HEIGHT);
 }
 
 TEST(RigidBody, HeightfieldsLineUpWithTheirSamples)
@@ -236,18 +229,18 @@ TEST(RigidBody, HeightfieldsLineUpWithTheirSamples)
 		for (uint32_t x = 0; x < SAMPLES; x++)
 			heights[z * SAMPLES + x] = height(x, z);
 
-	lunar::Scene scene;
-	RigidBody    field(scene, origin, IDENTITY, BodyType::eStatic);
-	field.addHeightfield({ .heights = heights, .samplesPerSide = SAMPLES, .spacing = SPACING }, TERRAIN_CATEGORY);
+	const ShapeDesc field_shape = { .geometry = HeightfieldDesc { .heights = heights, .samplesPerSide = SAMPLES, .spacing = SPACING }, .category = TERRAIN_CATEGORY };
+	lunar::Scene    scene;
+	const RigidBody field(scene, { .position = origin, .shapes = { &field_shape, 1 } });
 
 	for (uint32_t z = 0; z < SAMPLES; z++)
 	{
 		for (uint32_t x = 0; x < SAMPLES; x++)
 		{
-			const glm::vec3   top = origin + glm::vec3(static_cast<float>(x) * SPACING, RAY_START, static_cast<float>(z) * SPACING);
-			rp3d::RaycastInfo info;
-			ASSERT_TRUE(field.getBody().raycast(rp3d::Ray(ToPhysics(top), ToPhysics(top - UP * RAY_START * 2.f)), info));
-			EXPECT_NEAR(info.worldPoint.y, height(x, z), HEIGHT_TOLERANCE);
+			const glm::vec3                 top = origin + glm::vec3(static_cast<float>(x) * SPACING, RAY_START, static_cast<float>(z) * SPACING);
+			const std::optional<RaycastHit> hit = CastRay(scene, top, top - UP * RAY_START * 2.f, TERRAIN_CATEGORY);
+			ASSERT_TRUE(hit.has_value());
+			EXPECT_NEAR(hit->point.y, height(x, z), HEIGHT_TOLERANCE);
 		}
 	}
 }
@@ -268,15 +261,13 @@ TEST(RigidBody, TriangleMeshCollidersAreHitAndReportTheirCategory)
 
 	const std::array<uint32_t, 6> indices = { 0, 2, 1, 1, 2, 3 };
 
-	lunar::Scene scene;
-	RigidBody    ground(scene, glm::vec3(0.f), IDENTITY, BodyType::eStatic);
-	RigidBody    road(scene, origin, IDENTITY, BodyType::eStatic);
-
-	ground.addBox(GROUND_HALF_EXTENTS, GROUND_OFFSET, TERRAIN_CATEGORY);
-	ASSERT_NE(road.addTriangleMesh({ .vertices = corners, .indices = indices }, ROAD_CATEGORY), nullptr);
+	const ShapeDesc road_shape = { .geometry = TriangleMeshDesc { .vertices = corners, .indices = indices }, .category = ROAD_CATEGORY };
+	lunar::Scene    scene;
+	const RigidBody ground = CreateGround(scene);
+	const RigidBody road(scene, { .position = origin, .shapes = { &road_shape, 1 } });
 
 	const glm::vec3                 above = origin + UP * RAY_START;
-	const std::optional<RaycastHit> hit   = CastRay(*scene.getPhysicsWorld(), above, above - UP * RAY_START * 2.f, static_cast<uint16_t>(~VEHICLE_CATEGORY));
+	const std::optional<RaycastHit> hit   = CastRay(scene, above, above - UP * RAY_START * 2.f, static_cast<uint16_t>(~VEHICLE_CATEGORY));
 
 	ASSERT_TRUE(hit.has_value());
 	EXPECT_EQ(hit->category, ROAD_CATEGORY);
@@ -351,9 +342,9 @@ namespace
 		return settings;
 	}
 
-	float Spin(RigidBody& chassis)
+	float Spin(const RigidBody& chassis)
 	{
-		return glm::length(ToGlm(chassis.getBody().getAngularVelocity()));
+		return glm::length(chassis.getAngularVelocity());
 	}
 }
 
@@ -365,7 +356,7 @@ TEST(RaycastVehicle, AirControlPitchesTheNoseWithThePitchInput)
 		RaycastVehicle vehicle(AirborneTruck(air_control));
 
 		Simulate(scene, vehicle, chassis, input, FLIGHT_STEPS);
-		return (Rotation(chassis) * FORWARD).y;
+		return (chassis.getRotation() * FORWARD).y;
 	};
 
 	EXPECT_LT(nose_height(AIR_CONTROL, { .pitch = 1.f }), nose_height(0.f, { .pitch = 1.f }) - MIN_TURN) << "pushing the stick forward should pitch the nose down";
@@ -390,7 +381,7 @@ TEST(RaycastVehicle, AirControlSettlesSpinWithoutInput)
 	RigidBody      chassis = CreateChassis(scene);
 	RaycastVehicle vehicle(AirborneTruck(AIR_CONTROL));
 
-	chassis.getBody().setAngularVelocity(ToPhysics(glm::vec3(LAUNCH_SPIN, 0.f, 0.f)));
+	chassis.setAngularVelocity(glm::vec3(LAUNCH_SPIN, 0.f, 0.f));
 	Simulate(scene, vehicle, chassis, {}, FLIGHT_STEPS);
 
 	EXPECT_LT(Spin(chassis), SPIN_TOLERANCE) << "leaving a cliff edge should not send the truck tumbling";
@@ -415,7 +406,7 @@ TEST(RaycastVehicle, SteeringRollsAnOverturnedVehicleBackUpright)
 		Simulate(scene, vehicle, chassis, {}, SETTLE_STEPS);
 		Simulate(scene, vehicle, chassis, { .steering = 1.f }, RIGHTING_STEPS);
 		Simulate(scene, vehicle, chassis, {}, SETTLE_STEPS);
-		return (Rotation(chassis) * UP).y;
+		return (chassis.getRotation() * UP).y;
 	};
 
 	EXPECT_LT(uprightness_after_steering(0.f), 0.f) << "without self-righting the vehicle stays on its roof";

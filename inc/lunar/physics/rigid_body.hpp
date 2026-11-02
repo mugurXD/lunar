@@ -2,13 +2,15 @@
 #include <lunar/api.hpp>
 #include <lunar/core/time.hpp>
 
+#include <lunar/physics/physics_world.hpp>
+
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
-#include <lunar/physics/reactphysics.hpp>
 
 #include <cstdint>
+#include <optional>
 #include <span>
-#include <vector>
+#include <variant>
 
 namespace lunar
 {
@@ -42,10 +44,38 @@ namespace lunar::Physics
 		std::span<const uint32_t>  indices  = {};
 	};
 
+	struct LUNAR_API BoxDesc
+	{
+		glm::vec3 halfExtents = {};
+		glm::vec3 offset      = {};
+	};
+
+	struct LUNAR_API ShapeDesc
+	{
+		std::variant<BoxDesc, HeightfieldDesc, TriangleMeshDesc> geometry = {};
+		uint16_t                                                 category = 0;
+	};
+
+	struct LUNAR_API MassDesc
+	{
+		float     mass         = 0.f;
+		glm::vec3 centerOfMass = {};
+	};
+
+	struct LUNAR_API BodyDesc
+	{
+		glm::vec3                  position     = {};
+		glm::quat                  rotation     = glm::quat(1.f, 0.f, 0.f, 0.f);
+		BodyType                   type         = BodyType::eStatic;
+		std::span<const ShapeDesc> shapes       = {};
+		std::optional<MassDesc>    massOverride = std::nullopt;
+		bool                       sleepAllowed = true;
+	};
+
 	class LUNAR_API RigidBody
 	{
 	public:
-		RigidBody(Scene& scene, const glm::vec3& position, const glm::quat& rotation, BodyType type) noexcept;
+		RigidBody(Scene& scene, const BodyDesc& desc) noexcept;
 		~RigidBody() noexcept;
 
 		RigidBody(RigidBody&& other) noexcept;
@@ -54,24 +84,23 @@ namespace lunar::Physics
 		RigidBody(const RigidBody&)            = delete;
 		RigidBody& operator=(const RigidBody&) = delete;
 
-		rp3d::Collider* addBox(const glm::vec3& half_extents, const glm::vec3& offset, uint16_t category);
-		rp3d::Collider* addHeightfield(const HeightfieldDesc& desc, uint16_t category);
-		rp3d::Collider* addTriangleMesh(const TriangleMeshDesc& desc, uint16_t category);
-		void            setMass(float mass, const glm::vec3& center_of_mass);
+		void applyForce(const glm::vec3& force);
+		void applyForce(const glm::vec3& force, const glm::vec3& point);
+		void applyAngularAcceleration(const glm::vec3& acceleration);
 
-		void      setTransform(const glm::vec3& position, const glm::quat& rotation);
-		void      setLinearVelocity(const glm::vec3& velocity);
-		void      setAngularVelocity(const glm::vec3& velocity);
-		void      setActive(bool active);
-		void      setSleepAllowed(bool allowed);
-		glm::vec3 getPosition()        const;
-		glm::quat getRotation()        const;
-		glm::vec3 getLinearVelocity()  const;
-		glm::vec3 getAngularVelocity() const;
-		bool      isActive()           const;
+		void setTransform(const glm::vec3& position, const glm::quat& rotation);
+		void setLinearVelocity(const glm::vec3& velocity);
+		void setAngularVelocity(const glm::vec3& velocity);
+		void setActive(bool active);
 
-		rp3d::RigidBody&    getBody();
-		rp3d::PhysicsWorld& getWorld();
+		glm::vec3           getPosition()        const;
+		glm::quat           getRotation()        const;
+		glm::vec3           getCenterOfMass()    const;
+		glm::vec3           getLinearVelocity()  const;
+		glm::vec3           getAngularVelocity() const;
+		float               getMass()            const;
+		bool                isActive()           const;
+		const PhysicsWorld& getWorld()           const;
 
 		void capturePose();
 		void applyPose(Transform& transform, float alpha) const;
@@ -80,15 +109,12 @@ namespace lunar::Physics
 	private:
 		void release();
 
-		rp3d::PhysicsCommon*               common           = nullptr;
-		rp3d::PhysicsWorld*                world            = nullptr;
-		rp3d::RigidBody*                   body             = nullptr;
-		std::vector<rp3d::CollisionShape*> shapes           = {};
-		std::vector<rp3d::TriangleMesh*>   triangleMeshes   = {};
-		glm::vec3                          previousPosition = {};
-		glm::vec3                          currentPosition  = {};
-		glm::quat                          previousRotation = glm::quat(1.f, 0.f, 0.f, 0.f);
-		glm::quat                          currentRotation  = glm::quat(1.f, 0.f, 0.f, 0.f);
+		PhysicsWorld* world            = nullptr;
+		BodyId        id               = INVALID_BODY_ID;
+		glm::vec3     previousPosition = {};
+		glm::vec3     currentPosition  = {};
+		glm::quat     previousRotation = glm::quat(1.f, 0.f, 0.f, 0.f);
+		glm::quat     currentRotation  = glm::quat(1.f, 0.f, 0.f, 0.f);
 	};
 
 	LUNAR_API void CapturePhysicsPoses(Scene& scene, const FrameTime& frame_time);

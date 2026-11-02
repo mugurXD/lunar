@@ -106,10 +106,10 @@ namespace lunar::Physics
 		void                   updateSteering(float steering, float delta_time);
 		float                  totalDriveForce(float throttle)                                                             const;
 		float                  antiRollLoad(size_t wheel)                                                                  const;
-		std::optional<Contact> probeWheel(size_t wheel, RigidBody& chassis, const ChassisState& state, float delta_time);
+		std::optional<Contact> probeWheel(size_t wheel, const RigidBody& chassis, const ChassisState& state, float delta_time);
 		void                   applyWheel(size_t wheel, const Contact& contact, RigidBody& chassis, const ChassisState& state, const VehicleInput& input, float delta_time);
-		void                   applyAirControl(rp3d::RigidBody& body, const ChassisState& state, const VehicleInput& input, float delta_time) const;
-		void                   applySelfRighting(rp3d::RigidBody& body, const ChassisState& state, const VehicleInput& input) const;
+		void                   applyAirControl(RigidBody& chassis, const ChassisState& state, const VehicleInput& input, float delta_time) const;
+		void                   applySelfRighting(RigidBody& chassis, const ChassisState& state, const VehicleInput& input) const;
 
 		VehicleSettings                     settings     = {};
 		std::vector<WheelState>             wheels       = {};

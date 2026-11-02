@@ -1,5 +1,4 @@
 #include <lunar/physics/raycast_vehicle.hpp>
-#include <lunar/physics/conversions.hpp>
 #include <lunar/physics/raycast.hpp>
 
 #include <algorithm>
@@ -26,12 +25,6 @@ namespace lunar::Physics
 			return glm::normalize(vector - normal * glm::dot(vector, normal));
 		}
 
-		void ApplyAngularAcceleration(rp3d::RigidBody& body, const glm::quat& rotation, const glm::vec3& world_acceleration)
-		{
-			const glm::vec3 local_acceleration = glm::inverse(rotation) * world_acceleration;
-			body.applyLocalTorque(ToPhysics(local_acceleration * ToGlm(body.getLocalInertiaTensor())));
-		}
-
 		std::optional<size_t> AxlePartner(std::span<const WheelSettings> wheels, size_t wheel)
 		{
 			const glm::vec3& mount = wheels[wheel].mountPoint;
@@ -55,17 +48,14 @@ namespace lunar::Physics
 
 	void RaycastVehicle::update(RigidBody& chassis, const VehicleInput& input, float delta_time)
 	{
-		rp3d::RigidBody&       body      = chassis.getBody();
-		const rp3d::Transform& transform = body.getTransform();
-
 		ChassisState state =
 		{
-			.position        = ToGlm(transform.getPosition()),
-			.rotation        = ToGlm(transform.getOrientation()),
-			.centerOfMass    = ToGlm(body.getWorldPoint(body.getLocalCenterOfMass())),
-			.linearVelocity  = ToGlm(body.getLinearVelocity()),
-			.angularVelocity = ToGlm(body.getAngularVelocity()),
-			.massPerWheel    = body.getMass() / static_cast<float>(std::max<size_t>(wheels.size(), 1)),
+			.position        = chassis.getPosition(),
+			.rotation        = chassis.getRotation(),
+			.centerOfMass    = chassis.getCenterOfMass(),
+			.linearVelocity  = chassis.getLinearVelocity(),
+			.angularVelocity = chassis.getAngularVelocity(),
+			.massPerWheel    = chassis.getMass() / static_cast<float>(std::max<size_t>(wheels.size(), 1)),
 			.drivenWheels    = static_cast<size_t>(std::ranges::count(settings.wheels, true, &WheelSettings::driven))
 		};
 
@@ -84,27 +74,27 @@ namespace lunar::Physics
 
 		const bool      grounded  = std::ranges::any_of(wheels, &WheelState::grounded);
 		const glm::vec3 drag      = -state.linearVelocity * glm::length(state.linearVelocity) * settings.dragCoefficient;
-		const glm::vec3 gravity   = -WORLD_UP * body.getMass() * settings.extraGravity;
+		const glm::vec3 gravity   = -WORLD_UP * chassis.getMass() * settings.extraGravity;
 		const glm::vec3 downforce = grounded ? -state.up * settings.downforce * forwardSpeed * forwardSpeed : glm::vec3(0.f);
-		body.applyWorldForceAtCenterOfMass(ToPhysics(drag + gravity + downforce));
+		chassis.applyForce(drag + gravity + downforce);
 
 		if (glm::dot(state.up, WORLD_UP) < UPRIGHT_COSINE)
-			applySelfRighting(body, state, input);
+			applySelfRighting(chassis, state, input);
 		else if (!grounded)
-			applyAirControl(body, state, input, delta_time);
+			applyAirControl(chassis, state, input, delta_time);
 	}
 
-	void RaycastVehicle::applyAirControl(rp3d::RigidBody& body, const ChassisState& state, const VehicleInput& input, float delta_time) const
+	void RaycastVehicle::applyAirControl(RigidBody& chassis, const ChassisState& state, const VehicleInput& input, float delta_time) const
 	{
 		const glm::vec3 local_spin = glm::inverse(state.rotation) * state.angularVelocity;
 		const glm::vec2 target     = glm::vec2(-std::clamp(input.pitch, -1.f, 1.f), -std::clamp(input.steering, -1.f, 1.f)) * settings.airControlRate;
 		const glm::vec2 needed     = (target - glm::vec2(local_spin.x, local_spin.z)) / delta_time;
 		const glm::vec2 applied    = glm::length(needed) > settings.airControl ? glm::normalize(needed) * settings.airControl : needed;
 
-		ApplyAngularAcceleration(body, state.rotation, state.rotation * glm::vec3(applied.x, 0.f, applied.y));
+		chassis.applyAngularAcceleration(state.rotation * glm::vec3(applied.x, 0.f, applied.y));
 	}
 
-	void RaycastVehicle::applySelfRighting(rp3d::RigidBody& body, const ChassisState& state, const VehicleInput& input) const
+	void RaycastVehicle::applySelfRighting(RigidBody& chassis, const ChassisState& state, const VehicleInput& input) const
 	{
 		const float steering = std::clamp(input.steering, -1.f, 1.f);
 		if (steering == 0.f || glm::length(state.linearVelocity) > settings.selfRightingSpeed)
@@ -113,7 +103,7 @@ namespace lunar::Physics
 		const glm::vec3 toward_upright = glm::cross(state.up, WORLD_UP);
 		const glm::vec3 axis           = glm::length(toward_upright) > MIN_AXIS_LENGTH ? glm::normalize(toward_upright) : state.forward * glm::sign(steering);
 
-		ApplyAngularAcceleration(body, state.rotation, axis * settings.selfRighting * std::abs(steering));
+		chassis.applyAngularAcceleration(axis * settings.selfRighting * std::abs(steering));
 	}
 
 	const VehicleSettings& RaycastVehicle::getSettings() const
@@ -177,14 +167,14 @@ namespace lunar::Physics
 		return partner.has_value() ? settings.antiRollStiffness * (wheels[wheel].compression - wheels[*partner].compression) : 0.f;
 	}
 
-	std::optional<RaycastVehicle::Contact> RaycastVehicle::probeWheel(size_t wheel, RigidBody& chassis, const ChassisState& state, float delta_time)
+	std::optional<RaycastVehicle::Contact> RaycastVehicle::probeWheel(size_t wheel, const RigidBody& chassis, const ChassisState& state, float delta_time)
 	{
 		const WheelSettings& wheel_settings = settings.wheels[wheel];
 		WheelState&          wheel_state    = wheels[wheel];
 		const glm::vec3      mount          = state.position + state.rotation * wheel_settings.mountPoint;
 		const float          ray_length     = settings.restLength + wheel_settings.radius;
 
-		const std::optional<RaycastHit> hit                  = CastRay(chassis.getWorld(), mount, mount - state.up * ray_length, WHEEL_RAY_MASK);
+		const std::optional<RaycastHit> hit                  = chassis.getWorld().castRay(mount, mount - state.up * ray_length, WHEEL_RAY_MASK);
 		const float                     previous_compression = wheel_state.compression;
 
 		wheel_state.grounded    = hit.has_value();
@@ -229,8 +219,7 @@ namespace lunar::Physics
 		const float     height_to_mass = glm::dot(state.centerOfMass - hit.point, state.up);
 		const glm::vec3 traction_point = hit.point + state.up * height_to_mass * (1.f - settings.rollInfluence);
 
-		rp3d::RigidBody& body = chassis.getBody();
-		body.applyWorldForceAtWorldPosition(ToPhysics(state.up * load), ToPhysics(hit.point));
-		body.applyWorldForceAtWorldPosition(ToPhysics(traction), ToPhysics(traction_point));
+		chassis.applyForce(state.up * load, hit.point);
+		chassis.applyForce(traction, traction_point);
 	}
 }

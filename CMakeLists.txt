@@ -186,8 +186,11 @@ target_link_libraries(lunar PUBLIC
     glm::glm
     glfw
     fastgltf::fastgltf
-    ReactPhysics3D::ReactPhysics3D
     RmlUi::RmlUi
+)
+
+target_link_libraries(lunar PRIVATE
+    ReactPhysics3D::ReactPhysics3D
     Jolt::Jolt
 )
 
