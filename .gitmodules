@@ -42,3 +42,7 @@
 	path = deps/freetype
 	url = https://github.com/freetype/freetype
 	ignore = all
+[submodule "deps/joltphysics"]
+	path = deps/joltphysics
+	url = https://github.com/jrouwe/joltphysics
+    ignore = all

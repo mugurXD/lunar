@@ -136,16 +136,18 @@ dependencies = [
     Dependency('nontype_functional')
         .only_on_platform('darwin'),
     Dependency('freetype')
-	.gen_flag('FT_DISABLE_BZIP2=TRUE')
-	.gen_flag('FT_DISABLE_PNG=TRUE')
-	.gen_flag('FT_DISABLE_ZLIB=TRUE')
-	.gen_flag('FT_DISABLE_HARFBUZZ=TRUE')
-	.gen_flag('FT_DISABLE_BROTLI=TRUE')
-	.gen_flag('FT_DISABLE_HVF=TRUE'),
+	    .gen_flag('FT_DISABLE_BZIP2=TRUE')
+	    .gen_flag('FT_DISABLE_PNG=TRUE')
+	    .gen_flag('FT_DISABLE_ZLIB=TRUE')
+	    .gen_flag('FT_DISABLE_HARFBUZZ=TRUE')
+	    .gen_flag('FT_DISABLE_BROTLI=TRUE')
+	    .gen_flag('FT_DISABLE_HVF=TRUE'),
     Dependency('RmlUi')
         .gen_flag('CMAKE_PREFIX_PATH=' + os.getcwd() + "/deps/freetype/install")
         .gen_flag('RMLUI_BACKEND=GLFW_VK')
-        .gen_flag('RMLUI_SAMPLES=OFF')
+        .gen_flag('RMLUI_SAMPLES=OFF'),
+    Dependency('joltphysics/Build')
+        .gen_flag('JPH_USE_VK=ON')
 ]
 
 def create_prefix_path():
