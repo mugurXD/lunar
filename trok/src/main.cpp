@@ -81,8 +81,7 @@ namespace
 	constexpr int32_t                 ROAD_SURVEY_RADIUS   = 1;
 	constexpr int32_t                 COLLIDER_RADIUS      = 1;
 	constexpr int32_t                 TERRAIN_DEBUG_RADIUS = 1;
-	// Deliberately tight so anything that misses the shift jumps visibly; widen once nothing does.
-	constexpr int32_t                 RECENTER_RADIUS      = 1;
+	constexpr int32_t                 RECENTER_RADIUS      = 16;
 	constexpr float                   TRUCK_SPAWN_HEIGHT   = 1.5f;
 	constexpr float                   RECOVER_HOLD_SECONDS = 0.5f;
 	constexpr float                   RECOVER_ROAD_REACH   = 400.f;
