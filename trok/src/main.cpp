@@ -25,6 +25,7 @@
 #include <lunar/world/chunk_storage.hpp>
 #include <lunar/physics/raycast.hpp>
 #include <lunar/physics/rigid_body.hpp>
+#include <lunar/world/floating_origin.hpp>
 #include <lunar/world/region_store.hpp>
 #include <lunar/world/terrain_colliders.hpp>
 #include <lunar/world/terrain_debug_view.hpp>
@@ -80,6 +81,8 @@ namespace
 	constexpr int32_t                 ROAD_SURVEY_RADIUS   = 1;
 	constexpr int32_t                 COLLIDER_RADIUS      = 1;
 	constexpr int32_t                 TERRAIN_DEBUG_RADIUS = 1;
+	// Deliberately tight so anything that misses the shift jumps visibly; widen once nothing does.
+	constexpr int32_t                 RECENTER_RADIUS      = 1;
 	constexpr float                   TRUCK_SPAWN_HEIGHT   = 1.5f;
 	constexpr float                   RECOVER_HOLD_SECONDS = 0.5f;
 	constexpr float                   RECOVER_ROAD_REACH   = 400.f;
@@ -679,6 +682,11 @@ int main()
 
 		chase.orbit(Input::GetRotation(), Input::GetScroll());
 		chase.update(chase_camera->getTransform(), truck->getTransform(), truck->getVehicle().getForwardSpeed(), frame_time.deltaTime);
+	});
+
+	// After the game systems, so each of them works against a single origin for the whole frame.
+	engine.addSystem(SystemPhase::eUpdate, [&](Scene&, const FrameTime&) {
+		World::RecenterOrigin(scene, (is_driving() ? chase_camera : player)->getTransform().position, world_settings, RECENTER_RADIUS);
 	});
 
 	float seconds_since_title_update = 0.f;

@@ -147,6 +147,9 @@ namespace lunar
 		});
 
 		Physics::ShiftPhysics(*this, shift);
+
+		// Cameras otherwise keep the old origin until the late update, misleading anything that reads them in between.
+		UpdateCameras(*this, {});
 	}
 
 	const WorldTransform& Scene::resolveWorldTransform(const Entity& entity)
