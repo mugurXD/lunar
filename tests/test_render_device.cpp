@@ -413,10 +413,11 @@ protected:
 		return values;
 	}
 
-	std::vector<glm::vec4> fetchTexels(ImageHandle image)
+	std::vector<glm::vec4> fetchTexels(ImageHandle image, Extent2D extent = TEXTURE_EXTENT)
 	{
+		const uint32_t       count    = extent.width * extent.height;
 		const PipelineHandle fetch    = createCompute("fetch_texels.comp");
-		const BufferHandle   readback = device->createBuffer({ TEXEL_COUNT * sizeof(glm::vec4), BufferUsageFlags(BufferUsageFlagBits::eStorage), MemoryLocation::eReadback }, {});
+		const BufferHandle   readback = device->createBuffer({ count * sizeof(glm::vec4), BufferUsageFlags(BufferUsageFlagBits::eStorage), MemoryLocation::eReadback }, {});
 
 		Frame&       frame    = device->beginFrame();
 		CommandList& commands = frame.commandList();
@@ -425,15 +426,15 @@ protected:
 		commands.pushConstants(TexelConstants {
 			.destination = device->getBufferAddress(readback),
 			.texture     = device->getTextureIndex(image),
-			.width       = TEXTURE_EXTENT.width,
-			.count       = TEXEL_COUNT
+			.width       = extent.width,
+			.count       = count
 		});
-		commands.dispatch(GroupCount(TEXEL_COUNT));
+		commands.dispatch(GroupCount(count));
 		device->endFrame(frame);
 		device->waitIdle();
 
 		const std::span<const std::byte> bytes = device->readBuffer(readback);
-		std::vector<glm::vec4>           texels(TEXEL_COUNT);
+		std::vector<glm::vec4>           texels(count);
 		std::memcpy(texels.data(), bytes.data(), texels.size() * sizeof(glm::vec4));
 
 		device->destroyBuffer(readback);
@@ -1335,4 +1336,47 @@ TEST_F(RenderDeviceTest, SolidDecorationsCollideOnlyNearAFocus)
 	const std::optional<lunar::Physics::RaycastHit> hit = lunar::Physics::CastRay(harness.world.scene, above, below, lunar::Physics::PROP_CATEGORY);
 	ASSERT_TRUE(hit.has_value());
 	EXPECT_NEAR(hit->point.y, spot.y + TestModel {}.halfExtent, COLLIDER_TOLERANCE) << "the hull sits where the decoration is drawn";
+}
+
+TEST_F(RenderDeviceTest, RenderedImagesCanBeSampledAfterwards)
+{
+	constexpr Extent2D   TARGET_EXTENT     = { 16, 16 };
+	constexpr glm::uvec2 INSIDE_NEAR_BASE  = { 5, 11 };
+	constexpr glm::uvec2 OUTSIDE_NEAR_APEX = { 5, 4 };
+
+	const std::vector<char> vertex_shader   = LoadShader("triangle.vert");
+	const std::vector<char> fragment_shader = LoadShader("white.frag");
+	const Format            color_format    = Format::eRGBA8Unorm;
+
+	const ImageHandle color = device->createImage({
+		.extent = TARGET_EXTENT,
+		.format = color_format,
+		.usage  = ImageUsageFlags(ImageUsageFlagBits::eColorAttachment) | ImageUsageFlagBits::eSampled
+	});
+	const PipelineHandle pipeline = device->createGraphicsPipeline({
+		.vertexShader   = std::as_bytes(std::span(vertex_shader)),
+		.fragmentShader = std::as_bytes(std::span(fragment_shader)),
+		.colorFormats   = std::span(&color_format, 1)
+	});
+	ASSERT_NE(pipeline, PipelineHandle {});
+
+	const ColorAttachment color_attachment = { .image = color };
+
+	Frame&       frame    = device->beginFrame();
+	CommandList& commands = frame.commandList();
+	commands.beginRendering({ .colorAttachments = std::span(&color_attachment, 1) });
+	commands.bindPipeline(pipeline);
+	commands.draw(TRIANGLE_VERTICES);
+	commands.endRendering();
+	commands.prepareSampling(color);
+	device->endFrame(frame);
+
+	const std::vector<glm::vec4> texels = fetchTexels(color, TARGET_EXTENT);
+	const auto                   at     = [&](glm::uvec2 texel) { return texels[texel.y * TARGET_EXTENT.width + texel.x].r; };
+
+	EXPECT_FLOAT_EQ(at(INSIDE_NEAR_BASE),  1.f) << "positive clip space Y lands in the top rows";
+	EXPECT_FLOAT_EQ(at(OUTSIDE_NEAR_APEX), 0.f);
+
+	device->destroyPipeline(pipeline);
+	device->destroyImage(color);
 }

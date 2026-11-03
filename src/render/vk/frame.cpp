@@ -211,6 +211,14 @@ namespace lunar::Render::imp
 		vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 	}
 
+	void VkCommandList::prepareSampling(ImageHandle image)
+	{
+		VkImageRecord* record = device.resolve(image);
+		DEBUG_ASSERT(record != nullptr, "Sampling a null or destroyed image");
+
+		TransitionImage(commandBuffer, *record, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	}
+
 	void VkCommandList::memoryBarrier()
 	{
 		RecordMemoryBarrier(commandBuffer,

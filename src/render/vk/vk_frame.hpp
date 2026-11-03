@@ -18,6 +18,7 @@ namespace lunar::Render::imp
 		void bindIndexBuffer(BufferHandle buffer, size_t offset, IndexType index_type) override;
 		void setScissor(const Rect2D& rect)                                             override;
 		void memoryBarrier()                                                            override;
+		void prepareSampling(ImageHandle image)                                         override;
 		void draw(uint32_t vertex_count,
 		          uint32_t instance_count,
 		          uint32_t first_vertex,
