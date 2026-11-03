@@ -19,7 +19,8 @@ layout(buffer_reference, std430) readonly buffer SceneData
 	mat4 viewProjection;
 	vec4 lightDirection;
 	vec4 lightColor;
-	vec4 ambientColor;
+	vec4 skyColor;
+	vec4 groundColor;
 	vec4 cameraPosition;
 	vec4 fogColor;
 	vec4 fogRange;

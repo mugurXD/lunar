@@ -41,7 +41,8 @@ namespace lunar::Render
 			glm::mat4 viewProjection = glm::mat4(1.f);
 			glm::vec4 lightDirection = {};
 			glm::vec4 lightColor     = {};
-			glm::vec4 ambientColor   = {};
+			glm::vec4 skyColor       = {};
+			glm::vec4 groundColor    = {};
 			glm::vec4 cameraPosition = {};
 			glm::vec4 fogColor       = {};
 			glm::vec4 fogRange       = {};
@@ -99,7 +100,8 @@ namespace lunar::Render
 			SceneData scene_data =
 			{
 				.viewProjection = projection * camera.getViewMatrix(),
-				.ambientColor   = AMBIENT_COLOR,
+				.skyColor       = AMBIENT_COLOR,
+				.groundColor    = AMBIENT_COLOR,
 				.cameraPosition = glm::vec4(camera.position, 1.f)
 			};
 
@@ -107,6 +109,12 @@ namespace lunar::Render
 			{
 				scene_data.lightDirection = glm::vec4(glm::normalize(light->direction), 0.f);
 				scene_data.lightColor     = glm::vec4(light->color * light->intensity, 0.f);
+			}
+
+			if (const SkyLight* sky = FindFirst<SkyLight>(scene))
+			{
+				scene_data.skyColor    = glm::vec4(sky->skyColor * sky->intensity, 0.f);
+				scene_data.groundColor = glm::vec4(sky->groundColor * sky->intensity, 0.f);
 			}
 
 			if (const DistanceFog* fog = FindFirst<DistanceFog>(scene))

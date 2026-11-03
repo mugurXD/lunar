@@ -59,6 +59,13 @@ namespace lunar
 		float     intensity = 1.f;
 	};
 
+	struct LUNAR_API SkyLight
+	{
+		glm::vec3 skyColor    = { 0.6f, 0.745f, 0.76f };
+		glm::vec3 groundColor = { 0.3f, 0.3f, 0.3f };
+		float     intensity   = 0.3f;
+	};
+
 	struct LUNAR_API DistanceFog
 	{
 		glm::vec3 color         = { 0.6f, 0.745f, 0.76f };
