@@ -21,6 +21,10 @@ namespace lunar::Render
 
 		constexpr Format    DEPTH_FORMAT            = Format::eD32Float;
 		constexpr Format    HDR_FORMAT              = Format::eRGBA16Float;
+		constexpr Format    SHADOW_MAP_FORMAT       = Format::eR32Float;
+		constexpr uint32_t  SHADOW_MAP_RESOLUTION   = 2048;
+		constexpr Extent2D  SHADOW_MAP_EXTENT       = { SHADOW_MAP_RESOLUTION, SHADOW_MAP_RESOLUTION };
+		constexpr float     SHADOW_FADE_START       = 0.9f;
 		constexpr float     REVERSE_Z_CLEAR_DEPTH   = 0.f;
 		constexpr CompareOp REVERSE_Z_DEPTH_COMPARE = CompareOp::eGreater;
 		constexpr uint32_t  SINGLE_SAMPLE           = 1;
@@ -31,21 +35,31 @@ namespace lunar::Render
 		constexpr std::string_view INSTANCED_VERTEX_SHADER  = "instanced.vert";
 		constexpr std::string_view FULLSCREEN_VERTEX_SHADER = "fullscreen.vert";
 		constexpr std::string_view TONEMAP_FRAGMENT_SHADER  = "tonemap.frag";
+		constexpr std::string_view SHADOW_FRAGMENT_SHADER   = "shadow.frag";
 		constexpr uint32_t         FULLSCREEN_VERTEX_COUNT  = 3;
 		constexpr size_t           STD430_MATRIX_ALIGN      = 16;
 
 		const glm::vec4 AMBIENT_COLOR = { 0.08f, 0.08f, 0.1f, 0.f };
 
-		struct SceneData
+		struct alignas(STD430_MATRIX_ALIGN) ShadowCascadeData
 		{
 			glm::mat4 viewProjection = glm::mat4(1.f);
-			glm::vec4 lightDirection = {};
-			glm::vec4 lightColor     = {};
-			glm::vec4 skyColor       = {};
-			glm::vec4 groundColor    = {};
-			glm::vec4 cameraPosition = {};
-			glm::vec4 fogColor       = {};
-			glm::vec4 fogRange       = {};
+			float     texelSize      = 0.f;
+			uint32_t  shadowMap      = 0;
+		};
+
+		struct SceneData
+		{
+			glm::mat4                                           viewProjection = glm::mat4(1.f);
+			glm::vec4                                           lightDirection = {};
+			glm::vec4                                           lightColor     = {};
+			glm::vec4                                           skyColor       = {};
+			glm::vec4                                           groundColor    = {};
+			glm::vec4                                           cameraPosition = {};
+			glm::vec4                                           fogColor       = {};
+			glm::vec4                                           fogRange       = {};
+			std::array<ShadowCascadeData, SHADOW_CASCADE_COUNT> shadowCascades = {};
+			glm::vec4                                           shadowRange    = {};
 		};
 
 		struct DrawData
@@ -93,13 +107,16 @@ namespace lunar::Render
 			return found;
 		}
 
+		glm::mat4 ViewProjection(const Camera& camera, Extent2D extent)
+		{
+			return camera.getProjectionMatrix(static_cast<int>(extent.width), static_cast<int>(extent.height)) * camera.getViewMatrix();
+		}
+
 		SceneData BuildSceneData(Scene& scene, const Camera& camera, Extent2D extent)
 		{
-			const glm::mat4 projection = camera.getProjectionMatrix(static_cast<int>(extent.width), static_cast<int>(extent.height));
-
 			SceneData scene_data =
 			{
-				.viewProjection = projection * camera.getViewMatrix(),
+				.viewProjection = ViewProjection(camera, extent),
 				.skyColor       = AMBIENT_COLOR,
 				.groundColor    = AMBIENT_COLOR,
 				.cameraPosition = glm::vec4(camera.position, 1.f)
@@ -183,6 +200,11 @@ namespace lunar::Render
 			destroyPipelines(material);
 		});
 		device.destroyPipeline(tonemapPipeline);
+
+		for (const ImageHandle shadow_map : shadowMaps)
+			device.destroyImage(shadow_map);
+
+		device.destroyImage(shadowDepthImage);
 	}
 
 	void Renderer::setSamples(uint32_t samples)
@@ -225,6 +247,7 @@ namespace lunar::Render
 
 		const std::vector<char> vertex_shader   = LoadShader(material.vertexShader);
 		const std::vector<char> fragment_shader = LoadShader(material.fragmentShader);
+		const std::vector<char> shadow_shader   = LoadShader(SHADOW_FRAGMENT_SHADER);
 
 		const GraphicsPipelineDesc mesh_desc =
 		{
@@ -246,14 +269,25 @@ namespace lunar::Render
 		translucent_desc.depthWrite = false;
 		translucent_desc.blendMode  = BlendMode::eAlpha;
 
+		GraphicsPipelineDesc shadow_desc = mesh_desc;
+		shadow_desc.fragmentShader = std::as_bytes(std::span(shadow_shader));
+		shadow_desc.colorFormats   = std::span(&SHADOW_MAP_FORMAT, 1);
+		shadow_desc.samples        = SINGLE_SAMPLE;
+
+		// Single sided meshes still have to block the sun when it shines on their back.
+		shadow_desc.cullMode = CullMode::eNone;
+
 		material.opaquePipeline      = device.createGraphicsPipeline(mesh_desc);
 		material.translucentPipeline = device.createGraphicsPipeline(translucent_desc);
+		material.shadowPipeline      = device.createGraphicsPipeline(shadow_desc);
 	}
 
 	void Renderer::destroyPipelines(Material& material)
 	{
+		device.destroyPipeline(material.shadowPipeline);
 		device.destroyPipeline(material.translucentPipeline);
 		device.destroyPipeline(material.opaquePipeline);
+		material.shadowPipeline      = {};
 		material.translucentPipeline = {};
 		material.opaquePipeline      = {};
 	}
@@ -348,8 +382,10 @@ namespace lunar::Render
 
 	void Renderer::recordFrame(Frame& frame, Scene& scene, Extent2D extent)
 	{
-		CommandList&       commands = frame.commandList();
-		const DistanceFog* fog      = FindFirst<DistanceFog>(scene);
+		CommandList&       commands      = frame.commandList();
+		const DistanceFog* fog           = FindFirst<DistanceFog>(scene);
+		const Camera*      camera        = scene.getMainCamera();
+		const uint64_t     scene_address = camera != nullptr ? prepareSceneData(frame, scene, *camera, extent) : 0;
 
 		const bool            multisampled     = colorImage != ImageHandle {};
 		const ColorAttachment color_attachment =
@@ -372,29 +408,86 @@ namespace lunar::Render
 			.depthAttachment  = depth_attachment
 		});
 
-		const Camera* camera = scene.getMainCamera();
-		if (camera != nullptr)
+		if (scene_address != 0)
 		{
-			const SceneData scene_data    = BuildSceneData(scene, *camera, extent);
-			const uint64_t  scene_address = frame.writeTransient(scene_data);
-			if (scene_address != 0)
-			{
-				const Frustum frustum(scene_data.viewProjection);
-				const auto    draw_materials = [&](bool translucent) {
-					materials.forEach([&](PoolHandle<Material> handle, const Material& material) {
-						const PipelineHandle pipeline = translucent ? material.translucentPipeline : material.opaquePipeline;
-						drawMeshes(frame, scene, scene_address, frustum, ToGpuHandle<MaterialTag>(handle), pipeline, translucent);
-					});
-				};
+			const Frustum frustum(ViewProjection(*camera, extent));
+			const auto    draw_materials = [&](bool translucent) {
+				materials.forEach([&](PoolHandle<Material> handle, const Material& material) {
+					const PipelineHandle pipeline = translucent ? material.translucentPipeline : material.opaquePipeline;
+					drawMeshes(frame, scene, scene_address, frustum, ToGpuHandle<MaterialTag>(handle), pipeline, translucent);
+				});
+			};
 
-				draw_materials(false);
-				drawInstances(frame, scene, scene_address, frustum, camera->position);
-				draw_materials(true);
-				drawLines(frame, scene_address);
-			}
+			draw_materials(false);
+			drawInstances(frame, scene, scene_address, frustum, camera->position, instancedMaterial.opaquePipeline);
+			draw_materials(true);
+			drawLines(frame, scene_address);
 		}
 
 		commands.endRendering();
+	}
+
+	uint64_t Renderer::prepareSceneData(Frame& frame, Scene& scene, const Camera& camera, Extent2D extent)
+	{
+		SceneData               scene_data = BuildSceneData(scene, camera, extent);
+		const DirectionalLight* light      = FindFirst<DirectionalLight>(scene);
+		const CascadedShadows*  shadows    = FindFirst<CascadedShadows>(scene);
+		if (light == nullptr || shadows == nullptr)
+			return frame.writeTransient(scene_data);
+
+		const float aspect_ratio = static_cast<float>(extent.width) / static_cast<float>(extent.height);
+		const auto  cascades     = FitShadowCascades(camera, aspect_ratio, light->direction, *shadows, SHADOW_MAP_RESOLUTION);
+		recordShadows(frame, scene, camera.position, cascades);
+
+		for (size_t index = 0; index < cascades.size(); index++)
+			scene_data.shadowCascades[index] = { cascades[index].viewProjection, cascades[index].texelSize, device.getTextureIndex(shadowMaps[index]) };
+
+		scene_data.shadowRange = glm::vec4(shadows->distance * SHADOW_FADE_START, shadows->distance, 0.f, 0.f);
+		return frame.writeTransient(scene_data);
+	}
+
+	void Renderer::recordShadows(Frame& frame, Scene& scene, const glm::vec3& eye, std::span<const ShadowCascade> cascades)
+	{
+		if (shadowDepthImage == ImageHandle {})
+			createShadowTargets();
+
+		CommandList& commands = frame.commandList();
+		for (size_t index = 0; index < cascades.size(); index++)
+		{
+			const ColorAttachment shadow_attachment = { .image = shadowMaps[index], .loadOp = LoadOp::eClear, .clearColor = glm::vec4(REVERSE_Z_CLEAR_DEPTH) };
+			const DepthAttachment depth_attachment  = { .image = shadowDepthImage, .loadOp = LoadOp::eClear, .clearDepth = REVERSE_Z_CLEAR_DEPTH };
+			const uint64_t        scene_address     = frame.writeTransient(SceneData { .viewProjection = cascades[index].viewProjection });
+
+			commands.beginRendering({ .colorAttachments = std::span(&shadow_attachment, 1), .depthAttachment = depth_attachment });
+
+			if (scene_address != 0)
+			{
+				const Frustum frustum(cascades[index].viewProjection);
+				materials.forEach([&](PoolHandle<Material> handle, const Material& material) {
+					drawMeshes(frame, scene, scene_address, frustum, ToGpuHandle<MaterialTag>(handle), material.shadowPipeline, false);
+				});
+				drawInstances(frame, scene, scene_address, frustum, eye, instancedMaterial.shadowPipeline);
+			}
+
+			commands.endRendering();
+			commands.prepareSampling(shadowMaps[index]);
+		}
+	}
+
+	void Renderer::createShadowTargets()
+	{
+		shadowDepthImage = device.createImage({
+			.extent = SHADOW_MAP_EXTENT,
+			.format = DEPTH_FORMAT,
+			.usage  = ImageUsageFlags(ImageUsageFlagBits::eDepthAttachment)
+		});
+
+		for (ImageHandle& shadow_map : shadowMaps)
+			shadow_map = device.createImage({
+				.extent = SHADOW_MAP_EXTENT,
+				.format = SHADOW_MAP_FORMAT,
+				.usage  = ImageUsageFlags(ImageUsageFlagBits::eColorAttachment) | ImageUsageFlagBits::eSampled
+			});
 	}
 
 	void Renderer::recordComposite(Frame& frame, Scene& scene, ImageHandle target, Extent2D extent, UI::UiLayer* ui, ImGuiLayer* debug_ui)
@@ -459,13 +552,13 @@ namespace lunar::Render
 		}
 	}
 
-	void Renderer::drawInstances(Frame& frame, Scene& scene, uint64_t scene_address, const Frustum& frustum, const glm::vec3& eye)
+	void Renderer::drawInstances(Frame& frame, Scene& scene, uint64_t scene_address, const Frustum& frustum, const glm::vec3& eye, PipelineHandle pipeline)
 	{
-		if (instancedMaterial.opaquePipeline == PipelineHandle {})
+		if (pipeline == PipelineHandle {})
 			return;
 
 		CommandList& commands = frame.commandList();
-		commands.bindPipeline(instancedMaterial.opaquePipeline);
+		commands.bindPipeline(pipeline);
 
 		scene.forEach<InstanceBatch>([&](Entity entity, const InstanceBatch& batch) {
 			const InstanceSet* instances = meshes.get(batch.instances);

@@ -3,9 +3,11 @@
 #include <lunar/render/frustum.hpp>
 #include <lunar/render/render_device.hpp>
 #include <lunar/render/mesh_registry.hpp>
+#include <lunar/render/shadow_cascades.hpp>
 
 #include <glm/glm.hpp>
 
+#include <array>
 #include <span>
 #include <string>
 #include <string_view>
@@ -56,19 +58,23 @@ namespace lunar::Render
 			PrimitiveTopology topology            = PrimitiveTopology::eTriangleList;
 			PipelineHandle    opaquePipeline      = {};
 			PipelineHandle    translucentPipeline = {};
+			PipelineHandle    shadowPipeline      = {};
 		};
 
-		void recreatePipelines(Material& material);
-		void createPipelines(Material& material);
-		void destroyPipelines(Material& material);
-		void createTonemapPipeline();
-		void resizeTargets(Extent2D extent);
-		void destroyTargets();
-		void recordFrame(Frame& frame, Scene& scene, Extent2D extent);
-		void recordComposite(Frame& frame, Scene& scene, ImageHandle target, Extent2D extent, UI::UiLayer* ui, ImGuiLayer* debug_ui);
-		void drawMeshes(Frame& frame, Scene& scene, uint64_t scene_address, const Frustum& frustum, MaterialHandle material, PipelineHandle pipeline, bool translucent);
-		void drawInstances(Frame& frame, Scene& scene, uint64_t scene_address, const Frustum& frustum, const glm::vec3& eye);
-		void drawLines(Frame& frame, uint64_t scene_address);
+		void     recreatePipelines(Material& material);
+		void     createPipelines(Material& material);
+		void     destroyPipelines(Material& material);
+		void     createTonemapPipeline();
+		void     resizeTargets(Extent2D extent);
+		void     destroyTargets();
+		void     recordFrame(Frame& frame, Scene& scene, Extent2D extent);
+		uint64_t prepareSceneData(Frame& frame, Scene& scene, const Camera& camera, Extent2D extent);
+		void     recordShadows(Frame& frame, Scene& scene, const glm::vec3& eye, std::span<const ShadowCascade> cascades);
+		void     createShadowTargets();
+		void     recordComposite(Frame& frame, Scene& scene, ImageHandle target, Extent2D extent, UI::UiLayer* ui, ImGuiLayer* debug_ui);
+		void     drawMeshes(Frame& frame, Scene& scene, uint64_t scene_address, const Frustum& frustum, MaterialHandle material, PipelineHandle pipeline, bool translucent);
+		void     drawInstances(Frame& frame, Scene& scene, uint64_t scene_address, const Frustum& frustum, const glm::vec3& eye, PipelineHandle pipeline);
+		void     drawLines(Frame& frame, uint64_t scene_address);
 
 		RenderDevice&       device;
 		Swapchain*          swapchain       = nullptr;
@@ -84,5 +90,8 @@ namespace lunar::Render
 		ImageHandle         hdrImage        = {};
 		ImageHandle         depthImage      = {};
 		uint32_t            sampleCount     = 0;
+
+		std::array<ImageHandle, SHADOW_CASCADE_COUNT> shadowMaps       = {};
+		ImageHandle                                   shadowDepthImage = {};
 	};
 }

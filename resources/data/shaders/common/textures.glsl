@@ -19,3 +19,13 @@ vec4 FetchTexel(uint texture_index, ivec2 texel)
 {
 	return texelFetch(sampler2D(textures[nonuniformEXT(texture_index)], samplers[SAMPLER_NEAREST_CLAMP]), texel, 0);
 }
+
+vec4 GatherTexels(uint texture_index, vec2 uv)
+{
+	return textureGather(sampler2D(textures[nonuniformEXT(texture_index)], samplers[SAMPLER_NEAREST_CLAMP]), uv);
+}
+
+ivec2 TextureSize(uint texture_index)
+{
+	return textureSize(sampler2D(textures[nonuniformEXT(texture_index)], samplers[SAMPLER_NEAREST_CLAMP]), 0);
+}
