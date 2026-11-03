@@ -107,9 +107,10 @@ namespace lunar
 		renderDevice(Render::CreateRenderDevice(
 			Render::RenderDeviceSettings
 			{
-				.appName = builder.appName,
-				.pWindow = builder.useWindow ? &window : nullptr,
-				.backend = builder.backend
+				.appName    = builder.appName,
+				.pWindow    = builder.useWindow ? &window : nullptr,
+				.backend    = builder.backend,
+				.validation = builder.validationEnabled
 			}
 		)),
 		swapchain(builder.useWindow ? renderDevice->createSwapchain(window) : nullptr),
@@ -168,6 +169,12 @@ namespace lunar
 	EngineBuilder& EngineBuilder::samples(uint32_t count)
 	{
 		sampleCount = count;
+		return *this;
+	}
+
+	EngineBuilder& EngineBuilder::validation(bool enabled)
+	{
+		validationEnabled = enabled;
 		return *this;
 	}
 

@@ -338,7 +338,7 @@ class RenderDeviceTest : public ::testing::Test
 protected:
 	static void SetUpTestSuite()
 	{
-		device = CreateRenderDevice({ .appName = "lunar_render_tests" });
+		device = CreateRenderDevice({ .appName = "lunar_render_tests", .validation = true });
 	}
 
 	static void TearDownTestSuite()
