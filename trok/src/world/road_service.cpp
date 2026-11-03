@@ -96,6 +96,11 @@ namespace trok
 		return layer->get();
 	}
 
+	std::shared_ptr<const RoadLayer> RoadService::getLayer() const
+	{
+		return layer;
+	}
+
 	bool RoadService::isKnown(const TownLink& link) const
 	{
 		return std::ranges::any_of(known, [&](const TownLink& other) { return other.from == link.from && other.to == link.to; });

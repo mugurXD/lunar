@@ -29,11 +29,6 @@ namespace trok
 		constexpr size_t RIVER_MIN_POINTS         = 8;
 		constexpr double RIVER_SOURCE_JITTER      = 0.5;
 
-		double UnitFromHash(uint64_t hash)
-		{
-			return static_cast<double>(hash >> 11) * 0x1p-53;
-		}
-
 		nlohmann::json SerializePoint(const RiverPoint& point)
 		{
 			return nlohmann::json { { "position", { point.position.x, point.position.y } }, { "width", point.width }, { "bed", point.bed } };

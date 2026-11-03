@@ -1,0 +1,45 @@
+{
+  "decorations": [
+    {
+      "lods": [
+        { "distance": 350.0, "model": "models/pine.glb" },
+        { "distance": 1900.0, "model": "models/pine_far.glb" }
+      ],
+      "name": "core:pine"
+    },
+    {
+      "lods": [
+        { "distance": 350.0, "model": "models/broadleaf.glb" },
+        { "distance": 1900.0, "model": "models/broadleaf_far.glb" }
+      ],
+      "name": "core:broadleaf"
+    },
+    {
+      "lods": [
+        { "distance": 700.0, "model": "models/rock.glb" }
+      ],
+      "name": "core:rock"
+    },
+    {
+      "lods": [
+        { "distance": 1900.0, "model": "models/boulder.glb" }
+      ],
+      "name": "core:boulder"
+    },
+    {
+      "lods": [
+        { "distance": 250.0, "model": "models/bush.glb" }
+      ],
+      "name": "core:bush"
+    },
+    {
+      "breakable": true,
+      "lods": [
+        { "distance": 300.0, "model": "models/sapling.glb" }
+      ],
+      "mass": 80.0,
+      "name": "core:sapling"
+    }
+  ],
+  "formatVersion": 1
+}

@@ -35,11 +35,6 @@ namespace trok
 			};
 		}
 
-		double UnitFromHash(uint64_t hash)
-		{
-			return static_cast<double>(hash >> 11) * 0x1p-53;
-		}
-
 		double BiomeCellCenter(int32_t region_chunk, uint32_t cell, const lunar::World::WorldSettings& settings)
 		{
 			const int32_t chunk = region_chunk + static_cast<int32_t>(cell * BIOME_CELL_CHUNKS);

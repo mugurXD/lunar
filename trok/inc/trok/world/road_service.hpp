@@ -34,6 +34,7 @@ namespace trok
 		void                                request(std::span<const TownLink> links, const RegionContext& context);
 		std::vector<std::vector<glm::vec3>> update(const glm::vec2& focus);
 		std::shared_ptr<const RoadNetwork>  getNetwork() const;
+		std::shared_ptr<const RoadLayer>    getLayer()   const;
 
 	private:
 		struct LinkProgress
