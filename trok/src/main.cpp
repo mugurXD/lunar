@@ -101,6 +101,8 @@ namespace
 	constexpr float                   AUTO_HOLD_SPEED      = 0.5f;
 	constexpr float                   FOG_START_FRACTION   = 0.5f;
 	constexpr float                   FOG_END_FRACTION     = 0.95f;
+	constexpr float                   SUN_INTENSITY        = 0.85f;
+	constexpr float                   SKY_LIGHT_INTENSITY  = 0.45f;
 	constexpr float                   NEAR_PLANE_DEPTH     = 1.f;
 	constexpr float                   PICK_STEP            = 4.f;
 	constexpr float                   PICK_MAX_DISTANCE    = 2000.f;
@@ -111,7 +113,9 @@ namespace
 
 	const glm::vec3 CAMERA_START_POSITION  = { 0.f, 0.f, 30.f };
 	const glm::vec3 SUN_DIRECTION          = { -0.4f, -1.f, -0.3f };
+	const glm::vec3 SUN_COLOR              = { 1.f, 0.96f, 0.88f };
 	const glm::vec3 SKY_COLOR              = { 0.6f, 0.745f, 0.76f };
+	const glm::vec3 GROUND_BOUNCE_COLOR    = { 0.4f, 0.42f, 0.3f };
 	const glm::vec3 ENDPOINT_MARKER_COLOR  = { 0.9f, 0.1f, 0.1f };
 	const glm::vec3 NODE_MARKER_COLOR      = { 0.1f, 0.9f, 0.2f };
 
@@ -398,11 +402,13 @@ int main(int argc, char* argv[])
 	chase_camera->addComponent<Camera>();
 
 	GameObject sun = scene.createGameObject("Sun");
-	sun->addComponent<DirectionalLight>(SUN_DIRECTION);
+	sun->addComponent<DirectionalLight>(SUN_DIRECTION, SUN_COLOR, SUN_INTENSITY);
+	sun->addComponent<CascadedShadows>();
 
 	const float view_distance = static_cast<float>(VIEW_RADIUS) * world_settings.getChunkSize();
 	GameObject  sky           = scene.createGameObject("Sky");
 	sky->addComponent<DistanceFog>(SKY_COLOR, view_distance * FOG_START_FRACTION, view_distance * FOG_END_FRACTION);
+	sky->addComponent<SkyLight>(SKY_COLOR, GROUND_BOUNCE_COLOR, SKY_LIGHT_INTENSITY);
 
 	window.registerAction("toggle_menu",        { { "keyboard.esc" } });
 	window.registerAction("sprint",             { { "keyboard.shift" }, { "gamepad.ls" } });
