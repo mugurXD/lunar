@@ -59,6 +59,13 @@ namespace lunar
 		float     intensity = 1.f;
 	};
 
+	struct LUNAR_API CascadedShadows
+	{
+		float distance     = 400.f;
+		float casterMargin = 500.f;
+		float splitBlend   = 0.75f;
+	};
+
 	struct LUNAR_API SkyLight
 	{
 		glm::vec3 skyColor    = { 0.6f, 0.745f, 0.76f };
