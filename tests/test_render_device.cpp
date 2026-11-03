@@ -1346,37 +1346,40 @@ TEST_F(RenderDeviceTest, RenderedImagesCanBeSampledAfterwards)
 
 	const std::vector<char> vertex_shader   = LoadShader("triangle.vert");
 	const std::vector<char> fragment_shader = LoadShader("white.frag");
-	const Format            color_format    = Format::eRGBA8Unorm;
 
-	const ImageHandle color = device->createImage({
-		.extent = TARGET_EXTENT,
-		.format = color_format,
-		.usage  = ImageUsageFlags(ImageUsageFlagBits::eColorAttachment) | ImageUsageFlagBits::eSampled
-	});
-	const PipelineHandle pipeline = device->createGraphicsPipeline({
-		.vertexShader   = std::as_bytes(std::span(vertex_shader)),
-		.fragmentShader = std::as_bytes(std::span(fragment_shader)),
-		.colorFormats   = std::span(&color_format, 1)
-	});
-	ASSERT_NE(pipeline, PipelineHandle {});
+	for (const Format color_format : { Format::eRGBA8Unorm, Format::eR32Float })
+	{
+		const ImageHandle color = device->createImage({
+			.extent = TARGET_EXTENT,
+			.format = color_format,
+			.usage  = ImageUsageFlags(ImageUsageFlagBits::eColorAttachment) | ImageUsageFlagBits::eSampled
+		});
+		const PipelineHandle pipeline = device->createGraphicsPipeline({
+			.vertexShader   = std::as_bytes(std::span(vertex_shader)),
+			.fragmentShader = std::as_bytes(std::span(fragment_shader)),
+			.colorFormats   = std::span(&color_format, 1)
+		});
+		ASSERT_NE(color,    ImageHandle {});
+		ASSERT_NE(pipeline, PipelineHandle {});
 
-	const ColorAttachment color_attachment = { .image = color };
+		const ColorAttachment color_attachment = { .image = color };
 
-	Frame&       frame    = device->beginFrame();
-	CommandList& commands = frame.commandList();
-	commands.beginRendering({ .colorAttachments = std::span(&color_attachment, 1) });
-	commands.bindPipeline(pipeline);
-	commands.draw(TRIANGLE_VERTICES);
-	commands.endRendering();
-	commands.prepareSampling(color);
-	device->endFrame(frame);
+		Frame&       frame    = device->beginFrame();
+		CommandList& commands = frame.commandList();
+		commands.beginRendering({ .colorAttachments = std::span(&color_attachment, 1) });
+		commands.bindPipeline(pipeline);
+		commands.draw(TRIANGLE_VERTICES);
+		commands.endRendering();
+		commands.prepareSampling(color);
+		device->endFrame(frame);
 
-	const std::vector<glm::vec4> texels = fetchTexels(color, TARGET_EXTENT);
-	const auto                   at     = [&](glm::uvec2 texel) { return texels[texel.y * TARGET_EXTENT.width + texel.x].r; };
+		const std::vector<glm::vec4> texels = fetchTexels(color, TARGET_EXTENT);
+		const auto                   at     = [&](glm::uvec2 texel) { return texels[texel.y * TARGET_EXTENT.width + texel.x].r; };
 
-	EXPECT_FLOAT_EQ(at(INSIDE_NEAR_BASE),  1.f) << "positive clip space Y lands in the top rows";
-	EXPECT_FLOAT_EQ(at(OUTSIDE_NEAR_APEX), 0.f);
+		EXPECT_FLOAT_EQ(at(INSIDE_NEAR_BASE),  1.f) << "positive clip space Y lands in the top rows";
+		EXPECT_FLOAT_EQ(at(OUTSIDE_NEAR_APEX), 0.f);
 
-	device->destroyPipeline(pipeline);
-	device->destroyImage(color);
+		device->destroyPipeline(pipeline);
+		device->destroyImage(color);
+	}
 }

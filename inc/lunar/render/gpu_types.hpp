@@ -73,6 +73,7 @@ namespace lunar::Render
 		eBGRA8Srgb,
 		eRGBA16Float,
 		eRGBA32Float,
+		eR32Float,
 		eD32Float
 	};
 
