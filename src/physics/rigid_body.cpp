@@ -5,6 +5,15 @@
 #include "conversions.hpp"
 #include "physics_backend.hpp"
 
+#include <Jolt/Physics/Body/BodyCreationSettings.h>
+#include <Jolt/Physics/Body/BodyLock.h>
+#include <Jolt/Physics/Collision/Shape/BoxShape.h>
+#include <Jolt/Physics/Collision/Shape/HeightFieldShape.h>
+#include <Jolt/Physics/Collision/Shape/MeshShape.h>
+#include <Jolt/Physics/Collision/Shape/OffsetCenterOfMassShape.h>
+#include <Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h>
+#include <Jolt/Physics/Collision/Shape/StaticCompoundShape.h>
+
 #include <utility>
 #include <variant>
 
@@ -13,114 +22,110 @@ namespace lunar::Physics
 	namespace
 	{
 		constexpr uint32_t TRIANGLE_INDICES = 3;
+		constexpr uint32_t DEFAULT_MATERIAL = 0;
+		constexpr float    BODY_FRICTION    = 0.3f;
+		constexpr float    BODY_RESTITUTION = 0.5f;
+		constexpr float    BODY_DAMPING     = 0.f;
 
-		rp3d::BodyType ToPhysics(BodyType type)
+		struct ShapePart
+		{
+			JPH::Ref<JPH::ShapeSettings> settings = nullptr;
+			glm::vec3                    offset   = {};
+		};
+
+		JPH::EMotionType ToPhysics(BodyType type)
 		{
 			switch (type)
 			{
-				case BodyType::eStatic:    return rp3d::BodyType::STATIC;
-				case BodyType::eKinematic: return rp3d::BodyType::KINEMATIC;
-				default:                   return rp3d::BodyType::DYNAMIC;
+				case BodyType::eStatic:    return JPH::EMotionType::Static;
+				case BodyType::eKinematic: return JPH::EMotionType::Kinematic;
+				default:                   return JPH::EMotionType::Dynamic;
 			}
 		}
 
-		rp3d::Collider* AddShape(rp3d::PhysicsCommon& common, BodyRecord& record, const BoxDesc& desc)
+		ShapePart MakeShape(const BoxDesc& desc)
 		{
-			rp3d::BoxShape* shape = common.createBoxShape(Physics::ToPhysics(desc.halfExtents));
-			record.shapes.push_back(shape);
-			return record.body->addCollider(shape, rp3d::Transform(Physics::ToPhysics(desc.offset), rp3d::Quaternion::identity()));
+			return { .settings = new JPH::BoxShapeSettings(Physics::ToPhysics(desc.halfExtents)), .offset = desc.offset };
 		}
 
-		rp3d::Collider* AddShape(rp3d::PhysicsCommon& common, BodyRecord& record, const HeightfieldDesc& desc)
+		ShapePart MakeShape(const HeightfieldDesc& desc)
 		{
-			const int                  samples  = static_cast<int>(desc.samplesPerSide);
-			std::vector<rp3d::Message> messages = {};
-			rp3d::HeightField*         field    = common.createHeightField(samples, samples, desc.heights.data(), rp3d::HeightField::HeightDataType::HEIGHT_FLOAT_TYPE, messages);
-			if (field == nullptr)
+			return { .settings = new JPH::HeightFieldShapeSettings(desc.heights.data(), JPH::Vec3::sZero(), JPH::Vec3(desc.spacing, 1.f, desc.spacing), desc.samplesPerSide) };
+		}
+
+		ShapePart MakeShape(const TriangleMeshDesc& desc)
+		{
+			JPH::VertexList vertices;
+			vertices.reserve(desc.vertices.size());
+			for (const glm::vec3& vertex : desc.vertices)
+				vertices.push_back(JPH::Float3(vertex.x, vertex.y, vertex.z));
+
+			JPH::IndexedTriangleList triangles;
+			triangles.reserve(desc.indices.size() / TRIANGLE_INDICES);
+			for (size_t index = 0; index + TRIANGLE_INDICES <= desc.indices.size(); index += TRIANGLE_INDICES)
+				triangles.push_back(JPH::IndexedTriangle(desc.indices[index], desc.indices[index + 1], desc.indices[index + 2], DEFAULT_MATERIAL));
+
+			return { .settings = new JPH::MeshShapeSettings(std::move(vertices), std::move(triangles)) };
+		}
+
+		JPH::ShapeSettings::ShapeResult CreateShape(std::span<const ShapeDesc> shapes)
+		{
+			JPH::StaticCompoundShapeSettings compound;
+			for (const ShapeDesc& shape : shapes)
 			{
-				DEBUG_ERROR("Failed to create a heightfield collider");
-				return nullptr;
+				const ShapePart part = std::visit([](const auto& geometry) { return MakeShape(geometry); }, shape.geometry);
+				part.settings->mUserData = shape.category;
+
+				const JPH::ShapeSettings::ShapeResult result = part.settings->Create();
+				if (result.HasError())
+					DEBUG_ERROR("Failed to create a collider: {}", result.GetError().c_str());
+				else
+					compound.AddShape(Physics::ToPhysics(part.offset), JPH::Quat::sIdentity(), result.Get());
 			}
 
-			const float             half_extent = static_cast<float>(desc.samplesPerSide - 1) * desc.spacing * 0.5f;
-			const float             middle      = (field->getMinHeight() + field->getMaxHeight()) * 0.5f;
-			rp3d::HeightFieldShape* shape       = common.createHeightFieldShape(field, rp3d::Vector3(desc.spacing, 1.f, desc.spacing));
+			if (compound.mSubShapes.size() != 1)
+				return compound.Create();
 
-			record.shapes.push_back(shape);
-			return record.body->addCollider(shape, rp3d::Transform(rp3d::Vector3(half_extent, middle, half_extent), rp3d::Quaternion::identity()));
+			const JPH::CompoundShapeSettings::SubShapeSettings& part = compound.mSubShapes.front();
+			return JPH::RotatedTranslatedShapeSettings(part.mPosition, part.mRotation, part.mShapePtr).Create();
 		}
 
-		rp3d::Collider* AddShape(rp3d::PhysicsCommon& common, BodyRecord& record, const TriangleMeshDesc& desc)
+		JPH::ShapeSettings::ShapeResult OffsetCenterOfMass(const JPH::ShapeSettings::ShapeResult& shape, const glm::vec3& center_of_mass)
 		{
-			const rp3d::TriangleVertexArray triangles(static_cast<uint32_t>(desc.vertices.size()), desc.vertices.data(), sizeof(glm::vec3),
-			                                          static_cast<uint32_t>(desc.indices.size() / TRIANGLE_INDICES), desc.indices.data(), sizeof(uint32_t) * TRIANGLE_INDICES,
-			                                          rp3d::TriangleVertexArray::VertexDataType::VERTEX_FLOAT_TYPE,
-			                                          rp3d::TriangleVertexArray::IndexDataType::INDEX_INTEGER_TYPE);
-
-			std::vector<rp3d::Message> messages = {};
-			rp3d::TriangleMesh*        mesh     = common.createTriangleMesh(triangles, messages);
-			if (mesh == nullptr)
-			{
-				DEBUG_ERROR("Failed to create a triangle mesh collider");
-				return nullptr;
-			}
-
-			rp3d::ConcaveMeshShape* shape = common.createConcaveMeshShape(mesh);
-			record.shapes.push_back(shape);
-			record.triangleMeshes.push_back(mesh);
-			return record.body->addCollider(shape, rp3d::Transform::identity());
-		}
-
-		void ApplyMass(rp3d::RigidBody& body, const MassDesc& desc)
-		{
-			float volume = 0.f;
-			for (uint32_t index = 0; index < body.getNbColliders(); index++)
-				volume += body.getCollider(index)->getCollisionShape()->getVolume();
-
-			for (uint32_t index = 0; index < body.getNbColliders(); index++)
-				body.getCollider(index)->getMaterial().setMassDensity(desc.mass / volume);
-
-			body.updateMassPropertiesFromColliders();
-			body.setLocalCenterOfMass(Physics::ToPhysics(desc.centerOfMass));
+			return JPH::OffsetCenterOfMassShapeSettings(Physics::ToPhysics(center_of_mass) - shape.Get()->GetCenterOfMass(), shape.Get()).Create();
 		}
 
 		BodyId CreateBody(PhysicsBackend& backend, const BodyDesc& desc)
 		{
-			rp3d::RigidBody* body   = backend.world->createRigidBody(rp3d::Transform(Physics::ToPhysics(desc.position), Physics::ToPhysics(desc.rotation)));
-			const BodyId     id     = static_cast<BodyId>(body->getEntity().id);
-			BodyRecord&      record = backend.bodies.emplace(id, BodyRecord { .body = body }).first->second;
+			JPH::ShapeSettings::ShapeResult shape = CreateShape(desc.shapes);
+			if (shape.IsValid() && desc.massOverride.has_value())
+				shape = OffsetCenterOfMass(shape, desc.massOverride->centerOfMass);
 
-			body->setType(ToPhysics(desc.type));
-			for (const ShapeDesc& shape : desc.shapes)
+			if (shape.HasError())
 			{
-				rp3d::Collider* collider = std::visit([&](const auto& geometry) { return AddShape(backend.common, record, geometry); }, shape.geometry);
-				if (collider != nullptr)
-					collider->setCollisionCategoryBits(shape.category);
+				DEBUG_ERROR("Failed to create a rigid body: {}", shape.GetError().c_str());
+				return INVALID_BODY_ID;
 			}
 
+			JPH::BodyCreationSettings settings(shape.Get(), Physics::ToPhysics(desc.position), Physics::ToPhysics(desc.rotation), ToPhysics(desc.type), desc.type == BodyType::eStatic ? STATIC_LAYER : MOVING_LAYER);
+			settings.mAllowSleeping  = desc.sleepAllowed;
+			settings.mFriction       = BODY_FRICTION;
+			settings.mRestitution    = BODY_RESTITUTION;
+			settings.mLinearDamping  = BODY_DAMPING;
+			settings.mAngularDamping = BODY_DAMPING;
+
 			if (desc.massOverride.has_value())
-				ApplyMass(*body, *desc.massOverride);
+			{
+				settings.mOverrideMassProperties       = JPH::EOverrideMassProperties::CalculateInertia;
+				settings.mMassPropertiesOverride.mMass = desc.massOverride->mass;
+			}
 
-			body->setIsAllowedToSleep(desc.sleepAllowed);
-			return id;
-		}
+			const JPH::EActivation activation = desc.type == BodyType::eStatic ? JPH::EActivation::DontActivate : JPH::EActivation::Activate;
+			const JPH::BodyID      body       = backend.bodies().CreateAndAddBody(settings, activation);
+			if (body.IsInvalid())
+				DEBUG_ERROR("The physics world has run out of bodies");
 
-		void DestroyShape(rp3d::PhysicsCommon& common, rp3d::CollisionShape* shape)
-		{
-			const rp3d::CollisionShapeName name = shape->getName();
-			if (name == rp3d::CollisionShapeName::BOX)
-				common.destroyBoxShape(static_cast<rp3d::BoxShape*>(shape));
-
-			if (name == rp3d::CollisionShapeName::TRIANGLE_MESH)
-				common.destroyConcaveMeshShape(static_cast<rp3d::ConcaveMeshShape*>(shape));
-
-			if (name != rp3d::CollisionShapeName::HEIGHTFIELD)
-				return;
-
-			rp3d::HeightFieldShape* heightfield = static_cast<rp3d::HeightFieldShape*>(shape);
-			rp3d::HeightField*      field       = heightfield->getHeightField();
-			common.destroyHeightFieldShape(heightfield);
-			common.destroyHeightField(field);
+			return ToBodyId(body);
 		}
 	}
 
@@ -166,75 +171,86 @@ namespace lunar::Physics
 
 	void RigidBody::applyForce(const glm::vec3& force)
 	{
-		world->backend->body(id).applyWorldForceAtCenterOfMass(Physics::ToPhysics(force));
+		world->backend->bodies().AddForce(Physics::ToPhysics(id), Physics::ToPhysics(force));
 	}
 
 	void RigidBody::applyForce(const glm::vec3& force, const glm::vec3& point)
 	{
-		world->backend->body(id).applyWorldForceAtWorldPosition(Physics::ToPhysics(force), Physics::ToPhysics(point));
+		world->backend->bodies().AddForce(Physics::ToPhysics(id), Physics::ToPhysics(force), Physics::ToPhysics(point));
 	}
 
 	void RigidBody::applyAngularAcceleration(const glm::vec3& acceleration)
 	{
-		rp3d::RigidBody& body               = world->backend->body(id);
-		const glm::vec3  local_acceleration = glm::inverse(ToGlm(body.getTransform().getOrientation())) * acceleration;
-		body.applyLocalTorque(Physics::ToPhysics(local_acceleration * ToGlm(body.getLocalInertiaTensor())));
+		JPH::BodyInterface& bodies = world->backend->bodies();
+		const JPH::BodyID   body   = Physics::ToPhysics(id);
+		bodies.AddTorque(body, bodies.GetInverseInertia(body).Inversed3x3().Multiply3x3(Physics::ToPhysics(acceleration)));
 	}
 
 	void RigidBody::setTransform(const glm::vec3& position, const glm::quat& rotation)
 	{
-		world->backend->body(id).setTransform(rp3d::Transform(Physics::ToPhysics(position), Physics::ToPhysics(rotation)));
+		world->backend->bodies().SetPositionAndRotation(Physics::ToPhysics(id), Physics::ToPhysics(position), Physics::ToPhysics(rotation), JPH::EActivation::Activate);
 	}
 
 	void RigidBody::setLinearVelocity(const glm::vec3& velocity)
 	{
-		world->backend->body(id).setLinearVelocity(Physics::ToPhysics(velocity));
+		world->backend->bodies().SetLinearVelocity(Physics::ToPhysics(id), Physics::ToPhysics(velocity));
 	}
 
 	void RigidBody::setAngularVelocity(const glm::vec3& velocity)
 	{
-		world->backend->body(id).setAngularVelocity(Physics::ToPhysics(velocity));
+		world->backend->bodies().SetAngularVelocity(Physics::ToPhysics(id), Physics::ToPhysics(velocity));
 	}
 
 	void RigidBody::setActive(bool active)
 	{
-		world->backend->body(id).setIsActive(active);
+		JPH::BodyInterface& bodies = world->backend->bodies();
+		const JPH::BodyID   body   = Physics::ToPhysics(id);
+		if (bodies.IsAdded(body) == active)
+			return;
+
+		if (active)
+			bodies.AddBody(body, JPH::EActivation::Activate);
+		else
+			bodies.RemoveBody(body);
 	}
 
 	glm::vec3 RigidBody::getPosition() const
 	{
-		return ToGlm(world->backend->body(id).getTransform().getPosition());
+		return ToGlm(world->backend->bodies().GetPosition(Physics::ToPhysics(id)));
 	}
 
 	glm::quat RigidBody::getRotation() const
 	{
-		return ToGlm(world->backend->body(id).getTransform().getOrientation());
+		return ToGlm(world->backend->bodies().GetRotation(Physics::ToPhysics(id)));
 	}
 
 	glm::vec3 RigidBody::getCenterOfMass() const
 	{
-		const rp3d::RigidBody& body = world->backend->body(id);
-		return ToGlm(body.getWorldPoint(body.getLocalCenterOfMass()));
+		return ToGlm(world->backend->bodies().GetCenterOfMassPosition(Physics::ToPhysics(id)));
 	}
 
 	glm::vec3 RigidBody::getLinearVelocity() const
 	{
-		return ToGlm(world->backend->body(id).getLinearVelocity());
+		return ToGlm(world->backend->bodies().GetLinearVelocity(Physics::ToPhysics(id)));
 	}
 
 	glm::vec3 RigidBody::getAngularVelocity() const
 	{
-		return ToGlm(world->backend->body(id).getAngularVelocity());
+		return ToGlm(world->backend->bodies().GetAngularVelocity(Physics::ToPhysics(id)));
 	}
 
 	float RigidBody::getMass() const
 	{
-		return world->backend->body(id).getMass();
+		const JPH::BodyLockRead lock(world->backend->system.GetBodyLockInterface(), Physics::ToPhysics(id));
+		if (!lock.Succeeded() || !lock.GetBody().IsDynamic())
+			return 0.f;
+
+		return 1.f / lock.GetBody().GetMotionProperties()->GetInverseMass();
 	}
 
 	bool RigidBody::isActive() const
 	{
-		return world->backend->body(id).isActive();
+		return world->backend->bodies().IsAdded(Physics::ToPhysics(id));
 	}
 
 	const PhysicsWorld& RigidBody::getWorld() const
@@ -244,12 +260,14 @@ namespace lunar::Physics
 
 	void RigidBody::capturePose()
 	{
-		const rp3d::Transform& transform = world->backend->body(id).getTransform();
+		JPH::RVec3 position;
+		JPH::Quat  rotation;
+		world->backend->bodies().GetPositionAndRotation(Physics::ToPhysics(id), position, rotation);
 
 		previousPosition = currentPosition;
 		previousRotation = currentRotation;
-		currentPosition  = ToGlm(transform.getPosition());
-		currentRotation  = ToGlm(transform.getOrientation());
+		currentPosition  = ToGlm(position);
+		currentRotation  = ToGlm(rotation);
 	}
 
 	void RigidBody::applyPose(Transform& transform, float alpha) const
@@ -269,16 +287,12 @@ namespace lunar::Physics
 		if (id == INVALID_BODY_ID)
 			return;
 
-		PhysicsBackend&   backend = *world->backend;
-		const auto        node    = backend.bodies.extract(std::exchange(id, INVALID_BODY_ID));
-		const BodyRecord& record  = node.mapped();
+		JPH::BodyInterface& bodies = world->backend->bodies();
+		const JPH::BodyID   body   = Physics::ToPhysics(std::exchange(id, INVALID_BODY_ID));
+		if (bodies.IsAdded(body))
+			bodies.RemoveBody(body);
 
-		backend.world->destroyRigidBody(record.body);
-		for (rp3d::CollisionShape* shape : record.shapes)
-			DestroyShape(backend.common, shape);
-
-		for (rp3d::TriangleMesh* mesh : record.triangleMeshes)
-			backend.common.destroyTriangleMesh(mesh);
+		bodies.DestroyBody(body);
 	}
 
 	void CapturePhysicsPoses(Scene& scene, const FrameTime&)

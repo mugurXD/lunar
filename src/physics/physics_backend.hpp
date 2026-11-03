@@ -1,28 +1,40 @@
 #pragma once
 #include <lunar/physics/physics_world.hpp>
-#include "reactphysics.hpp"
 
-#include <unordered_map>
-#include <vector>
+#include <Jolt/Jolt.h>
+#include <Jolt/Core/JobSystem.h>
+#include <Jolt/Core/TempAllocator.h>
+#include <Jolt/Physics/Collision/BroadPhase/BroadPhaseLayerInterfaceTable.h>
+#include <Jolt/Physics/Collision/BroadPhase/ObjectVsBroadPhaseLayerFilterTable.h>
+#include <Jolt/Physics/Collision/ObjectLayerPairFilterTable.h>
+#include <Jolt/Physics/PhysicsSystem.h>
 
 namespace lunar::Physics
 {
-	struct BodyRecord
+	constexpr JPH::ObjectLayer STATIC_LAYER = 0;
+	constexpr JPH::ObjectLayer MOVING_LAYER = 1;
+
+	struct CollisionLayers
 	{
-		rp3d::RigidBody*                   body           = nullptr;
-		std::vector<rp3d::CollisionShape*> shapes         = {};
-		std::vector<rp3d::TriangleMesh*>   triangleMeshes = {};
+		CollisionLayers() noexcept;
+
+		JPH::BroadPhaseLayerInterfaceTable broadPhase;
+		JPH::ObjectLayerPairFilterTable    objectPairs;
 	};
 
 	struct PhysicsBackend
 	{
-		rp3d::PhysicsCommon&                   common;
-		rp3d::PhysicsWorld*                    world  = nullptr;
-		std::unordered_map<BodyId, BodyRecord> bodies = {};
+		PhysicsBackend(JPH::JobSystem& job_system) noexcept;
 
-		rp3d::RigidBody& body(BodyId id) const
+		JPH::BodyInterface& bodies()
 		{
-			return *bodies.at(id).body;
+			return system.GetBodyInterface();
 		}
+
+		CollisionLayers                         layers;
+		JPH::ObjectVsBroadPhaseLayerFilterTable objectVsBroadPhase;
+		JPH::TempAllocatorImpl                  tempAllocator;
+		JPH::JobSystem&                         jobSystem;
+		JPH::PhysicsSystem                      system;
 	};
 }
