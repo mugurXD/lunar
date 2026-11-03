@@ -23,6 +23,7 @@ namespace lunar::Physics
 	constexpr uint16_t TERRAIN_CATEGORY = 1 << 0;
 	constexpr uint16_t VEHICLE_CATEGORY = 1 << 1;
 	constexpr uint16_t ROAD_CATEGORY    = 1 << 2;
+	constexpr uint16_t PROP_CATEGORY    = 1 << 3;
 
 	enum class LUNAR_API BodyType
 	{
@@ -50,10 +51,15 @@ namespace lunar::Physics
 		glm::vec3 offset      = {};
 	};
 
+	struct LUNAR_API ConvexHullDesc
+	{
+		std::span<const glm::vec3> points = {};
+	};
+
 	struct LUNAR_API ShapeDesc
 	{
-		std::variant<BoxDesc, HeightfieldDesc, TriangleMeshDesc> geometry = {};
-		uint16_t                                                 category = 0;
+		std::variant<BoxDesc, HeightfieldDesc, TriangleMeshDesc, ConvexHullDesc> geometry = {};
+		uint16_t                                                                 category = 0;
 	};
 
 	struct LUNAR_API MassDesc
@@ -70,6 +76,7 @@ namespace lunar::Physics
 		std::span<const ShapeDesc> shapes       = {};
 		std::optional<MassDesc>    massOverride = std::nullopt;
 		bool                       sleepAllowed = true;
+		bool                       startAsleep  = false;
 	};
 
 	class LUNAR_API RigidBody

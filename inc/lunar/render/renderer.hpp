@@ -66,6 +66,7 @@ namespace lunar::Render
 		void recordFrame(Frame& frame, Scene& scene, ImageHandle target, Extent2D extent);
 		void recordOverlay(Frame& frame, ImageHandle target, Extent2D extent, UI::UiLayer* ui, ImGuiLayer* debug_ui);
 		void drawMeshes(Frame& frame, Scene& scene, uint64_t scene_address, const Frustum& frustum, MaterialHandle material, PipelineHandle pipeline, bool translucent);
+		void drawInstances(Frame& frame, Scene& scene, uint64_t scene_address, const Frustum& frustum, const glm::vec3& eye);
 		void drawLines(Frame& frame, uint64_t scene_address);
 
 		RenderDevice&       device;
@@ -74,6 +75,7 @@ namespace lunar::Render
 		MeshHandle          cubeMesh        = {};
 		Pool<Material>      materials;
 		Material            lineMaterial;
+		Material            instancedMaterial;
 		std::vector<Vertex> lineVertices;
 		MaterialHandle      defaultMaterial = {};
 		ImageHandle         colorImage      = {};

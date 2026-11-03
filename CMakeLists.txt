@@ -69,6 +69,7 @@ target_sources(lunar PRIVATE
     "src/render/renderer.cpp"
     "src/render/shader.cpp"
     "src/render/mesh_registry.cpp"
+    "src/render/model.cpp"
     "src/render/frustum.cpp"
     "src/stb_image.cpp"
 )

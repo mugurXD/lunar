@@ -25,7 +25,7 @@ namespace lunar::World
 
 		for (const ChunkCoord focus : focus_chunks)
 		{
-			for (const ChunkCoord coord : chunksAround(focus))
+			for (const ChunkCoord coord : SquareAround(focus, radiusChunks))
 			{
 				const Heightmap* heightmap = terrain.findHeightmap(coord);
 				if (heightmap != nullptr && !colliders.contains(coord))
@@ -41,12 +41,12 @@ namespace lunar::World
 
 	bool TerrainColliders::isReady(const glm::vec3& position) const
 	{
-		return std::ranges::all_of(chunksAround(SceneChunkAt(scene, position, settings)), [&](ChunkCoord coord) { return colliders.contains(coord); });
+		return std::ranges::all_of(SquareAround(SceneChunkAt(scene, position, settings), radiusChunks), [&](ChunkCoord coord) { return colliders.contains(coord); });
 	}
 
 	bool TerrainColliders::isTerrainLoaded(const glm::vec3& position) const
 	{
-		return std::ranges::all_of(chunksAround(SceneChunkAt(scene, position, settings)), [&](ChunkCoord coord) { return terrain.findHeightmap(coord) != nullptr; });
+		return std::ranges::all_of(SquareAround(SceneChunkAt(scene, position, settings), radiusChunks), [&](ChunkCoord coord) { return terrain.findHeightmap(coord) != nullptr; });
 	}
 
 	size_t TerrainColliders::getColliderCount() const
@@ -57,16 +57,6 @@ namespace lunar::World
 	bool TerrainColliders::isNeeded(ChunkCoord coord, std::span<const ChunkCoord> focus_chunks) const
 	{
 		return std::ranges::any_of(focus_chunks, [&](ChunkCoord focus) { return IsInsideSquare(coord, focus, radiusChunks); });
-	}
-
-	std::vector<ChunkCoord> TerrainColliders::chunksAround(ChunkCoord focus) const
-	{
-		std::vector<ChunkCoord> chunks;
-		for (int32_t offset_z = -radiusChunks; offset_z <= radiusChunks; offset_z++)
-			for (int32_t offset_x = -radiusChunks; offset_x <= radiusChunks; offset_x++)
-				chunks.push_back({ focus.x + offset_x, focus.z + offset_z });
-
-		return chunks;
 	}
 
 	void TerrainColliders::create(ChunkCoord coord, const Heightmap& heightmap)

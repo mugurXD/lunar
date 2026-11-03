@@ -14,6 +14,7 @@ add_executable(lunar_tests
     "test_hash.cpp"
     "test_frustum.cpp"
     "test_physics.cpp"
+    "test_decoration.cpp"
 )
 
 target_link_libraries(lunar_tests PRIVATE lunar GTest::gtest_main)

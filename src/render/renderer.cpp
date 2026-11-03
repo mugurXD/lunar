@@ -27,6 +27,8 @@ namespace lunar::Render
 		constexpr std::string_view DEFAULT_VERTEX_SHADER   = "mesh.vert";
 		constexpr std::string_view DEFAULT_FRAGMENT_SHADER = "mesh.frag";
 		constexpr std::string_view LINE_FRAGMENT_SHADER    = "line.frag";
+		constexpr std::string_view INSTANCED_VERTEX_SHADER = "instanced.vert";
+		constexpr size_t           STD430_MATRIX_ALIGN     = 16;
 
 		const glm::vec4 AMBIENT_COLOR = { 0.08f, 0.08f, 0.1f, 0.f };
 
@@ -52,6 +54,14 @@ namespace lunar::Render
 			uint64_t sceneAddress  = 0;
 			uint64_t drawAddress   = 0;
 			uint64_t vertexAddress = 0;
+		};
+
+		struct InstanceConstants
+		{
+			uint64_t                               sceneAddress    = 0;
+			uint64_t                               instanceAddress = 0;
+			uint64_t                               vertexAddress   = 0;
+			alignas(STD430_MATRIX_ALIGN) glm::mat4 transform       = glm::mat4(1.f);
 		};
 
 		struct MeshInstance
@@ -106,6 +116,17 @@ namespace lunar::Render
 			return glm::transpose(glm::inverse(model));
 		}
 
+		float DistanceTo(const Bounds& bounds, const glm::vec3& point)
+		{
+			return glm::distance(point, glm::clamp(point, bounds.min, bounds.max));
+		}
+
+		MeshHandle SelectLod(std::span<const InstanceLod> lods, float distance)
+		{
+			const auto lod = std::ranges::find_if(lods, [distance](const InstanceLod& candidate) { return candidate.mesh != MeshHandle {} && distance <= candidate.maxDistance; });
+			return lod == lods.end() ? MeshHandle {} : lod->mesh;
+		}
+
 		void DrawInstanced(Frame& frame, uint64_t scene_address, const Mesh& mesh, std::span<const DrawData> draws)
 		{
 			const uint64_t draw_address = frame.writeTransient(draws);
@@ -125,7 +146,9 @@ namespace lunar::Render
 		meshes(device),
 		lineMaterial { .vertexShader   = std::string(DEFAULT_VERTEX_SHADER),
 		               .fragmentShader = std::string(LINE_FRAGMENT_SHADER),
-		               .topology       = PrimitiveTopology::eLineList }
+		               .topology       = PrimitiveTopology::eLineList },
+		instancedMaterial { .vertexShader   = std::string(INSTANCED_VERTEX_SHADER),
+		                    .fragmentShader = std::string(DEFAULT_FRAGMENT_SHADER) }
 	{
 		cubeMesh = meshes.create(CreateCubeMeshData());
 		setSamples(samples);
@@ -136,6 +159,7 @@ namespace lunar::Render
 	{
 		destroyTargets();
 		destroyPipelines(lineMaterial);
+		destroyPipelines(instancedMaterial);
 		materials.forEach([this](PoolHandle<Material>, Material& material) {
 			destroyPipelines(material);
 		});
@@ -150,6 +174,7 @@ namespace lunar::Render
 		sampleCount = supported;
 		destroyTargets();
 		recreatePipelines(lineMaterial);
+		recreatePipelines(instancedMaterial);
 		materials.forEach([this](PoolHandle<Material>, Material& material) {
 			recreatePipelines(material);
 		});
@@ -314,13 +339,16 @@ namespace lunar::Render
 			if (scene_address != 0)
 			{
 				const Frustum frustum(scene_data.viewProjection);
-
-				for (const bool translucent : { false, true })
+				const auto    draw_materials = [&](bool translucent) {
 					materials.forEach([&](PoolHandle<Material> handle, const Material& material) {
 						const PipelineHandle pipeline = translucent ? material.translucentPipeline : material.opaquePipeline;
 						drawMeshes(frame, scene, scene_address, frustum, ToGpuHandle<MaterialTag>(handle), pipeline, translucent);
 					});
+				};
 
+				draw_materials(false);
+				drawInstances(frame, scene, scene_address, frustum, camera->position);
+				draw_materials(true);
 				drawLines(frame, scene_address);
 			}
 		}
@@ -379,6 +407,31 @@ namespace lunar::Render
 			DrawInstanced(frame, scene_address, *mesh, draws);
 			first = last;
 		}
+	}
+
+	void Renderer::drawInstances(Frame& frame, Scene& scene, uint64_t scene_address, const Frustum& frustum, const glm::vec3& eye)
+	{
+		if (instancedMaterial.opaquePipeline == PipelineHandle {})
+			return;
+
+		CommandList& commands = frame.commandList();
+		commands.bindPipeline(instancedMaterial.opaquePipeline);
+
+		scene.forEach<InstanceBatch>([&](Entity entity, const InstanceBatch& batch) {
+			const InstanceSet* instances = meshes.get(batch.instances);
+			if (!batch.visible || instances == nullptr)
+				return;
+
+			const glm::mat4 transform = scene.resolveWorldTransform(entity).matrix;
+			const Bounds    bounds    = batch.bounds.transformed(transform);
+			const Mesh*     mesh      = meshes.get(SelectLod(batch.lods, DistanceTo(bounds, eye)));
+			if (mesh == nullptr || !frustum.intersects(bounds))
+				return;
+
+			commands.pushConstants(InstanceConstants { scene_address, instances->address, mesh->vertexAddress, transform });
+			commands.bindIndexBuffer(mesh->indexBuffer, 0, IndexType::eUint32);
+			commands.drawIndexed(mesh->indexCount, instances->count);
+		});
 	}
 
 	void Renderer::drawLines(Frame& frame, uint64_t scene_address)

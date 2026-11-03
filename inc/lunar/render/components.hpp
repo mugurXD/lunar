@@ -1,12 +1,18 @@
 #pragma once
 #include <lunar/api.hpp>
 #include <lunar/core/time.hpp>
+#include <lunar/render/frustum.hpp>
 #include <lunar/render/gpu_types.hpp>
 #include <glm/glm.hpp>
+
+#include <array>
+#include <cstddef>
 
 namespace lunar
 {
 	class LUNAR_API Scene;
+
+	constexpr size_t MAX_INSTANCE_LODS = 4;
 
 	struct LUNAR_API Camera
 	{
@@ -29,6 +35,20 @@ namespace lunar
 		bool                   visible     = true;
 		bool                   translucent = false;
 		Render::MaterialHandle material    = {};
+	};
+
+	struct LUNAR_API InstanceLod
+	{
+		Render::MeshHandle mesh        = {};
+		float              maxDistance = 0.f;
+	};
+
+	struct LUNAR_API InstanceBatch
+	{
+		std::array<InstanceLod, MAX_INSTANCE_LODS> lods      = {};
+		Render::InstanceSetHandle                  instances = {};
+		Render::Bounds                             bounds    = {};
+		bool                                       visible   = true;
 	};
 
 	struct LUNAR_API DirectionalLight

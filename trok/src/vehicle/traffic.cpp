@@ -70,12 +70,7 @@ namespace trok
 			if (heightmap == nullptr)
 				return std::nullopt;
 
-			const glm::vec2  sample    = (position - Flat(lunar::World::ChunkOrigin(coord, world))) / world.vertexSpacing;
-			const glm::ivec2 base      = glm::ivec2(glm::floor(sample));
-			const glm::vec2  amount    = sample - glm::vec2(base);
-			const float      lower_row = glm::mix(heightmap->sample(base.x, base.y), heightmap->sample(base.x + 1, base.y), amount.x);
-			const float      upper_row = glm::mix(heightmap->sample(base.x, base.y + 1), heightmap->sample(base.x + 1, base.y + 1), amount.x);
-			return glm::mix(lower_row, upper_row, amount.y);
+			return lunar::World::HeightmapHeightAt(*heightmap, position - Flat(lunar::World::ChunkOrigin(coord, world)), world);
 		}
 
 		float DistanceToNearest(std::span<const glm::vec3> foci, const glm::vec3& position)

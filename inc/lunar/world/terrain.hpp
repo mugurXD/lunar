@@ -1,6 +1,7 @@
 #pragma once
 #include <lunar/api.hpp>
 #include <lunar/render/mesh_registry.hpp>
+#include <lunar/world/decoration.hpp>
 #include <lunar/world/grid.hpp>
 #include <lunar/world/world_settings.hpp>
 #include <lunar/utils/compat.hpp>
@@ -42,9 +43,10 @@ namespace lunar::World
 
 	struct LUNAR_API ChunkData
 	{
-		Heightmap                heightmap = {};
-		Render::MeshData         mesh      = {};
-		std::vector<DressedMesh> dressing  = {};
+		Heightmap                       heightmap   = {};
+		Render::MeshData                mesh        = {};
+		std::vector<DressedMesh>        dressing    = {};
+		std::vector<DecorationInstance> decorations = {};
 	};
 
 	using ChunkWork = move_only_function<ChunkData()>;
@@ -63,6 +65,7 @@ namespace lunar::World
 
 	LUNAR_API uint32_t  HeightmapSamplesPerSide(const WorldSettings& settings);
 	LUNAR_API glm::vec3 HeightmapNormal(const Heightmap& heightmap, int32_t x, int32_t z, const WorldSettings& settings);
+	LUNAR_API float     HeightmapHeightAt(const Heightmap& heightmap, const glm::vec2& local, const WorldSettings& settings);
 	LUNAR_API void      FacetChunkMesh(Render::MeshData& mesh, ChunkCoord coord, const WorldSettings& settings);
 
 	template<typename HeightFunction>

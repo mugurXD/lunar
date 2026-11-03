@@ -41,9 +41,8 @@ namespace lunar::World
 			uint64_t           revision = 0;
 		};
 
-		bool                    isNeeded(ChunkCoord coord, std::span<const ChunkCoord> focus_chunks) const;
-		std::vector<ChunkCoord> chunksAround(ChunkCoord focus)                                      const;
-		void                    create(ChunkCoord coord, const Heightmap& heightmap);
+		bool isNeeded(ChunkCoord coord, std::span<const ChunkCoord> focus_chunks) const;
+		void create(ChunkCoord coord, const Heightmap& heightmap);
 
 		Scene&                                                            scene;
 		const TerrainWorld&                                               terrain;

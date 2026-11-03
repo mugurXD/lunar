@@ -1,19 +1,25 @@
 #include <lunar/render/render_device.hpp>
 #include <lunar/render/mesh_registry.hpp>
+#include <lunar/physics/raycast.hpp>
 #include <lunar/ui/ui_layer.hpp>
 #include <lunar/core/jobs.hpp>
 #include <lunar/core/scene.hpp>
 #include <lunar/world/chunk_storage.hpp>
+#include <lunar/world/decoration.hpp>
+#include <lunar/world/decoration_world.hpp>
+#include <lunar/world/floating_origin.hpp>
 #include <lunar/world/region_store.hpp>
 #include <lunar/world/terrain_generator.hpp>
 #include <lunar/world/terrain_world.hpp>
 #include <lunar/world/world_storage.hpp>
 #include <lunar/file/binary_file.hpp>
+#include <lunar/utils/hash.hpp>
 #include <gtest/gtest.h>
 
 #include <RmlUi/Core.h>
 
 #include "temporary_directory.hpp"
+#include "test_models.hpp"
 #include "world_test_types.hpp"
 
 #include <algorithm>
@@ -142,7 +148,8 @@ namespace
 			settings(SmallTerrain(job_budget)),
 			storage(std::make_shared<const lunar::World::WorldStorage>(*lunar::World::WorldStorage::create(directory.getPath(), {}))),
 			regions(jobs, storage, std::make_shared<const TestPlanner>(), settings),
-			source(regions, std::make_shared<const WaveGenerator>(), std::make_shared<const lunar::World::ChunkStorage>(directory.getPath() / "chunks", settings), settings),
+			generator(std::make_shared<WaveGenerator>()),
+			source(regions, generator, std::make_shared<const lunar::World::ChunkStorage>(directory.getPath() / "chunks", settings), settings),
 			terrain(scene, jobs, registry, source, settings)
 		{
 		}
@@ -160,8 +167,109 @@ namespace
 		const lunar::World::WorldSettings                       settings;
 		const std::shared_ptr<const lunar::World::WorldStorage> storage;
 		lunar::World::RegionStore<TestPlan>                     regions;
+		const std::shared_ptr<WaveGenerator>                    generator;
 		lunar::World::RegionChunkSource<TestPlan>               source;
 		lunar::World::TerrainWorld                              terrain;
+	};
+
+	constexpr lunar::World::DecorationKind SOLID_KIND       = 0;
+	constexpr lunar::World::DecorationKind BREAKABLE_KIND   = 1;
+	constexpr size_t                       DECORATION_KINDS = 2;
+	constexpr float                        LOD_DISTANCE     = 100.f;
+	constexpr float                        BREAKABLE_MASS   = 10.f;
+	constexpr std::string_view             SOLID_MODEL      = "solid.gltf";
+	constexpr std::string_view             BREAKABLE_MODEL  = "breakable.gltf";
+	constexpr std::string_view             CHANGES_FOLDER   = "decorations";
+	const glm::vec2                        SOLID_SPOT       = { 16.f, 16.f };
+	const glm::vec2                        BREAKABLE_SPOT   = { 48.f, 48.f };
+	const glm::vec3                        PUSH_ACROSS      = { 72.f, 0.f, 0.f };
+	const lunar::World::ChunkCoord         ORIGIN_CHUNK     = {};
+	const lunar::World::ChunkCoord         NEXT_CHUNK       = { 1, 0 };
+
+	lunar::World::DecorationId DecorationIdOf(lunar::World::ChunkCoord coord, lunar::World::DecorationKind kind)
+	{
+		return lunar::MixHash(lunar::MixHash(lunar::MixHash(0, static_cast<uint64_t>(coord.x)), static_cast<uint64_t>(coord.z)), kind);
+	}
+
+	class SpotDecorator final : public lunar::World::TerrainDecorator<TestPlan>
+	{
+	public:
+		void decorate(const lunar::World::RegionContext<TestPlan>&,
+		              lunar::World::ChunkCoord                         coord,
+		              const lunar::World::WorldSettings&               settings,
+		              const lunar::World::Heightmap&                   heightmap,
+		              std::vector<lunar::World::DecorationInstance>&   output) const override
+		{
+			for (const auto& [kind, spot] : { std::pair { SOLID_KIND, SOLID_SPOT }, std::pair { BREAKABLE_KIND, BREAKABLE_SPOT } })
+				output.push_back({ .id = DecorationIdOf(coord, kind), .kind = kind, .position = { spot.x, lunar::World::HeightmapHeightAt(heightmap, spot, settings), spot.y } });
+		}
+	};
+
+	lunar::World::DecorationCatalog WriteTestCatalog(const std::filesystem::path& directory)
+	{
+		TestModel {}.write(directory / SOLID_MODEL);
+		TestModel {}.write(directory / BREAKABLE_MODEL);
+
+		return lunar::World::DecorationCatalog
+		{
+			.types =
+			{
+				{ .name = "test:solid",     .lods = { { std::string(SOLID_MODEL), LOD_DISTANCE } } },
+				{ .name = "test:breakable", .lods = { { std::string(BREAKABLE_MODEL), LOD_DISTANCE } }, .breakable = true, .mass = BREAKABLE_MASS }
+			}
+		};
+	}
+
+	template<typename T>
+	size_t CountComponents(lunar::Scene& scene)
+	{
+		size_t count = 0;
+		scene.forEach<T>([&](lunar::Entity, const T&) { count++; });
+		return count;
+	}
+
+	struct DecorationHarness
+	{
+		explicit DecorationHarness(RenderDevice& device)
+			: world(device, UNLIMITED_JOB_BUDGET),
+			catalog(WriteTestCatalog(world.directory.getPath())),
+			library(world.registry, catalog, world.directory.getPath()),
+			decorations(world.scene, world.registry, library, world.settings, world.directory.getPath() / CHANGES_FOLDER)
+		{
+			world.generator->addDecorator(std::make_shared<const SpotDecorator>());
+		}
+
+		void load(const glm::vec3& focus)
+		{
+			world.prepareRegions(focus);
+			world.terrain.update(focus);
+			FinishJobs(world.jobs);
+			update({});
+		}
+
+		void update(std::span<const glm::vec3> foci)
+		{
+			world.scene.flushDestroyedEntities();
+			decorations.update(foci);
+			world.scene.flushDestroyedEntities();
+		}
+
+		glm::vec3 spotOf(lunar::World::ChunkCoord coord, lunar::World::DecorationKind kind)
+		{
+			const std::span<const lunar::World::DecorationInstance> instances = decorations.findInstances(coord);
+			const auto                                              found     = std::ranges::find(instances, DecorationIdOf(coord, kind), &lunar::World::DecorationInstance::id);
+			return lunar::World::SceneChunkOrigin(world.scene, coord, world.settings) + found->position;
+		}
+
+		bool holds(lunar::World::ChunkCoord coord, lunar::World::DecorationId id)
+		{
+			return std::ranges::find(decorations.findInstances(coord), id, &lunar::World::DecorationInstance::id) != decorations.findInstances(coord).end();
+		}
+
+		TerrainHarness                  world;
+		lunar::World::DecorationCatalog catalog;
+		lunar::World::DecorationLibrary library;
+		lunar::World::DecorationWorld   decorations;
 	};
 
 	struct ComputeConstants
@@ -1083,4 +1191,148 @@ TEST(RenderDeviceLifetime, DestroyingDeviceReleasesLiveResources)
 	EXPECT_NE(depth,   ImageHandle {});
 
 	owned_device.reset();
+}
+
+namespace
+{
+	constexpr size_t TEST_INSTANCE_COUNT  = 3;
+	constexpr float  DECORATION_TOLERANCE = 1e-3f;
+}
+
+TEST_F(RenderDeviceTest, InstanceSetsAreCreatedAndReleased)
+{
+	MeshRegistry                                       registry(*device);
+	const std::array<InstanceData, TEST_INSTANCE_COUNT> instances = {};
+	const InstanceSetHandle                            set       = registry.createInstances(instances);
+
+	ASSERT_NE(registry.get(set), nullptr);
+	EXPECT_EQ(registry.get(set)->count, TEST_INSTANCE_COUNT);
+	EXPECT_NE(registry.get(set)->address, 0u);
+	EXPECT_EQ(registry.getInstanceSetCount(), 1u);
+
+	registry.destroy(set);
+	EXPECT_EQ(registry.get(set), nullptr);
+	EXPECT_EQ(registry.getInstanceSetCount(), 0u);
+	EXPECT_EQ(registry.createInstances({}), InstanceSetHandle {}) << "an empty set has nothing to draw";
+}
+
+TEST_F(RenderDeviceTest, DecorationLibraryLoadsModelsAndReleasesThem)
+{
+	const TemporaryDirectory              directory;
+	MeshRegistry                          registry(*device);
+	const lunar::World::DecorationCatalog catalog = WriteTestCatalog(directory.getPath());
+	{
+		const lunar::World::DecorationLibrary library(registry, catalog, directory.getPath());
+
+		ASSERT_EQ(library.size(), DECORATION_KINDS);
+		EXPECT_NE(library.find(SOLID_KIND)->lods.front().mesh, MeshHandle {});
+		EXPECT_EQ(library.find(SOLID_KIND)->colliders.size(), 1u);
+		EXPECT_EQ(library.indexOf("test:breakable"), std::optional<lunar::World::DecorationKind>(BREAKABLE_KIND));
+		EXPECT_EQ(registry.size(), DECORATION_KINDS);
+	}
+
+	EXPECT_EQ(registry.size(), 0u) << "the library releases its meshes";
+}
+
+TEST_F(RenderDeviceTest, DecorationsAreBatchedPerChunkAndKind)
+{
+	DecorationHarness harness(*device);
+	harness.load({});
+
+	EXPECT_EQ(CountComponents<lunar::InstanceBatch>(harness.world.scene), CHUNKS_WITHIN_RADIUS * DECORATION_KINDS);
+	EXPECT_EQ(harness.world.registry.getInstanceSetCount(),                CHUNKS_WITHIN_RADIUS * DECORATION_KINDS);
+	EXPECT_EQ(harness.decorations.getInstanceCount(),                      CHUNKS_WITHIN_RADIUS * DECORATION_KINDS);
+}
+
+TEST_F(RenderDeviceTest, UnloadedChunksReleaseTheirDecorations)
+{
+	DecorationHarness harness(*device);
+	harness.load({});
+
+	harness.world.prepareRegions(FAR_AWAY_FOCUS);
+	harness.world.terrain.update(FAR_AWAY_FOCUS);
+	harness.update({});
+
+	EXPECT_EQ(harness.decorations.getInstanceCount(),                      0u);
+	EXPECT_EQ(harness.world.registry.getInstanceSetCount(),                0u);
+	EXPECT_EQ(CountComponents<lunar::InstanceBatch>(harness.world.scene), 0u);
+}
+
+TEST_F(RenderDeviceTest, RefreshedChunksRebuildTheirDecorations)
+{
+	DecorationHarness harness(*device);
+	harness.load({});
+
+	harness.world.terrain.refresh(std::span(&ORIGIN_CHUNK, 1));
+	FinishJobs(harness.world.jobs);
+	harness.update({});
+
+	EXPECT_EQ(harness.decorations.getInstanceCount(),       CHUNKS_WITHIN_RADIUS * DECORATION_KINDS);
+	EXPECT_EQ(harness.world.registry.getInstanceSetCount(), CHUNKS_WITHIN_RADIUS * DECORATION_KINDS) << "the replaced chunk's instances are released";
+}
+
+TEST_F(RenderDeviceTest, BreakablesNearAFocusArePromotedUntilItLeaves)
+{
+	DecorationHarness harness(*device);
+	harness.load({});
+
+	const lunar::World::DecorationId id    = DecorationIdOf(ORIGIN_CHUNK, BREAKABLE_KIND);
+	const glm::vec3                  focus = harness.spotOf(ORIGIN_CHUNK, BREAKABLE_KIND);
+	harness.update(std::span(&focus, 1));
+
+	EXPECT_EQ(harness.decorations.getPromotedCount(),                           1u);
+	EXPECT_EQ(CountComponents<lunar::Physics::RigidBody>(harness.world.scene), 1u);
+	EXPECT_FALSE(harness.holds(ORIGIN_CHUNK, id)) << "promoted decorations leave their batch";
+
+	harness.update({});
+
+	EXPECT_EQ(harness.decorations.getPromotedCount(),                                     0u);
+	EXPECT_EQ(CountComponents<lunar::World::PromotedDecoration>(harness.world.scene), 0u);
+	EXPECT_TRUE(harness.holds(ORIGIN_CHUNK, id)) << "untouched decorations return to their batch";
+}
+
+TEST_F(RenderDeviceTest, MovedDecorationsAreRememberedWhereTheyEndUp)
+{
+	DecorationHarness harness(*device);
+	harness.load({});
+
+	const lunar::World::DecorationId id       = DecorationIdOf(ORIGIN_CHUNK, SOLID_KIND);
+	std::optional<lunar::GameObject> promoted = harness.decorations.promote(ORIGIN_CHUNK, id);
+	ASSERT_TRUE(promoted.has_value());
+
+	const glm::vec3 destination = promoted->getTransform().position + PUSH_ACROSS;
+	promoted->getTransform().position = destination;
+	harness.update({});
+
+	EXPECT_FALSE(harness.holds(ORIGIN_CHUNK, id));
+	EXPECT_TRUE(harness.holds(NEXT_CHUNK, id)) << "the decoration rests in the chunk it was pushed into";
+
+	lunar::World::DecorationWorld reloaded(harness.world.scene, harness.world.registry, harness.library, harness.world.settings, harness.world.directory.getPath() / CHANGES_FOLDER);
+	reloaded.update({});
+
+	const std::span<const lunar::World::DecorationInstance> next  = reloaded.findInstances(NEXT_CHUNK);
+	const auto                                              found = std::ranges::find(next, id, &lunar::World::DecorationInstance::id);
+	ASSERT_NE(found, next.end()) << "a fresh world reads the change back from disk";
+	EXPECT_NEAR(glm::distance(lunar::World::SceneChunkOrigin(harness.world.scene, NEXT_CHUNK, harness.world.settings) + found->position, destination), 0.f, DECORATION_TOLERANCE);
+	EXPECT_EQ(std::ranges::find(reloaded.findInstances(ORIGIN_CHUNK), id, &lunar::World::DecorationInstance::id), reloaded.findInstances(ORIGIN_CHUNK).end());
+}
+
+TEST_F(RenderDeviceTest, SolidDecorationsCollideOnlyNearAFocus)
+{
+	constexpr float RAY_HEIGHT         = 50.f;
+	constexpr float COLLIDER_TOLERANCE = 0.05f;
+
+	DecorationHarness harness(*device);
+	harness.load({});
+
+	const glm::vec3 spot  = harness.spotOf(ORIGIN_CHUNK, SOLID_KIND);
+	const glm::vec3 above = spot + glm::vec3(0.f, RAY_HEIGHT, 0.f);
+	const glm::vec3 below = spot - glm::vec3(0.f, RAY_HEIGHT, 0.f);
+	EXPECT_FALSE(lunar::Physics::CastRay(harness.world.scene, above, below, lunar::Physics::PROP_CATEGORY).has_value()) << "colliders only exist near a focus";
+
+	harness.update(std::span(&spot, 1));
+
+	const std::optional<lunar::Physics::RaycastHit> hit = lunar::Physics::CastRay(harness.world.scene, above, below, lunar::Physics::PROP_CATEGORY);
+	ASSERT_TRUE(hit.has_value());
+	EXPECT_NEAR(hit->point.y, spot.y + TestModel {}.halfExtent, COLLIDER_TOLERANCE) << "the hull sits where the decoration is drawn";
 }

@@ -172,6 +172,7 @@ namespace lunar::World
 		chunk.object->getTransform().position = SceneChunkOrigin(scene, coord, settings);
 		chunk.object->addComponent<MeshRenderer>(chunk.mesh, true, false, material);
 		chunk.object->addComponent<TerrainChunk>(coord);
+		chunk.object->addComponent<ChunkDecorations>(std::move(data.decorations));
 
 		for (DressedMesh& dressed : data.dressing)
 		{
@@ -211,6 +212,9 @@ namespace lunar::World
 
 		for (const Render::MeshHandle dressing : chunk.dressingMeshes)
 			meshes.destroy(dressing);
+
+		// Removed right away rather than with the deferred destruction, so a refreshed chunk never shows up twice to decoration systems.
+		scene.removeComponent<ChunkDecorations>(chunk.object.getEntity());
 
 		GameObject object = chunk.object;
 		object.destroy();

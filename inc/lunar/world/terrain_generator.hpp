@@ -34,6 +34,23 @@ namespace lunar::World
 	};
 
 	template<typename Plan>
+	class TerrainDecorator
+	{
+	public:
+		TerrainDecorator()          noexcept = default;
+		virtual ~TerrainDecorator() noexcept = default;
+
+		TerrainDecorator(const TerrainDecorator&)            = delete;
+		TerrainDecorator& operator=(const TerrainDecorator&) = delete;
+
+		virtual void decorate(const RegionContext<Plan>&       context,
+		                      ChunkCoord                       coord,
+		                      const WorldSettings&             settings,
+		                      const Heightmap&                 heightmap,
+		                      std::vector<DecorationInstance>& output) const = 0;
+	};
+
+	template<typename Plan>
 	class TerrainShaper
 	{
 	public:
@@ -92,9 +109,20 @@ namespace lunar::World
 			return dressers;
 		}
 
+		void addDecorator(std::shared_ptr<const TerrainDecorator<Plan>> decorator)
+		{
+			decorators.push_back(std::move(decorator));
+		}
+
+		std::span<const std::shared_ptr<const TerrainDecorator<Plan>>> getDecorators() const
+		{
+			return decorators;
+		}
+
 	private:
-		std::vector<std::shared_ptr<const TerrainShaper<Plan>>>  shapers;
-		std::vector<std::shared_ptr<const TerrainDresser<Plan>>> dressers;
+		std::vector<std::shared_ptr<const TerrainShaper<Plan>>>    shapers;
+		std::vector<std::shared_ptr<const TerrainDresser<Plan>>>   dressers;
+		std::vector<std::shared_ptr<const TerrainDecorator<Plan>>> decorators;
 	};
 
 	template<typename Plan>
@@ -128,7 +156,11 @@ namespace lunar::World
 		for (const std::shared_ptr<const TerrainDresser<Plan>>& dresser : generator.getDressers())
 			dresser->dress(context, coord, settings, ground, dressing);
 
-		return ChunkData { std::move(*heightmap), std::move(mesh), std::move(dressing) };
+		std::vector<DecorationInstance> decorations;
+		for (const std::shared_ptr<const TerrainDecorator<Plan>>& decorator : generator.getDecorators())
+			decorator->decorate(context, coord, settings, *heightmap, decorations);
+
+		return ChunkData { std::move(*heightmap), std::move(mesh), std::move(dressing), std::move(decorations) };
 	}
 
 	template<IsJsonSerializable Plan>
