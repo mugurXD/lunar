@@ -19,6 +19,7 @@ namespace lunar
 		float     fov       = 60.f;
 		float     nearPlane = 0.1f;
 		float     farPlane  = 1000000.f;
+		float     exposure  = 1.f;
 		glm::vec3 front     = { 0.f, 0.f, -1.f };
 		glm::vec3 right     = { 1.f, 0.f, 0.f };
 		glm::vec3 up        = { 0.f, 1.f, 0.f };

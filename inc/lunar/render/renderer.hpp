@@ -61,10 +61,11 @@ namespace lunar::Render
 		void recreatePipelines(Material& material);
 		void createPipelines(Material& material);
 		void destroyPipelines(Material& material);
+		void createTonemapPipeline();
 		void resizeTargets(Extent2D extent);
 		void destroyTargets();
-		void recordFrame(Frame& frame, Scene& scene, ImageHandle target, Extent2D extent);
-		void recordOverlay(Frame& frame, ImageHandle target, Extent2D extent, UI::UiLayer* ui, ImGuiLayer* debug_ui);
+		void recordFrame(Frame& frame, Scene& scene, Extent2D extent);
+		void recordComposite(Frame& frame, Scene& scene, ImageHandle target, Extent2D extent, UI::UiLayer* ui, ImGuiLayer* debug_ui);
 		void drawMeshes(Frame& frame, Scene& scene, uint64_t scene_address, const Frustum& frustum, MaterialHandle material, PipelineHandle pipeline, bool translucent);
 		void drawInstances(Frame& frame, Scene& scene, uint64_t scene_address, const Frustum& frustum, const glm::vec3& eye);
 		void drawLines(Frame& frame, uint64_t scene_address);
@@ -78,7 +79,9 @@ namespace lunar::Render
 		Material            instancedMaterial;
 		std::vector<Vertex> lineVertices;
 		MaterialHandle      defaultMaterial = {};
+		PipelineHandle      tonemapPipeline = {};
 		ImageHandle         colorImage      = {};
+		ImageHandle         hdrImage        = {};
 		ImageHandle         depthImage      = {};
 		uint32_t            sampleCount     = 0;
 	};

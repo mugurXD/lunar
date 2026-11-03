@@ -20,15 +20,19 @@ namespace lunar::Render
 		const glm::vec4 CLEAR_COLOR = { 0.6f, 0.745f, 0.76f, 1.f };
 
 		constexpr Format    DEPTH_FORMAT            = Format::eD32Float;
+		constexpr Format    HDR_FORMAT              = Format::eRGBA16Float;
 		constexpr float     REVERSE_Z_CLEAR_DEPTH   = 0.f;
 		constexpr CompareOp REVERSE_Z_DEPTH_COMPARE = CompareOp::eGreater;
 		constexpr uint32_t  SINGLE_SAMPLE           = 1;
 
-		constexpr std::string_view DEFAULT_VERTEX_SHADER   = "mesh.vert";
-		constexpr std::string_view DEFAULT_FRAGMENT_SHADER = "mesh.frag";
-		constexpr std::string_view LINE_FRAGMENT_SHADER    = "line.frag";
-		constexpr std::string_view INSTANCED_VERTEX_SHADER = "instanced.vert";
-		constexpr size_t           STD430_MATRIX_ALIGN     = 16;
+		constexpr std::string_view DEFAULT_VERTEX_SHADER    = "mesh.vert";
+		constexpr std::string_view DEFAULT_FRAGMENT_SHADER  = "mesh.frag";
+		constexpr std::string_view LINE_FRAGMENT_SHADER     = "line.frag";
+		constexpr std::string_view INSTANCED_VERTEX_SHADER  = "instanced.vert";
+		constexpr std::string_view FULLSCREEN_VERTEX_SHADER = "fullscreen.vert";
+		constexpr std::string_view TONEMAP_FRAGMENT_SHADER  = "tonemap.frag";
+		constexpr uint32_t         FULLSCREEN_VERTEX_COUNT  = 3;
+		constexpr size_t           STD430_MATRIX_ALIGN      = 16;
 
 		const glm::vec4 AMBIENT_COLOR = { 0.08f, 0.08f, 0.1f, 0.f };
 
@@ -62,6 +66,12 @@ namespace lunar::Render
 			uint64_t                               instanceAddress = 0;
 			uint64_t                               vertexAddress   = 0;
 			alignas(STD430_MATRIX_ALIGN) glm::mat4 transform       = glm::mat4(1.f);
+		};
+
+		struct TonemapConstants
+		{
+			uint32_t sceneTexture = 0;
+			float    exposure     = 1.f;
 		};
 
 		struct MeshInstance
@@ -153,6 +163,7 @@ namespace lunar::Render
 		cubeMesh = meshes.create(CreateCubeMeshData());
 		setSamples(samples);
 		defaultMaterial = createMaterial({ .vertexShader = DEFAULT_VERTEX_SHADER, .fragmentShader = DEFAULT_FRAGMENT_SHADER });
+		createTonemapPipeline();
 	}
 
 	Renderer::~Renderer() noexcept
@@ -163,6 +174,7 @@ namespace lunar::Render
 		materials.forEach([this](PoolHandle<Material>, Material& material) {
 			destroyPipelines(material);
 		});
+		device.destroyPipeline(tonemapPipeline);
 	}
 
 	void Renderer::setSamples(uint32_t samples)
@@ -205,13 +217,12 @@ namespace lunar::Render
 
 		const std::vector<char> vertex_shader   = LoadShader(material.vertexShader);
 		const std::vector<char> fragment_shader = LoadShader(material.fragmentShader);
-		const Format            color_format    = swapchain->getFormat();
 
 		const GraphicsPipelineDesc mesh_desc =
 		{
 			.vertexShader   = std::as_bytes(std::span(vertex_shader)),
 			.fragmentShader = std::as_bytes(std::span(fragment_shader)),
-			.colorFormats   = std::span(&color_format, 1),
+			.colorFormats   = std::span(&HDR_FORMAT, 1),
 			.depthFormat    = DEPTH_FORMAT,
 			.topology       = material.topology,
 			.cullMode       = CullMode::eBack,
@@ -239,6 +250,22 @@ namespace lunar::Render
 		material.opaquePipeline      = {};
 	}
 
+	void Renderer::createTonemapPipeline()
+	{
+		if (swapchain == nullptr)
+			return;
+
+		const std::vector<char> vertex_shader   = LoadShader(FULLSCREEN_VERTEX_SHADER);
+		const std::vector<char> fragment_shader = LoadShader(TONEMAP_FRAGMENT_SHADER);
+		const Format            target_format   = swapchain->getFormat();
+
+		tonemapPipeline = device.createGraphicsPipeline({
+			.vertexShader   = std::as_bytes(std::span(vertex_shader)),
+			.fragmentShader = std::as_bytes(std::span(fragment_shader)),
+			.colorFormats   = std::span(&target_format, 1)
+		});
+	}
+
 	void Renderer::render(Scene& scene, UI::UiLayer* ui, ImGuiLayer* debug_ui)
 	{
 		Frame&            frame      = device.beginFrame();
@@ -248,10 +275,8 @@ namespace lunar::Render
 		{
 			const Extent2D extent = device.getImageExtent(backbuffer);
 			resizeTargets(extent);
-			recordFrame(frame, scene, backbuffer, extent);
-
-			if (ui != nullptr || debug_ui != nullptr)
-				recordOverlay(frame, backbuffer, extent, ui, debug_ui);
+			recordFrame(frame, scene, extent);
+			recordComposite(frame, scene, backbuffer, extent, ui, debug_ui);
 		}
 
 		device.endFrame(frame);
@@ -288,10 +313,16 @@ namespace lunar::Render
 			.samples = sampleCount
 		});
 
+		hdrImage = device.createImage({
+			.extent = extent,
+			.format = HDR_FORMAT,
+			.usage  = ImageUsageFlags(ImageUsageFlagBits::eColorAttachment) | ImageUsageFlagBits::eSampled
+		});
+
 		if (sampleCount > SINGLE_SAMPLE)
 			colorImage = device.createImage({
 				.extent  = extent,
-				.format  = swapchain->getFormat(),
+				.format  = HDR_FORMAT,
 				.usage   = ImageUsageFlags(ImageUsageFlagBits::eColorAttachment),
 				.samples = sampleCount
 			});
@@ -300,12 +331,14 @@ namespace lunar::Render
 	void Renderer::destroyTargets()
 	{
 		device.destroyImage(colorImage);
+		device.destroyImage(hdrImage);
 		device.destroyImage(depthImage);
 		colorImage = {};
+		hdrImage   = {};
 		depthImage = {};
 	}
 
-	void Renderer::recordFrame(Frame& frame, Scene& scene, ImageHandle target, Extent2D extent)
+	void Renderer::recordFrame(Frame& frame, Scene& scene, Extent2D extent)
 	{
 		CommandList&       commands = frame.commandList();
 		const DistanceFog* fog      = FindFirst<DistanceFog>(scene);
@@ -313,10 +346,10 @@ namespace lunar::Render
 		const bool            multisampled     = colorImage != ImageHandle {};
 		const ColorAttachment color_attachment =
 		{
-			.image        = multisampled ? colorImage : target,
+			.image        = multisampled ? colorImage : hdrImage,
 			.loadOp       = LoadOp::eClear,
 			.clearColor   = fog != nullptr ? glm::vec4(fog->color, 1.f) : CLEAR_COLOR,
-			.resolveImage = multisampled ? target : ImageHandle {}
+			.resolveImage = multisampled ? hdrImage : ImageHandle {}
 		};
 
 		const DepthAttachment depth_attachment =
@@ -356,12 +389,21 @@ namespace lunar::Render
 		commands.endRendering();
 	}
 
-	void Renderer::recordOverlay(Frame& frame, ImageHandle target, Extent2D extent, UI::UiLayer* ui, ImGuiLayer* debug_ui)
+	void Renderer::recordComposite(Frame& frame, Scene& scene, ImageHandle target, Extent2D extent, UI::UiLayer* ui, ImGuiLayer* debug_ui)
 	{
-		CommandList&          commands           = frame.commandList();
-		const ColorAttachment overlay_attachment = { .image = target, .loadOp = LoadOp::eLoad };
+		CommandList&          commands          = frame.commandList();
+		const Camera*         camera            = scene.getMainCamera();
+		const ColorAttachment target_attachment = { .image = target, .loadOp = LoadOp::eClear };
 
-		commands.beginRendering({ .colorAttachments = std::span(&overlay_attachment, 1) });
+		commands.prepareSampling(hdrImage);
+		commands.beginRendering({ .colorAttachments = std::span(&target_attachment, 1) });
+
+		if (tonemapPipeline != PipelineHandle {})
+		{
+			commands.bindPipeline(tonemapPipeline);
+			commands.pushConstants(TonemapConstants { device.getTextureIndex(hdrImage), camera != nullptr ? camera->exposure : Camera {}.exposure });
+			commands.draw(FULLSCREEN_VERTEX_COUNT);
+		}
 
 		if (ui != nullptr)
 			ui->record(commands, extent);

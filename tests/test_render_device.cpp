@@ -281,9 +281,9 @@ namespace
 		uint32_t offset      = 0;
 	};
 
-	std::vector<char> LoadShader(std::string_view name)
+	std::vector<char> LoadShader(std::string_view name, std::string_view directory = LUNAR_TEST_SHADER_DIR)
 	{
-		return Fs::BinaryFile(Fs::Path(LUNAR_TEST_SHADER_DIR) / (std::string(name) + std::string(SHADER_EXTENSION))).content;
+		return Fs::BinaryFile(Fs::Path(directory) / (std::string(name) + std::string(SHADER_EXTENSION))).content;
 	}
 
 	std::vector<uint32_t> Sequence(uint32_t multiplier, uint32_t offset)
@@ -304,6 +304,12 @@ namespace
 	{
 		return (count + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
 	}
+
+	struct TonemapConstants
+	{
+		uint32_t sceneTexture = 0;
+		float    exposure     = 1.f;
+	};
 
 	struct TexelConstants
 	{
@@ -1382,4 +1388,63 @@ TEST_F(RenderDeviceTest, RenderedImagesCanBeSampledAfterwards)
 		device->destroyPipeline(pipeline);
 		device->destroyImage(color);
 	}
+}
+
+TEST_F(RenderDeviceTest, TonemappingKeepsBaseColorsAndCompressesHighlights)
+{
+	constexpr Extent2D SCENE_EXTENT      = { 2, 1 };
+	constexpr Format   SCENE_FORMAT      = Format::eRGBA32Float;
+	constexpr float    EXPOSURE          = 2.f;
+	constexpr float    START_COMPRESSION = 0.8f;
+	constexpr float    COLOR_TOLERANCE   = 1e-5f;
+	constexpr size_t   BASE_TEXEL        = 0;
+	constexpr size_t   HIGHLIGHT_TEXEL   = 1;
+
+	const std::array<glm::vec4, 2> scene_texels    = { glm::vec4(0.3f, 0.2f, 0.1f, 1.f), glm::vec4(8.f, 4.f, 2.f, 1.f) };
+	const std::vector<char>        vertex_shader   = LoadShader("fullscreen.vert", LUNAR_ENGINE_SHADER_DIR);
+	const std::vector<char>        fragment_shader = LoadShader("tonemap.frag",    LUNAR_ENGINE_SHADER_DIR);
+
+	const ImageHandle scene  = device->createImage({ .extent = SCENE_EXTENT, .format = SCENE_FORMAT, .usage = ImageUsageFlags(ImageUsageFlagBits::eSampled) });
+	const ImageHandle target = device->createImage({
+		.extent = SCENE_EXTENT,
+		.format = SCENE_FORMAT,
+		.usage  = ImageUsageFlags(ImageUsageFlagBits::eColorAttachment) | ImageUsageFlagBits::eSampled
+	});
+	const PipelineHandle pipeline = device->createGraphicsPipeline({
+		.vertexShader   = std::as_bytes(std::span(vertex_shader)),
+		.fragmentShader = std::as_bytes(std::span(fragment_shader)),
+		.colorFormats   = std::span(&SCENE_FORMAT, 1)
+	});
+	ASSERT_NE(pipeline, PipelineHandle {});
+
+	device->uploadImage(scene, std::as_bytes(std::span(scene_texels)));
+
+	const ColorAttachment target_attachment = { .image = target };
+
+	Frame&       frame    = device->beginFrame();
+	CommandList& commands = frame.commandList();
+	commands.beginRendering({ .colorAttachments = std::span(&target_attachment, 1) });
+	commands.bindPipeline(pipeline);
+	commands.pushConstants(TonemapConstants { device->getTextureIndex(scene), EXPOSURE });
+	commands.draw(TRIANGLE_VERTICES);
+	commands.endRendering();
+	commands.prepareSampling(target);
+	device->endFrame(frame);
+
+	const std::vector<glm::vec4> texels    = fetchTexels(target, SCENE_EXTENT);
+	const glm::vec3              base      = texels[BASE_TEXEL];
+	const glm::vec3              highlight = texels[HIGHLIGHT_TEXEL];
+	const glm::vec3              exposed   = glm::vec3(scene_texels[BASE_TEXEL]) * EXPOSURE;
+
+	EXPECT_NEAR(base.r, exposed.r, COLOR_TOLERANCE) << "base colors below the shoulder stay as authored";
+	EXPECT_NEAR(base.g, exposed.g, COLOR_TOLERANCE);
+	EXPECT_NEAR(base.b, exposed.b, COLOR_TOLERANCE);
+	EXPECT_GT(highlight.r, START_COMPRESSION);
+	EXPECT_LT(highlight.r, 1.f) << "highlights are compressed below white";
+	EXPECT_GT(highlight.r, highlight.g);
+	EXPECT_GT(highlight.g, highlight.b) << "compression keeps the hue order";
+
+	device->destroyPipeline(pipeline);
+	device->destroyImage(target);
+	device->destroyImage(scene);
 }
