@@ -37,6 +37,7 @@
 #include <lunar/world/world_storage.hpp>
 #include <lunar/file/json_file.hpp>
 #include <lunar/debug.hpp>
+#include <lunar/utils/argument_parser.hpp>
 
 #include <imgui.h>
 
@@ -64,6 +65,8 @@ namespace
 	constexpr int                     WINDOW_HEIGHT        = 720;
 	constexpr int32_t                 VIEW_RADIUS          = 32;
 	constexpr std::string_view        WINDOW_TITLE         = "trok";
+	constexpr std::string_view        VALIDATION_FLAG      = "--validation";
+	constexpr int                     MISSING_ARGUMENT     = -1;
 	constexpr std::string_view        FPS_TITLE_FORMAT     = "trok | FPS: {}";
 	constexpr std::string_view        WORLD_SAVE_DIRECTORY = "saves/trok";
 	constexpr std::string_view        CHUNK_DIRECTORY      = "chunks";
@@ -300,12 +303,15 @@ namespace
 	};
 }
 
-int main()
+int main(int argc, char* argv[])
 {
+	const Utils::ArgumentParser arguments(argc, argv);
+
 	auto engine = EngineBuilder()
 		.applicationName(WINDOW_TITLE)
 		.renderBackend(Backend::eVulkan)
 		.samples(8)
+		.validation(arguments.has(VALIDATION_FLAG) != MISSING_ARGUMENT)
 		.window(
 			WindowBuilder()
 				.title(WINDOW_TITLE)
