@@ -99,7 +99,7 @@ namespace
 	constexpr uint16_t                GROUND_RAY_MASK      = Physics::TERRAIN_CATEGORY | Physics::ROAD_CATEGORY;
 	constexpr float                   REVERSE_THRESHOLD    = 1.f;
 	constexpr float                   AUTO_HOLD_SPEED      = 0.5f;
-	constexpr float                   FOG_START_FRACTION   = 0.5f;
+	constexpr float                   FOG_START_FRACTION   = 0.1f;
 	constexpr float                   FOG_END_FRACTION     = 0.95f;
 	constexpr float                   SUN_INTENSITY        = 0.85f;
 	constexpr float                   SKY_LIGHT_INTENSITY  = 0.45f;
