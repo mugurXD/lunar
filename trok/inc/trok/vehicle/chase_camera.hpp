@@ -7,14 +7,14 @@ namespace trok
 {
 	struct ChaseCameraSettings
 	{
-		float distance          = 14.f;
+		float distance          = 13.f;
 		float minDistance       = 6.f;
 		float maxDistance       = 40.f;
 		float zoomStep          = 2.f;
-		float pitch             = 20.f;
+		float pitch             = 10.f;
 		float minPitch          = -5.f;
 		float maxPitch          = 80.f;
-		float lookHeight        = 2.f;
+		float lookHeight        = 2.5f;
 		float followSharpness   = 6.f;
 		float recenterDelay     = 2.f;
 		float recenterSharpness = 1.5f;
