@@ -37,6 +37,7 @@
 #include <lunar/world/world_storage.hpp>
 #include <lunar/file/json_file.hpp>
 #include <lunar/debug.hpp>
+#include <lunar/debug/ambient_occlusion_window.hpp>
 #include <lunar/utils/argument_parser.hpp>
 
 #include <imgui.h>
@@ -698,6 +699,9 @@ int main(int argc, char* argv[])
 		{
 			tuning.draw(*truck);
 			trok::DrawTrafficStats(traffic, scene);
+
+			if (AmbientOcclusion* occlusion = sky->getComponent<AmbientOcclusion>())
+				Debug::DrawAmbientOcclusionWindow(*occlusion);
 
 			ImGui::Begin("Decorations");
 			ImGui::Text("Instances: %zu", decorations.getInstanceCount());
