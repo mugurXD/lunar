@@ -41,6 +41,10 @@ namespace lunar::Render
 		meshes.forEach([&](PoolHandle<Mesh>, const Mesh& mesh) {
 			releaseBuffers(mesh);
 		});
+
+		instanceSets.forEach([&](PoolHandle<InstanceSet>, const InstanceSet& instances) {
+			device.destroyBuffer(instances.buffer);
+		});
 	}
 
 	MeshHandle MeshRegistry::create(const MeshData& data)
@@ -75,6 +79,23 @@ namespace lunar::Render
 		return ToGpuHandle<MeshTag>(meshes.create(mesh));
 	}
 
+	InstanceSetHandle MeshRegistry::createInstances(std::span<const InstanceData> instances)
+	{
+		if (instances.empty())
+			return {};
+
+		const std::span<const std::byte> bytes  = std::as_bytes(instances);
+		const BufferHandle               buffer = device.createBuffer({ bytes.size(), BufferUsageFlags(BufferUsageFlagBits::eStorage), MemoryLocation::eGpuOnly }, bytes);
+		if (buffer == BufferHandle {})
+			return {};
+
+		return ToGpuHandle<InstanceSetTag>(instanceSets.create(InstanceSet {
+			.buffer  = buffer,
+			.address = device.getBufferAddress(buffer),
+			.count   = static_cast<uint32_t>(instances.size())
+		}));
+	}
+
 	void MeshRegistry::destroy(MeshHandle mesh)
 	{
 		const PoolHandle<Mesh> stored = FromGpuHandle(meshes, mesh);
@@ -86,14 +107,35 @@ namespace lunar::Render
 		meshes.destroy(stored);
 	}
 
+	void MeshRegistry::destroy(InstanceSetHandle instances)
+	{
+		const PoolHandle<InstanceSet> stored = FromGpuHandle(instanceSets, instances);
+		const InstanceSet*            record = instanceSets.get(stored);
+		if (record == nullptr)
+			return;
+
+		device.destroyBuffer(record->buffer);
+		instanceSets.destroy(stored);
+	}
+
 	const Mesh* MeshRegistry::get(MeshHandle mesh)
 	{
 		return meshes.get(FromGpuHandle(meshes, mesh));
 	}
 
+	const InstanceSet* MeshRegistry::get(InstanceSetHandle instances)
+	{
+		return instanceSets.get(FromGpuHandle(instanceSets, instances));
+	}
+
 	size_t MeshRegistry::size() const
 	{
 		return meshes.size();
+	}
+
+	size_t MeshRegistry::getInstanceSetCount() const
+	{
+		return instanceSets.size();
 	}
 
 	void MeshRegistry::releaseBuffers(const Mesh& mesh)

@@ -1,18 +1,25 @@
 #pragma once
 #include <lunar/api.hpp>
 #include <lunar/core/time.hpp>
+#include <lunar/render/frustum.hpp>
 #include <lunar/render/gpu_types.hpp>
 #include <glm/glm.hpp>
+
+#include <array>
+#include <cstddef>
 
 namespace lunar
 {
 	class LUNAR_API Scene;
+
+	constexpr size_t MAX_INSTANCE_LODS = 4;
 
 	struct LUNAR_API Camera
 	{
 		float     fov       = 60.f;
 		float     nearPlane = 0.1f;
 		float     farPlane  = 1000000.f;
+		float     exposure  = 1.f;
 		glm::vec3 front     = { 0.f, 0.f, -1.f };
 		glm::vec3 right     = { 1.f, 0.f, 0.f };
 		glm::vec3 up        = { 0.f, 1.f, 0.f };
@@ -31,11 +38,40 @@ namespace lunar
 		Render::MaterialHandle material    = {};
 	};
 
+	struct LUNAR_API InstanceLod
+	{
+		Render::MeshHandle mesh        = {};
+		float              maxDistance = 0.f;
+		float              fadeLength  = 0.f;
+	};
+
+	struct LUNAR_API InstanceBatch
+	{
+		std::array<InstanceLod, MAX_INSTANCE_LODS> lods      = {};
+		Render::InstanceSetHandle                  instances = {};
+		Render::Bounds                             bounds    = {};
+		bool                                       visible   = true;
+	};
+
 	struct LUNAR_API DirectionalLight
 	{
 		glm::vec3 direction = { 0.f, -1.f, 0.f };
 		glm::vec3 color     = { 1.f, 1.f, 1.f };
 		float     intensity = 1.f;
+	};
+
+	struct LUNAR_API CascadedShadows
+	{
+		float distance     = 400.f;
+		float casterMargin = 500.f;
+		float splitBlend   = 0.75f;
+	};
+
+	struct LUNAR_API SkyLight
+	{
+		glm::vec3 skyColor    = { 0.6f, 0.745f, 0.76f };
+		glm::vec3 groundColor = { 0.3f, 0.3f, 0.3f };
+		float     intensity   = 0.3f;
 	};
 
 	struct LUNAR_API DistanceFog

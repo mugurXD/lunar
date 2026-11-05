@@ -8,6 +8,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -59,13 +60,33 @@ namespace trok
 		bool operator==(const BiomeClimate&) const = default;
 	};
 
+	struct DecorationRule
+	{
+		std::string decoration       = {};
+		float       spacing          = 8.f;
+		float       density          = 0.5f;
+		float       maxSlope         = 0.35f;
+		float       minAltitude      = 0.5f;
+		float       maxAltitude      = std::numeric_limits<float>::max();
+		float       clusterFrequency = 0.f;
+		float       clusterThreshold = 0.5f;
+		float       minScale         = 1.f;
+		float       maxScale         = 1.f;
+		float       tilt             = 0.f;
+		float       clearance        = 2.f;
+		float       footprint        = 0.f;
+
+		bool operator==(const DecorationRule&) const = default;
+	};
+
 	struct Biome
 	{
-		std::string  name      = {};
-		BiomeClimate climate   = {};
-		BiomeTerrain terrain   = {};
-		BiomeColors  colors    = {};
-		bool         habitable = true;
+		std::string                 name        = {};
+		BiomeClimate                climate     = {};
+		BiomeTerrain                terrain     = {};
+		BiomeColors                 colors      = {};
+		bool                        habitable   = true;
+		std::vector<DecorationRule> decorations = {};
 
 		bool operator==(const Biome&) const = default;
 

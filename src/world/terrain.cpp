@@ -250,6 +250,16 @@ namespace lunar::World
 		return glm::normalize(glm::vec3(-slope_x, CENTRAL_DIFFERENCES * settings.vertexSpacing, -slope_z));
 	}
 
+	float HeightmapHeightAt(const Heightmap& heightmap, const glm::vec2& local, const WorldSettings& settings)
+	{
+		const glm::vec2  sample    = local / settings.vertexSpacing;
+		const glm::ivec2 base      = glm::ivec2(glm::floor(sample));
+		const glm::vec2  amount    = sample - glm::vec2(base);
+		const float      lower_row = glm::mix(heightmap.sample(base.x, base.y), heightmap.sample(base.x + 1, base.y), amount.x);
+		const float      upper_row = glm::mix(heightmap.sample(base.x, base.y + 1), heightmap.sample(base.x + 1, base.y + 1), amount.x);
+		return glm::mix(lower_row, upper_row, amount.y);
+	}
+
 	void FacetChunkMesh(Render::MeshData& mesh, ChunkCoord coord, const WorldSettings& settings)
 	{
 		DEBUG_ASSERT(std::has_single_bit(settings.chunkQuads), "Simplifying terrain needs a power-of-two number of quads per chunk");

@@ -8,6 +8,7 @@
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
 #include <Jolt/Physics/Body/BodyLock.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
+#include <Jolt/Physics/Collision/Shape/ConvexHullShape.h>
 #include <Jolt/Physics/Collision/Shape/HeightFieldShape.h>
 #include <Jolt/Physics/Collision/Shape/MeshShape.h>
 #include <Jolt/Physics/Collision/Shape/OffsetCenterOfMassShape.h>
@@ -68,6 +69,16 @@ namespace lunar::Physics
 			return { .settings = new JPH::MeshShapeSettings(std::move(vertices), std::move(triangles)) };
 		}
 
+		ShapePart MakeShape(const ConvexHullDesc& desc)
+		{
+			JPH::Array<JPH::Vec3> points;
+			points.reserve(desc.points.size());
+			for (const glm::vec3& point : desc.points)
+				points.push_back(Physics::ToPhysics(point));
+
+			return { .settings = new JPH::ConvexHullShapeSettings(points) };
+		}
+
 		JPH::ShapeSettings::ShapeResult CreateShape(std::span<const ShapeDesc> shapes)
 		{
 			JPH::StaticCompoundShapeSettings compound;
@@ -120,7 +131,7 @@ namespace lunar::Physics
 				settings.mMassPropertiesOverride.mMass = desc.massOverride->mass;
 			}
 
-			const JPH::EActivation activation = desc.type == BodyType::eStatic ? JPH::EActivation::DontActivate : JPH::EActivation::Activate;
+			const JPH::EActivation activation = desc.type == BodyType::eStatic || desc.startAsleep ? JPH::EActivation::DontActivate : JPH::EActivation::Activate;
 			const JPH::BodyID      body       = backend.bodies().CreateAndAddBody(settings, activation);
 			if (body.IsInvalid())
 				DEBUG_ERROR("The physics world has run out of bodies");

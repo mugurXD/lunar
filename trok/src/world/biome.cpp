@@ -21,6 +21,7 @@ namespace trok
 		constexpr std::string_view MOISTURE_KEY        = "moisture";
 		constexpr std::string_view CONTINENTALNESS_KEY = "continentalness";
 		constexpr std::string_view EROSION_KEY         = "erosion";
+		constexpr std::string_view DECORATIONS_KEY     = "decorations";
 
 		nlohmann::json SerializeRange(const ClimateRange& range)
 		{
@@ -114,6 +115,75 @@ namespace trok
 			};
 		}
 
+		nlohmann::json SerializeRules(const std::vector<DecorationRule>& rules)
+		{
+			nlohmann::json serialized = nlohmann::json::array();
+			for (const DecorationRule& rule : rules)
+			{
+				serialized.push_back({
+					{ "decoration",       rule.decoration },
+					{ "spacing",          rule.spacing },
+					{ "density",          rule.density },
+					{ "maxSlope",         rule.maxSlope },
+					{ "minAltitude",      rule.minAltitude },
+					{ "maxAltitude",      rule.maxAltitude },
+					{ "clusterFrequency", rule.clusterFrequency },
+					{ "clusterThreshold", rule.clusterThreshold },
+					{ "minScale",         rule.minScale },
+					{ "maxScale",         rule.maxScale },
+					{ "tilt",             rule.tilt },
+					{ "clearance",        rule.clearance },
+					{ "footprint",        rule.footprint }
+				});
+			}
+
+			return serialized;
+		}
+
+		std::vector<DecorationRule> DeserializeRules(const nlohmann::json& json)
+		{
+			const DecorationRule        defaults;
+			std::vector<DecorationRule> rules;
+			if (!json.contains(DECORATIONS_KEY))
+				return rules;
+
+			for (const nlohmann::json& rule : json.at(DECORATIONS_KEY))
+			{
+				rules.push_back({
+					.decoration       = rule.at("decoration").get<std::string>(),
+					.spacing          = rule.value("spacing",          defaults.spacing),
+					.density          = rule.value("density",          defaults.density),
+					.maxSlope         = rule.value("maxSlope",         defaults.maxSlope),
+					.minAltitude      = rule.value("minAltitude",      defaults.minAltitude),
+					.maxAltitude      = rule.value("maxAltitude",      defaults.maxAltitude),
+					.clusterFrequency = rule.value("clusterFrequency", defaults.clusterFrequency),
+					.clusterThreshold = rule.value("clusterThreshold", defaults.clusterThreshold),
+					.minScale         = rule.value("minScale",         defaults.minScale),
+					.maxScale         = rule.value("maxScale",         defaults.maxScale),
+					.tilt             = rule.value("tilt",             defaults.tilt),
+					.clearance        = rule.value("clearance",        defaults.clearance),
+					.footprint        = rule.value("footprint",        defaults.footprint)
+				});
+			}
+
+			return rules;
+		}
+
+		bool IsValid(const DecorationRule& rule)
+		{
+			return !rule.decoration.empty()
+			    && rule.spacing > 0.f
+			    && rule.density >= 0.f && rule.density <= 1.f
+			    && rule.maxSlope >= 0.f
+			    && rule.minAltitude <= rule.maxAltitude
+			    && rule.clusterFrequency >= 0.f
+			    && rule.clusterThreshold >= 0.f && rule.clusterThreshold <= 1.f
+			    && rule.minScale > 0.f && rule.minScale <= rule.maxScale
+			    && rule.tilt >= 0.f && rule.tilt <= 1.f
+			    && rule.clearance >= 0.f
+			    && rule.footprint >= 0.f;
+		}
+
 		void KeepHeaviest(BiomeBlend& blend, BiomeIndex biome, float weight)
 		{
 			if (blend.count < MAX_BLENDED_BIOMES)
@@ -153,11 +223,12 @@ namespace trok
 	{
 		return nlohmann::json
 		{
-			{ "name",      biome.name },
-			{ "climate",   SerializeClimate(biome.climate) },
-			{ "terrain",   SerializeTerrain(biome.terrain) },
-			{ "colors",    SerializeColors(biome.colors) },
-			{ "habitable", biome.habitable }
+			{ "name",          biome.name },
+			{ "climate",       SerializeClimate(biome.climate) },
+			{ "terrain",       SerializeTerrain(biome.terrain) },
+			{ "colors",        SerializeColors(biome.colors) },
+			{ "habitable",     biome.habitable },
+			{ DECORATIONS_KEY, SerializeRules(biome.decorations) }
 		};
 	}
 
@@ -165,16 +236,23 @@ namespace trok
 	{
 		const Biome biome =
 		{
-			.name      = json.at("name").get<std::string>(),
-			.climate   = DeserializeClimate(json.at("climate")),
-			.terrain   = DeserializeTerrain(json.at("terrain")),
-			.colors    = DeserializeColors(json.at("colors")),
-			.habitable = json.at("habitable").get<bool>()
+			.name        = json.at("name").get<std::string>(),
+			.climate     = DeserializeClimate(json.at("climate")),
+			.terrain     = DeserializeTerrain(json.at("terrain")),
+			.colors      = DeserializeColors(json.at("colors")),
+			.habitable   = json.at("habitable").get<bool>(),
+			.decorations = DeserializeRules(json)
 		};
 
 		if (!IsOrdered(biome.climate))
 		{
 			Fs::ReportMalformedJson("climate ranges need their minimum first");
+			return std::nullopt;
+		}
+
+		if (!std::ranges::all_of(biome.decorations, IsValid))
+		{
+			Fs::ReportMalformedJson("decoration rules need a decoration, positive spacing and scale, and density, cluster threshold and tilt between 0 and 1");
 			return std::nullopt;
 		}
 

@@ -10,6 +10,7 @@
 #include <trok/world/elevation.hpp>
 #include <trok/world/region_plan.hpp>
 #include <trok/world/shapers.hpp>
+#include <trok/world/decorators.hpp>
 #include <trok/world/dressers.hpp>
 #include <trok/world/terrain_generator.hpp>
 #include <trok/world/towns.hpp>
@@ -23,6 +24,8 @@
 #include <lunar/core/engine.hpp>
 #include <lunar/render/components.hpp>
 #include <lunar/world/chunk_storage.hpp>
+#include <lunar/world/decoration.hpp>
+#include <lunar/world/decoration_world.hpp>
 #include <lunar/physics/raycast.hpp>
 #include <lunar/physics/rigid_body.hpp>
 #include <lunar/world/floating_origin.hpp>
@@ -34,6 +37,7 @@
 #include <lunar/world/world_storage.hpp>
 #include <lunar/file/json_file.hpp>
 #include <lunar/debug.hpp>
+#include <lunar/utils/argument_parser.hpp>
 
 #include <imgui.h>
 
@@ -61,6 +65,8 @@ namespace
 	constexpr int                     WINDOW_HEIGHT        = 720;
 	constexpr int32_t                 VIEW_RADIUS          = 32;
 	constexpr std::string_view        WINDOW_TITLE         = "trok";
+	constexpr std::string_view        VALIDATION_FLAG      = "--validation";
+	constexpr int                     MISSING_ARGUMENT     = -1;
 	constexpr std::string_view        FPS_TITLE_FORMAT     = "trok | FPS: {}";
 	constexpr std::string_view        WORLD_SAVE_DIRECTORY = "saves/trok";
 	constexpr std::string_view        CHUNK_DIRECTORY      = "chunks";
@@ -75,6 +81,8 @@ namespace
 	constexpr std::string_view        CAR_FILE_NAME        = "cars/sedan.json";
 	constexpr std::string_view        TUNED_BIOME_FILE     = "biomes.tuned.json";
 	constexpr std::string_view        ROAD_FILE_NAME       = "roads.json";
+	constexpr std::string_view        DECORATION_FILE_NAME = "decorations.json";
+	constexpr std::string_view        DECORATION_DIRECTORY = "decorations";
 	constexpr std::string_view        HUD_DOCUMENT         = "ui/hud.rml";
 	constexpr std::string_view        UI_FONTS[]           = { "fonts/Inter/Inter-Regular.ttf", "fonts/Inter/Inter-SemiBold.ttf", "fonts/Inter/Inter-Bold.ttf" };
 	constexpr float                   ROAD_PLANNING_MARGIN = 200.f;
@@ -91,8 +99,10 @@ namespace
 	constexpr uint16_t                GROUND_RAY_MASK      = Physics::TERRAIN_CATEGORY | Physics::ROAD_CATEGORY;
 	constexpr float                   REVERSE_THRESHOLD    = 1.f;
 	constexpr float                   AUTO_HOLD_SPEED      = 0.5f;
-	constexpr float                   FOG_START_FRACTION   = 0.5f;
+	constexpr float                   FOG_START_FRACTION   = 0.1f;
 	constexpr float                   FOG_END_FRACTION     = 0.95f;
+	constexpr float                   SUN_INTENSITY        = 0.85f;
+	constexpr float                   SKY_LIGHT_INTENSITY  = 0.45f;
 	constexpr float                   NEAR_PLANE_DEPTH     = 1.f;
 	constexpr float                   PICK_STEP            = 4.f;
 	constexpr float                   PICK_MAX_DISTANCE    = 2000.f;
@@ -103,7 +113,9 @@ namespace
 
 	const glm::vec3 CAMERA_START_POSITION  = { 0.f, 0.f, 30.f };
 	const glm::vec3 SUN_DIRECTION          = { -0.4f, -1.f, -0.3f };
+	const glm::vec3 SUN_COLOR              = { 1.f, 0.96f, 0.88f };
 	const glm::vec3 SKY_COLOR              = { 0.6f, 0.745f, 0.76f };
+	const glm::vec3 GROUND_BOUNCE_COLOR    = { 0.4f, 0.42f, 0.3f };
 	const glm::vec3 ENDPOINT_MARKER_COLOR  = { 0.9f, 0.1f, 0.1f };
 	const glm::vec3 NODE_MARKER_COLOR      = { 0.1f, 0.9f, 0.2f };
 
@@ -295,12 +307,15 @@ namespace
 	};
 }
 
-int main()
+int main(int argc, char* argv[])
 {
+	const Utils::ArgumentParser arguments(argc, argv);
+
 	auto engine = EngineBuilder()
 		.applicationName(WINDOW_TITLE)
 		.renderBackend(Backend::eVulkan)
 		.samples(8)
+		.validation(arguments.has(VALIDATION_FLAG) != MISSING_ARGUMENT)
 		.window(
 			WindowBuilder()
 				.title(WINDOW_TITLE)
@@ -311,12 +326,13 @@ int main()
 	Scene&    scene  = engine.getActiveScene();
 	Window_T& window = engine.getWindow();
 
-	const auto                          road_class       = LoadGameData<trok::RoadClass>(ROAD_FILE_NAME);
-	std::optional<trok::BiomeLibrary>   loaded_biomes    = LoadGameData<trok::BiomeLibrary>(BIOME_FILE_NAME);
-	std::optional<trok::ElevationCurve> loaded_elevation = LoadGameData<trok::ElevationCurve>(ELEVATION_FILE_NAME);
-	const auto                          truck_definition = LoadGameData<trok::VehicleDefinition>(TRUCK_FILE_NAME);
-	const auto                          car_definition   = LoadGameData<trok::VehicleDefinition>(CAR_FILE_NAME);
-	if (!loaded_biomes.has_value() || !loaded_elevation.has_value() || !truck_definition.has_value() || !car_definition.has_value() || !road_class.has_value())
+	const auto                              road_class         = LoadGameData<trok::RoadClass>(ROAD_FILE_NAME);
+	std::optional<trok::BiomeLibrary>       loaded_biomes      = LoadGameData<trok::BiomeLibrary>(BIOME_FILE_NAME);
+	std::optional<trok::ElevationCurve>     loaded_elevation   = LoadGameData<trok::ElevationCurve>(ELEVATION_FILE_NAME);
+	const auto                              truck_definition   = LoadGameData<trok::VehicleDefinition>(TRUCK_FILE_NAME);
+	const auto                              car_definition     = LoadGameData<trok::VehicleDefinition>(CAR_FILE_NAME);
+	std::optional<World::DecorationCatalog> loaded_decorations = LoadGameData<World::DecorationCatalog>(DECORATION_FILE_NAME);
+	if (!loaded_biomes.has_value() || !loaded_elevation.has_value() || !truck_definition.has_value() || !car_definition.has_value() || !road_class.has_value() || !loaded_decorations.has_value())
 		return 1;
 
 	std::optional<World::WorldStorage> opened_storage = World::WorldStorage::openOrCreate(Fs::fromBase(WORLD_SAVE_DIRECTORY), NEW_WORLD_INFO);
@@ -350,11 +366,16 @@ int main()
 	trok::BiomeTuningWindow                    biome_tuning(biomes, Fs::fromData(TUNED_BIOME_FILE));
 	trok::WorldMapWindow                       world_map(biomes, region_planner, climate, elevation, world_settings);
 	trok::RoadService                          roads(engine.getJobSystem(), terrain_generator, *road_class, { .seaLevel = elevation.seaLevel });
+	const auto                                 decoration_catalog = std::make_shared<const World::DecorationCatalog>(std::move(*loaded_decorations));
+	const World::DecorationLibrary             decoration_library(engine.getRenderer().getMeshes(), *decoration_catalog, Fs::dataDirectory());
+	World::DecorationWorld                     decorations(scene, engine.getRenderer().getMeshes(), decoration_library, world_settings, world_storage->getDirectory() / DECORATION_DIRECTORY);
 	const trok::Towns                          towns(region_planner, world_settings);
 	trok::Deliveries                           deliveries({}, static_cast<uint64_t>(world_storage->getInfo().seed));
 	const MaterialHandle                       beacon_material  = engine.getRenderer().createMaterial({ .vertexShader = BEACON_VERTEX, .fragmentShader = BEACON_FRAGMENT });
 	trok::DeliveryBeacon                       beacon(scene, engine.getRenderer().getMeshes(), beacon_material);
 	std::optional<trok::Hud>                   hud;
+
+	terrain_generator->addDecorator(std::make_shared<const trok::BiomeDecorator>(biomes, climate, decoration_catalog, roads.getLayer(), world_storage->getInfo().seed, elevation.seaLevel));
 
 	if (UI::UiLayer* ui = engine.getUi())
 	{
@@ -381,21 +402,24 @@ int main()
 	chase_camera->addComponent<Camera>();
 
 	GameObject sun = scene.createGameObject("Sun");
-	sun->addComponent<DirectionalLight>(SUN_DIRECTION);
+	sun->addComponent<DirectionalLight>(SUN_DIRECTION, SUN_COLOR, SUN_INTENSITY);
+	sun->addComponent<CascadedShadows>();
 
 	const float view_distance = static_cast<float>(VIEW_RADIUS) * world_settings.getChunkSize();
 	GameObject  sky           = scene.createGameObject("Sky");
 	sky->addComponent<DistanceFog>(SKY_COLOR, view_distance * FOG_START_FRACTION, view_distance * FOG_END_FRACTION);
+	sky->addComponent<SkyLight>(SKY_COLOR, GROUND_BOUNCE_COLOR, SKY_LIGHT_INTENSITY);
 
-	window.registerAction("toggle_menu",    { { "keyboard.esc" } });
-	window.registerAction("sprint",         { { "keyboard.shift" }, { "gamepad.ls" } });
-	window.registerAction("brake",          { { "keyboard.space" }, { "gamepad.a" } });
-	window.registerAction("toggle_camera",  { { "keyboard.f" },     { "gamepad.y" } });
-	window.registerAction("road_point",     { { "keyboard.f5" }, { "mouse.right_button" } });
-	window.registerAction("road_build",     { { "keyboard.f6" }, { "mouse.middle_button" } });
-	window.registerAction("toggle_terrain", { { "keyboard.f7" } });
-	window.registerAction("terrain_debug",  { { "keyboard.f8" } });
-	window.registerAction("recover",        { { "keyboard.i" },     { "gamepad.back" } });
+	window.registerAction("toggle_menu",        { { "keyboard.esc" } });
+	window.registerAction("sprint",             { { "keyboard.shift" }, { "gamepad.ls" } });
+	window.registerAction("brake",              { { "keyboard.space" }, { "gamepad.a" } });
+	window.registerAction("toggle_camera",      { { "keyboard.f" },     { "gamepad.y" } });
+	window.registerAction("road_point",         { { "keyboard.f5" }, { "mouse.right_button" } });
+	window.registerAction("road_build",         { { "keyboard.f6" }, { "mouse.middle_button" } });
+	window.registerAction("toggle_terrain",     { { "keyboard.f7" } });
+	window.registerAction("terrain_debug",      { { "keyboard.f8" } });
+	window.registerAction("toggle_decorations", { { "keyboard.f9" } });
+	window.registerAction("recover",            { { "keyboard.i" },     { "gamepad.back" } });
 
 	const auto is_driving = [&scene, &chase_camera] { return scene.getMainCamera() == chase_camera->getComponent<Camera>(); };
 
@@ -420,6 +444,7 @@ int main()
 	std::optional<trok::RoadLink> awaited_road;
 	bool                          terrain_visible       = true;
 	bool                          terrain_debug_visible = false;
+	bool                          decorations_visible   = true;
 
 	const auto regenerate_chunks = [&] {
 		engine.getJobSystem().waitIdle();
@@ -538,6 +563,17 @@ int main()
 				renderer.visible = false;
 			});
 
+		if (window.getActionDown("toggle_decorations"))
+		{
+			decorations_visible = !decorations_visible;
+			DEBUG_LOG("Decoration rendering {}", decorations_visible ? "enabled" : "disabled");
+		}
+
+		if (!decorations_visible)
+			scene.forEach<InstanceBatch>([](Entity, InstanceBatch& batch) {
+				batch.visible = false;
+			});
+
 		const World::RegionCoord viewer_region = World::RegionAt(absolute_viewer, world_settings);
 		if (surveyed_region != viewer_region)
 			survey_towns(viewer_region);
@@ -642,6 +678,7 @@ int main()
 		});
 
 		colliders.update(vehicle_positions);
+		decorations.update(vehicle_positions);
 
 		truck->setSimulated(colliders.isReady(truck->getTransform().position));
 		truck->updateWheels(frame_time.fixedAlpha);
@@ -660,6 +697,11 @@ int main()
 		{
 			tuning.draw(*truck);
 			trok::DrawTrafficStats(traffic, scene);
+
+			ImGui::Begin("Decorations");
+			ImGui::Text("Instances: %zu", decorations.getInstanceCount());
+			ImGui::Text("Promoted: %zu", decorations.getPromotedCount());
+			ImGui::End();
 		}
 
 		if (window.getActionDown("toggle_camera"))

@@ -20,9 +20,9 @@
   "engine": {
     "brakeForce": 110000.0,
     "dragCoefficient": 3.5,
-    "driveForce": 100000.0,
-    "maxSpeed": 60.0,
-    "power": 1000000.0,
+    "driveForce": 35000.0,
+    "maxSpeed": 35.0,
+    "power": 300000.0,
     "rollingResistance": 150.0
   },
   "formatVersion": 4,

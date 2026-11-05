@@ -18,4 +18,11 @@ namespace lunar::Render
 		float     uv_y;
 		glm::vec4 color;
 	};
+
+	struct LUNAR_API InstanceData
+	{
+		glm::vec3 position;
+		float     scale;
+		glm::vec4 rotation;
+	};
 }

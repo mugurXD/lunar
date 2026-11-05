@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdlib>
 #include <cstdint>
+#include <vector>
 
 namespace lunar::World
 {
@@ -57,5 +58,16 @@ namespace lunar::World
 	bool IsWithin(GridCoord<Tag> coord, GridCoord<Tag> center, int32_t radius)
 	{
 		return DistanceSquared(coord, center) <= static_cast<int64_t>(radius) * radius;
+	}
+
+	template<typename Tag>
+	std::vector<GridCoord<Tag>> SquareAround(GridCoord<Tag> center, int32_t radius)
+	{
+		std::vector<GridCoord<Tag>> coords;
+		for (int32_t offset_z = -radius; offset_z <= radius; offset_z++)
+			for (int32_t offset_x = -radius; offset_x <= radius; offset_x++)
+				coords.push_back({ center.x + offset_x, center.z + offset_z });
+
+		return coords;
 	}
 }

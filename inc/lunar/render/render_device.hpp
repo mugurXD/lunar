@@ -20,9 +20,10 @@ namespace lunar::Render
 
 	struct LUNAR_API RenderDeviceSettings
 	{
-		std::string_view appName = {};
-		Window_T*        pWindow = nullptr;
-		Backend          backend = Backend::eDefault;
+		std::string_view appName    = {};
+		Window_T*        pWindow    = nullptr;
+		Backend          backend    = Backend::eDefault;
+		bool             validation = false;
 	};
 
 	struct LUNAR_API RenderDeviceCapabilities

@@ -21,6 +21,7 @@ namespace lunar::Render::imp
 			{ Format::eBGRA8Srgb,   VK_FORMAT_B8G8R8A8_SRGB       },
 			{ Format::eRGBA16Float, VK_FORMAT_R16G16B16A16_SFLOAT },
 			{ Format::eRGBA32Float, VK_FORMAT_R32G32B32A32_SFLOAT },
+			{ Format::eR32Float,    VK_FORMAT_R32_SFLOAT          },
 			{ Format::eD32Float,    VK_FORMAT_D32_SFLOAT          }
 		};
 

@@ -63,6 +63,7 @@ namespace lunar::Render
 		virtual void bindIndexBuffer(BufferHandle buffer, size_t offset, IndexType index_type) = 0;
 		virtual void setScissor(const Rect2D& rect)                                             = 0;
 		virtual void memoryBarrier()                                                            = 0;
+		virtual void prepareSampling(ImageHandle image)                                         = 0;
 
 		virtual void draw(uint32_t vertex_count,
 		                  uint32_t instance_count = 1,

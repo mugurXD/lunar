@@ -71,6 +71,7 @@ namespace lunar
 		EngineBuilder& renderBackend(Render::Backend backend);
 		EngineBuilder& fixedTimestep(double seconds);
 		EngineBuilder& samples(uint32_t count);
+		EngineBuilder& validation(bool enabled);
 		Engine build() const;
 
 	private:
@@ -80,6 +81,7 @@ namespace lunar
 		std::string           appName              = "lunar";
 		double                fixedTimestepSeconds = DEFAULT_FIXED_TIMESTEP;
 		uint32_t              sampleCount          = 1;
+		bool                  validationEnabled    = false;
 
 		friend class Engine;
 	};

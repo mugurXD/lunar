@@ -1,19 +1,25 @@
 #include <lunar/render/render_device.hpp>
 #include <lunar/render/mesh_registry.hpp>
+#include <lunar/physics/raycast.hpp>
 #include <lunar/ui/ui_layer.hpp>
 #include <lunar/core/jobs.hpp>
 #include <lunar/core/scene.hpp>
 #include <lunar/world/chunk_storage.hpp>
+#include <lunar/world/decoration.hpp>
+#include <lunar/world/decoration_world.hpp>
+#include <lunar/world/floating_origin.hpp>
 #include <lunar/world/region_store.hpp>
 #include <lunar/world/terrain_generator.hpp>
 #include <lunar/world/terrain_world.hpp>
 #include <lunar/world/world_storage.hpp>
 #include <lunar/file/binary_file.hpp>
+#include <lunar/utils/hash.hpp>
 #include <gtest/gtest.h>
 
 #include <RmlUi/Core.h>
 
 #include "temporary_directory.hpp"
+#include "test_models.hpp"
 #include "world_test_types.hpp"
 
 #include <algorithm>
@@ -142,7 +148,8 @@ namespace
 			settings(SmallTerrain(job_budget)),
 			storage(std::make_shared<const lunar::World::WorldStorage>(*lunar::World::WorldStorage::create(directory.getPath(), {}))),
 			regions(jobs, storage, std::make_shared<const TestPlanner>(), settings),
-			source(regions, std::make_shared<const WaveGenerator>(), std::make_shared<const lunar::World::ChunkStorage>(directory.getPath() / "chunks", settings), settings),
+			generator(std::make_shared<WaveGenerator>()),
+			source(regions, generator, std::make_shared<const lunar::World::ChunkStorage>(directory.getPath() / "chunks", settings), settings),
 			terrain(scene, jobs, registry, source, settings)
 		{
 		}
@@ -160,8 +167,109 @@ namespace
 		const lunar::World::WorldSettings                       settings;
 		const std::shared_ptr<const lunar::World::WorldStorage> storage;
 		lunar::World::RegionStore<TestPlan>                     regions;
+		const std::shared_ptr<WaveGenerator>                    generator;
 		lunar::World::RegionChunkSource<TestPlan>               source;
 		lunar::World::TerrainWorld                              terrain;
+	};
+
+	constexpr lunar::World::DecorationKind SOLID_KIND       = 0;
+	constexpr lunar::World::DecorationKind BREAKABLE_KIND   = 1;
+	constexpr size_t                       DECORATION_KINDS = 2;
+	constexpr float                        LOD_DISTANCE     = 100.f;
+	constexpr float                        BREAKABLE_MASS   = 10.f;
+	constexpr std::string_view             SOLID_MODEL      = "solid.gltf";
+	constexpr std::string_view             BREAKABLE_MODEL  = "breakable.gltf";
+	constexpr std::string_view             CHANGES_FOLDER   = "decorations";
+	const glm::vec2                        SOLID_SPOT       = { 16.f, 16.f };
+	const glm::vec2                        BREAKABLE_SPOT   = { 48.f, 48.f };
+	const glm::vec3                        PUSH_ACROSS      = { 72.f, 0.f, 0.f };
+	const lunar::World::ChunkCoord         ORIGIN_CHUNK     = {};
+	const lunar::World::ChunkCoord         NEXT_CHUNK       = { 1, 0 };
+
+	lunar::World::DecorationId DecorationIdOf(lunar::World::ChunkCoord coord, lunar::World::DecorationKind kind)
+	{
+		return lunar::MixHash(lunar::MixHash(lunar::MixHash(0, static_cast<uint64_t>(coord.x)), static_cast<uint64_t>(coord.z)), kind);
+	}
+
+	class SpotDecorator final : public lunar::World::TerrainDecorator<TestPlan>
+	{
+	public:
+		void decorate(const lunar::World::RegionContext<TestPlan>&,
+		              lunar::World::ChunkCoord                         coord,
+		              const lunar::World::WorldSettings&               settings,
+		              const lunar::World::Heightmap&                   heightmap,
+		              std::vector<lunar::World::DecorationInstance>&   output) const override
+		{
+			for (const auto& [kind, spot] : { std::pair { SOLID_KIND, SOLID_SPOT }, std::pair { BREAKABLE_KIND, BREAKABLE_SPOT } })
+				output.push_back({ .id = DecorationIdOf(coord, kind), .kind = kind, .position = { spot.x, lunar::World::HeightmapHeightAt(heightmap, spot, settings), spot.y } });
+		}
+	};
+
+	lunar::World::DecorationCatalog WriteTestCatalog(const std::filesystem::path& directory)
+	{
+		TestModel {}.write(directory / SOLID_MODEL);
+		TestModel {}.write(directory / BREAKABLE_MODEL);
+
+		return lunar::World::DecorationCatalog
+		{
+			.types =
+			{
+				{ .name = "test:solid",     .lods = { { std::string(SOLID_MODEL), LOD_DISTANCE } } },
+				{ .name = "test:breakable", .lods = { { std::string(BREAKABLE_MODEL), LOD_DISTANCE } }, .breakable = true, .mass = BREAKABLE_MASS }
+			}
+		};
+	}
+
+	template<typename T>
+	size_t CountComponents(lunar::Scene& scene)
+	{
+		size_t count = 0;
+		scene.forEach<T>([&](lunar::Entity, const T&) { count++; });
+		return count;
+	}
+
+	struct DecorationHarness
+	{
+		explicit DecorationHarness(RenderDevice& device)
+			: world(device, UNLIMITED_JOB_BUDGET),
+			catalog(WriteTestCatalog(world.directory.getPath())),
+			library(world.registry, catalog, world.directory.getPath()),
+			decorations(world.scene, world.registry, library, world.settings, world.directory.getPath() / CHANGES_FOLDER)
+		{
+			world.generator->addDecorator(std::make_shared<const SpotDecorator>());
+		}
+
+		void load(const glm::vec3& focus)
+		{
+			world.prepareRegions(focus);
+			world.terrain.update(focus);
+			FinishJobs(world.jobs);
+			update({});
+		}
+
+		void update(std::span<const glm::vec3> foci)
+		{
+			world.scene.flushDestroyedEntities();
+			decorations.update(foci);
+			world.scene.flushDestroyedEntities();
+		}
+
+		glm::vec3 spotOf(lunar::World::ChunkCoord coord, lunar::World::DecorationKind kind)
+		{
+			const std::span<const lunar::World::DecorationInstance> instances = decorations.findInstances(coord);
+			const auto                                              found     = std::ranges::find(instances, DecorationIdOf(coord, kind), &lunar::World::DecorationInstance::id);
+			return lunar::World::SceneChunkOrigin(world.scene, coord, world.settings) + found->position;
+		}
+
+		bool holds(lunar::World::ChunkCoord coord, lunar::World::DecorationId id)
+		{
+			return std::ranges::find(decorations.findInstances(coord), id, &lunar::World::DecorationInstance::id) != decorations.findInstances(coord).end();
+		}
+
+		TerrainHarness                  world;
+		lunar::World::DecorationCatalog catalog;
+		lunar::World::DecorationLibrary library;
+		lunar::World::DecorationWorld   decorations;
 	};
 
 	struct ComputeConstants
@@ -173,9 +281,9 @@ namespace
 		uint32_t offset      = 0;
 	};
 
-	std::vector<char> LoadShader(std::string_view name)
+	std::vector<char> LoadShader(std::string_view name, std::string_view directory = LUNAR_TEST_SHADER_DIR)
 	{
-		return Fs::BinaryFile(Fs::Path(LUNAR_TEST_SHADER_DIR) / (std::string(name) + std::string(SHADER_EXTENSION))).content;
+		return Fs::BinaryFile(Fs::Path(directory) / (std::string(name) + std::string(SHADER_EXTENSION))).content;
 	}
 
 	std::vector<uint32_t> Sequence(uint32_t multiplier, uint32_t offset)
@@ -196,6 +304,12 @@ namespace
 	{
 		return (count + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE;
 	}
+
+	struct TonemapConstants
+	{
+		uint32_t sceneTexture = 0;
+		float    exposure     = 1.f;
+	};
 
 	struct TexelConstants
 	{
@@ -230,7 +344,7 @@ class RenderDeviceTest : public ::testing::Test
 protected:
 	static void SetUpTestSuite()
 	{
-		device = CreateRenderDevice({ .appName = "lunar_render_tests" });
+		device = CreateRenderDevice({ .appName = "lunar_render_tests", .validation = true });
 	}
 
 	static void TearDownTestSuite()
@@ -305,10 +419,11 @@ protected:
 		return values;
 	}
 
-	std::vector<glm::vec4> fetchTexels(ImageHandle image)
+	std::vector<glm::vec4> fetchTexels(ImageHandle image, Extent2D extent = TEXTURE_EXTENT)
 	{
+		const uint32_t       count    = extent.width * extent.height;
 		const PipelineHandle fetch    = createCompute("fetch_texels.comp");
-		const BufferHandle   readback = device->createBuffer({ TEXEL_COUNT * sizeof(glm::vec4), BufferUsageFlags(BufferUsageFlagBits::eStorage), MemoryLocation::eReadback }, {});
+		const BufferHandle   readback = device->createBuffer({ count * sizeof(glm::vec4), BufferUsageFlags(BufferUsageFlagBits::eStorage), MemoryLocation::eReadback }, {});
 
 		Frame&       frame    = device->beginFrame();
 		CommandList& commands = frame.commandList();
@@ -317,15 +432,15 @@ protected:
 		commands.pushConstants(TexelConstants {
 			.destination = device->getBufferAddress(readback),
 			.texture     = device->getTextureIndex(image),
-			.width       = TEXTURE_EXTENT.width,
-			.count       = TEXEL_COUNT
+			.width       = extent.width,
+			.count       = count
 		});
-		commands.dispatch(GroupCount(TEXEL_COUNT));
+		commands.dispatch(GroupCount(count));
 		device->endFrame(frame);
 		device->waitIdle();
 
 		const std::span<const std::byte> bytes = device->readBuffer(readback);
-		std::vector<glm::vec4>           texels(TEXEL_COUNT);
+		std::vector<glm::vec4>           texels(count);
 		std::memcpy(texels.data(), bytes.data(), texels.size() * sizeof(glm::vec4));
 
 		device->destroyBuffer(readback);
@@ -1083,4 +1198,328 @@ TEST(RenderDeviceLifetime, DestroyingDeviceReleasesLiveResources)
 	EXPECT_NE(depth,   ImageHandle {});
 
 	owned_device.reset();
+}
+
+namespace
+{
+	constexpr size_t TEST_INSTANCE_COUNT  = 3;
+	constexpr float  DECORATION_TOLERANCE = 1e-3f;
+}
+
+TEST_F(RenderDeviceTest, InstanceSetsAreCreatedAndReleased)
+{
+	MeshRegistry                                       registry(*device);
+	const std::array<InstanceData, TEST_INSTANCE_COUNT> instances = {};
+	const InstanceSetHandle                            set       = registry.createInstances(instances);
+
+	ASSERT_NE(registry.get(set), nullptr);
+	EXPECT_EQ(registry.get(set)->count, TEST_INSTANCE_COUNT);
+	EXPECT_NE(registry.get(set)->address, 0u);
+	EXPECT_EQ(registry.getInstanceSetCount(), 1u);
+
+	registry.destroy(set);
+	EXPECT_EQ(registry.get(set), nullptr);
+	EXPECT_EQ(registry.getInstanceSetCount(), 0u);
+	EXPECT_EQ(registry.createInstances({}), InstanceSetHandle {}) << "an empty set has nothing to draw";
+}
+
+TEST_F(RenderDeviceTest, DecorationLibraryLoadsModelsAndReleasesThem)
+{
+	const TemporaryDirectory              directory;
+	MeshRegistry                          registry(*device);
+	const lunar::World::DecorationCatalog catalog = WriteTestCatalog(directory.getPath());
+	{
+		const lunar::World::DecorationLibrary library(registry, catalog, directory.getPath());
+
+		ASSERT_EQ(library.size(), DECORATION_KINDS);
+		EXPECT_NE(library.find(SOLID_KIND)->lods.front().mesh, MeshHandle {});
+		EXPECT_EQ(library.find(SOLID_KIND)->colliders.size(), 1u);
+		EXPECT_EQ(library.indexOf("test:breakable"), std::optional<lunar::World::DecorationKind>(BREAKABLE_KIND));
+		EXPECT_EQ(registry.size(), DECORATION_KINDS);
+	}
+
+	EXPECT_EQ(registry.size(), 0u) << "the library releases its meshes";
+}
+
+TEST_F(RenderDeviceTest, DecorationsAreBatchedPerChunkAndKind)
+{
+	DecorationHarness harness(*device);
+	harness.load({});
+
+	EXPECT_EQ(CountComponents<lunar::InstanceBatch>(harness.world.scene), CHUNKS_WITHIN_RADIUS * DECORATION_KINDS);
+	EXPECT_EQ(harness.world.registry.getInstanceSetCount(),                CHUNKS_WITHIN_RADIUS * DECORATION_KINDS);
+	EXPECT_EQ(harness.decorations.getInstanceCount(),                      CHUNKS_WITHIN_RADIUS * DECORATION_KINDS);
+}
+
+TEST_F(RenderDeviceTest, UnloadedChunksReleaseTheirDecorations)
+{
+	DecorationHarness harness(*device);
+	harness.load({});
+
+	harness.world.prepareRegions(FAR_AWAY_FOCUS);
+	harness.world.terrain.update(FAR_AWAY_FOCUS);
+	harness.update({});
+
+	EXPECT_EQ(harness.decorations.getInstanceCount(),                      0u);
+	EXPECT_EQ(harness.world.registry.getInstanceSetCount(),                0u);
+	EXPECT_EQ(CountComponents<lunar::InstanceBatch>(harness.world.scene), 0u);
+}
+
+TEST_F(RenderDeviceTest, RefreshedChunksRebuildTheirDecorations)
+{
+	DecorationHarness harness(*device);
+	harness.load({});
+
+	harness.world.terrain.refresh(std::span(&ORIGIN_CHUNK, 1));
+	FinishJobs(harness.world.jobs);
+	harness.update({});
+
+	EXPECT_EQ(harness.decorations.getInstanceCount(),       CHUNKS_WITHIN_RADIUS * DECORATION_KINDS);
+	EXPECT_EQ(harness.world.registry.getInstanceSetCount(), CHUNKS_WITHIN_RADIUS * DECORATION_KINDS) << "the replaced chunk's instances are released";
+}
+
+TEST_F(RenderDeviceTest, BreakablesNearAFocusArePromotedUntilItLeaves)
+{
+	DecorationHarness harness(*device);
+	harness.load({});
+
+	const lunar::World::DecorationId id    = DecorationIdOf(ORIGIN_CHUNK, BREAKABLE_KIND);
+	const glm::vec3                  focus = harness.spotOf(ORIGIN_CHUNK, BREAKABLE_KIND);
+	harness.update(std::span(&focus, 1));
+
+	EXPECT_EQ(harness.decorations.getPromotedCount(),                           1u);
+	EXPECT_EQ(CountComponents<lunar::Physics::RigidBody>(harness.world.scene), 1u);
+	EXPECT_FALSE(harness.holds(ORIGIN_CHUNK, id)) << "promoted decorations leave their batch";
+
+	harness.update({});
+
+	EXPECT_EQ(harness.decorations.getPromotedCount(),                                     0u);
+	EXPECT_EQ(CountComponents<lunar::World::PromotedDecoration>(harness.world.scene), 0u);
+	EXPECT_TRUE(harness.holds(ORIGIN_CHUNK, id)) << "untouched decorations return to their batch";
+}
+
+TEST_F(RenderDeviceTest, MovedDecorationsAreRememberedWhereTheyEndUp)
+{
+	DecorationHarness harness(*device);
+	harness.load({});
+
+	const lunar::World::DecorationId id       = DecorationIdOf(ORIGIN_CHUNK, SOLID_KIND);
+	std::optional<lunar::GameObject> promoted = harness.decorations.promote(ORIGIN_CHUNK, id);
+	ASSERT_TRUE(promoted.has_value());
+
+	const glm::vec3 destination = promoted->getTransform().position + PUSH_ACROSS;
+	promoted->getTransform().position = destination;
+	harness.update({});
+
+	EXPECT_FALSE(harness.holds(ORIGIN_CHUNK, id));
+	EXPECT_TRUE(harness.holds(NEXT_CHUNK, id)) << "the decoration rests in the chunk it was pushed into";
+
+	lunar::World::DecorationWorld reloaded(harness.world.scene, harness.world.registry, harness.library, harness.world.settings, harness.world.directory.getPath() / CHANGES_FOLDER);
+	reloaded.update({});
+
+	const std::span<const lunar::World::DecorationInstance> next  = reloaded.findInstances(NEXT_CHUNK);
+	const auto                                              found = std::ranges::find(next, id, &lunar::World::DecorationInstance::id);
+	ASSERT_NE(found, next.end()) << "a fresh world reads the change back from disk";
+	EXPECT_NEAR(glm::distance(lunar::World::SceneChunkOrigin(harness.world.scene, NEXT_CHUNK, harness.world.settings) + found->position, destination), 0.f, DECORATION_TOLERANCE);
+	EXPECT_EQ(std::ranges::find(reloaded.findInstances(ORIGIN_CHUNK), id, &lunar::World::DecorationInstance::id), reloaded.findInstances(ORIGIN_CHUNK).end());
+}
+
+TEST_F(RenderDeviceTest, SolidDecorationsCollideOnlyNearAFocus)
+{
+	constexpr float RAY_HEIGHT         = 50.f;
+	constexpr float COLLIDER_TOLERANCE = 0.05f;
+
+	DecorationHarness harness(*device);
+	harness.load({});
+
+	const glm::vec3 spot  = harness.spotOf(ORIGIN_CHUNK, SOLID_KIND);
+	const glm::vec3 above = spot + glm::vec3(0.f, RAY_HEIGHT, 0.f);
+	const glm::vec3 below = spot - glm::vec3(0.f, RAY_HEIGHT, 0.f);
+	EXPECT_FALSE(lunar::Physics::CastRay(harness.world.scene, above, below, lunar::Physics::PROP_CATEGORY).has_value()) << "colliders only exist near a focus";
+
+	harness.update(std::span(&spot, 1));
+
+	const std::optional<lunar::Physics::RaycastHit> hit = lunar::Physics::CastRay(harness.world.scene, above, below, lunar::Physics::PROP_CATEGORY);
+	ASSERT_TRUE(hit.has_value());
+	EXPECT_NEAR(hit->point.y, spot.y + TestModel {}.halfExtent, COLLIDER_TOLERANCE) << "the hull sits where the decoration is drawn";
+}
+
+TEST_F(RenderDeviceTest, RenderedImagesCanBeSampledAfterwards)
+{
+	constexpr Extent2D   TARGET_EXTENT     = { 16, 16 };
+	constexpr glm::uvec2 INSIDE_NEAR_BASE  = { 5, 11 };
+	constexpr glm::uvec2 OUTSIDE_NEAR_APEX = { 5, 4 };
+
+	const std::vector<char> vertex_shader   = LoadShader("triangle.vert");
+	const std::vector<char> fragment_shader = LoadShader("white.frag");
+
+	for (const Format color_format : { Format::eRGBA8Unorm, Format::eR32Float })
+	{
+		const ImageHandle color = device->createImage({
+			.extent = TARGET_EXTENT,
+			.format = color_format,
+			.usage  = ImageUsageFlags(ImageUsageFlagBits::eColorAttachment) | ImageUsageFlagBits::eSampled
+		});
+		const PipelineHandle pipeline = device->createGraphicsPipeline({
+			.vertexShader   = std::as_bytes(std::span(vertex_shader)),
+			.fragmentShader = std::as_bytes(std::span(fragment_shader)),
+			.colorFormats   = std::span(&color_format, 1)
+		});
+		ASSERT_NE(color,    ImageHandle {});
+		ASSERT_NE(pipeline, PipelineHandle {});
+
+		const ColorAttachment color_attachment = { .image = color };
+
+		Frame&       frame    = device->beginFrame();
+		CommandList& commands = frame.commandList();
+		commands.beginRendering({ .colorAttachments = std::span(&color_attachment, 1) });
+		commands.bindPipeline(pipeline);
+		commands.draw(TRIANGLE_VERTICES);
+		commands.endRendering();
+		commands.prepareSampling(color);
+		device->endFrame(frame);
+
+		const std::vector<glm::vec4> texels = fetchTexels(color, TARGET_EXTENT);
+		const auto                   at     = [&](glm::uvec2 texel) { return texels[texel.y * TARGET_EXTENT.width + texel.x].r; };
+
+		EXPECT_FLOAT_EQ(at(INSIDE_NEAR_BASE),  1.f) << "positive clip space Y lands in the top rows";
+		EXPECT_FLOAT_EQ(at(OUTSIDE_NEAR_APEX), 0.f);
+
+		device->destroyPipeline(pipeline);
+		device->destroyImage(color);
+	}
+}
+
+TEST_F(RenderDeviceTest, TonemappingKeepsBaseColorsAndCompressesHighlights)
+{
+	constexpr Extent2D SCENE_EXTENT      = { 2, 1 };
+	constexpr Format   SCENE_FORMAT      = Format::eRGBA32Float;
+	constexpr float    EXPOSURE          = 2.f;
+	constexpr float    START_COMPRESSION = 0.8f;
+	constexpr float    COLOR_TOLERANCE   = 1e-5f;
+	constexpr size_t   BASE_TEXEL        = 0;
+	constexpr size_t   HIGHLIGHT_TEXEL   = 1;
+
+	const std::array<glm::vec4, 2> scene_texels    = { glm::vec4(0.3f, 0.2f, 0.1f, 1.f), glm::vec4(8.f, 4.f, 2.f, 1.f) };
+	const std::vector<char>        vertex_shader   = LoadShader("fullscreen.vert", LUNAR_ENGINE_SHADER_DIR);
+	const std::vector<char>        fragment_shader = LoadShader("tonemap.frag",    LUNAR_ENGINE_SHADER_DIR);
+
+	const ImageHandle scene  = device->createImage({ .extent = SCENE_EXTENT, .format = SCENE_FORMAT, .usage = ImageUsageFlags(ImageUsageFlagBits::eSampled) });
+	const ImageHandle target = device->createImage({
+		.extent = SCENE_EXTENT,
+		.format = SCENE_FORMAT,
+		.usage  = ImageUsageFlags(ImageUsageFlagBits::eColorAttachment) | ImageUsageFlagBits::eSampled
+	});
+	const PipelineHandle pipeline = device->createGraphicsPipeline({
+		.vertexShader   = std::as_bytes(std::span(vertex_shader)),
+		.fragmentShader = std::as_bytes(std::span(fragment_shader)),
+		.colorFormats   = std::span(&SCENE_FORMAT, 1)
+	});
+	ASSERT_NE(pipeline, PipelineHandle {});
+
+	device->uploadImage(scene, std::as_bytes(std::span(scene_texels)));
+
+	const ColorAttachment target_attachment = { .image = target };
+
+	Frame&       frame    = device->beginFrame();
+	CommandList& commands = frame.commandList();
+	commands.beginRendering({ .colorAttachments = std::span(&target_attachment, 1) });
+	commands.bindPipeline(pipeline);
+	commands.pushConstants(TonemapConstants { device->getTextureIndex(scene), EXPOSURE });
+	commands.draw(TRIANGLE_VERTICES);
+	commands.endRendering();
+	commands.prepareSampling(target);
+	device->endFrame(frame);
+
+	const std::vector<glm::vec4> texels    = fetchTexels(target, SCENE_EXTENT);
+	const glm::vec3              base      = texels[BASE_TEXEL];
+	const glm::vec3              highlight = texels[HIGHLIGHT_TEXEL];
+	const glm::vec3              exposed   = glm::vec3(scene_texels[BASE_TEXEL]) * EXPOSURE;
+
+	EXPECT_NEAR(base.r, exposed.r, COLOR_TOLERANCE) << "base colors below the shoulder stay as authored";
+	EXPECT_NEAR(base.g, exposed.g, COLOR_TOLERANCE);
+	EXPECT_NEAR(base.b, exposed.b, COLOR_TOLERANCE);
+	EXPECT_GT(highlight.r, START_COMPRESSION);
+	EXPECT_LT(highlight.r, 1.f) << "highlights are compressed below white";
+	EXPECT_GT(highlight.r, highlight.g);
+	EXPECT_GT(highlight.g, highlight.b) << "compression keeps the hue order";
+
+	device->destroyPipeline(pipeline);
+	device->destroyImage(target);
+	device->destroyImage(scene);
+}
+
+TEST_F(RenderDeviceTest, LodFadesSplitEverySampleBetweenTwoLevels)
+{
+	constexpr Extent2D FADE_EXTENT   = { 16, 16 };
+	constexpr Format   FADE_FORMAT   = Format::eRGBA16Float;
+	constexpr uint32_t SINGLE_SAMPLE = 1;
+	constexpr float    PROGRESS      = 0.3f;
+	constexpr float    FADED_IN      = 1.f;
+	constexpr float    FADED_OUT     = 0.f;
+	constexpr float    DITHER_STEP   = 1.f / 16.f;
+
+	const glm::vec2         near_level      = { FADED_IN, PROGRESS };
+	const glm::vec2         far_level       = { PROGRESS, FADED_OUT };
+	const std::vector<char> vertex_shader   = LoadShader("fullscreen.vert", LUNAR_ENGINE_SHADER_DIR);
+	const std::vector<char> fragment_shader = LoadShader("lod_fade_coverage.frag");
+
+	for (const uint32_t samples : { SINGLE_SAMPLE, GUARANTEED_SAMPLES })
+	{
+		SCOPED_TRACE(testing::Message() << samples << " samples");
+
+		const bool        multisampled = samples > SINGLE_SAMPLE;
+		const ImageHandle resolved     = device->createImage({
+			.extent = FADE_EXTENT,
+			.format = FADE_FORMAT,
+			.usage  = ImageUsageFlags(ImageUsageFlagBits::eColorAttachment) | ImageUsageFlagBits::eSampled
+		});
+		const ImageHandle samples_image = multisampled
+			? device->createImage({ .extent = FADE_EXTENT, .format = FADE_FORMAT, .usage = ImageUsageFlags(ImageUsageFlagBits::eColorAttachment), .samples = samples })
+			: ImageHandle {};
+		const PipelineHandle pipeline = device->createGraphicsPipeline({
+			.vertexShader   = std::as_bytes(std::span(vertex_shader)),
+			.fragmentShader = std::as_bytes(std::span(fragment_shader)),
+			.colorFormats   = std::span(&FADE_FORMAT, 1),
+			.blendMode      = BlendMode::eAdditive,
+			.samples        = samples
+		});
+		ASSERT_NE(pipeline, PipelineHandle {});
+
+		const auto render = [&](std::initializer_list<glm::vec2> fades) {
+			const ColorAttachment attachment = { .image = multisampled ? samples_image : resolved, .resolveImage = multisampled ? resolved : ImageHandle {} };
+
+			Frame&       frame    = device->beginFrame();
+			CommandList& commands = frame.commandList();
+			commands.beginRendering({ .colorAttachments = std::span(&attachment, 1) });
+			commands.bindPipeline(pipeline);
+			for (const glm::vec2& fade : fades)
+			{
+				commands.pushConstants(fade);
+				commands.draw(TRIANGLE_VERTICES);
+			}
+			commands.endRendering();
+			commands.prepareSampling(resolved);
+			device->endFrame(frame);
+
+			return fetchTexels(resolved, FADE_EXTENT);
+		};
+
+		for (const glm::vec4& texel : render({ near_level, far_level }))
+			EXPECT_FLOAT_EQ(texel.r, 1.f) << "both levels together cover every sample exactly once";
+
+		const std::vector<glm::vec4> far_only = render({ far_level });
+		float                        coverage = 0.f;
+		for (const glm::vec4& texel : far_only)
+		{
+			EXPECT_LE(std::abs(texel.r - PROGRESS), 1.f / static_cast<float>(samples)) << "samples of a pixel are spread over the whole fade";
+			coverage += texel.r / static_cast<float>(far_only.size());
+		}
+
+		EXPECT_NEAR(coverage, PROGRESS, DITHER_STEP) << "the fading in level covers as much as its progress";
+
+		device->destroyPipeline(pipeline);
+		device->destroyImage(samples_image);
+		device->destroyImage(resolved);
+	}
 }

@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <array>
 #include <optional>
+#include <vector>
 
 using namespace lunar::Physics;
 
@@ -411,4 +412,78 @@ TEST(RaycastVehicle, SteeringRollsAnOverturnedVehicleBackUpright)
 
 	EXPECT_LT(uprightness_after_steering(0.f), 0.f) << "without self-righting the vehicle stays on its roof";
 	EXPECT_GT(uprightness_after_steering(SELF_RIGHTING), UPRIGHT);
+}
+
+namespace
+{
+	constexpr float HULL_HALF_EXTENT = 0.5f;
+	constexpr float HULL_DROP_HEIGHT = 3.f;
+	constexpr float REST_TOLERANCE   = 0.06f;
+	constexpr float IMPACT_SPEED     = 10.f;
+	constexpr float IMPACT_DISTANCE  = 4.f;
+	constexpr float KNOCKED_DISTANCE = 0.2f;
+	constexpr int   IMPACT_STEPS     = 120;
+
+	std::vector<glm::vec3> HullCorners()
+	{
+		std::vector<glm::vec3> corners;
+		for (const float x : { -HULL_HALF_EXTENT, HULL_HALF_EXTENT })
+			for (const float y : { -HULL_HALF_EXTENT, HULL_HALF_EXTENT })
+				for (const float z : { -HULL_HALF_EXTENT, HULL_HALF_EXTENT })
+					corners.push_back({ x, y, z });
+
+		return corners;
+	}
+
+	void Step(lunar::Scene& scene, int steps)
+	{
+		for (int step = 0; step < steps; step++)
+			scene.physicsUpdate(STEP);
+	}
+}
+
+TEST(RigidBody, ConvexHullsRestOnTheGround)
+{
+	lunar::Scene                 scene;
+	RigidBody                    ground  = CreateGround(scene);
+	const std::vector<glm::vec3> corners = HullCorners();
+	const ShapeDesc              hull    = { .geometry = ConvexHullDesc { corners }, .category = PROP_CATEGORY };
+	RigidBody                    body(scene, { .position = UP * HULL_DROP_HEIGHT, .type = BodyType::eDynamic, .shapes = { &hull, 1 } });
+
+	Step(scene, SETTLE_STEPS);
+
+	EXPECT_NEAR(body.getPosition().y, HULL_HALF_EXTENT, REST_TOLERANCE);
+}
+
+TEST(RigidBody, BodiesStartingAsleepWaitUntilSomethingHitsThem)
+{
+	lunar::Scene                 scene;
+	RigidBody                    ground  = CreateGround(scene);
+	const std::vector<glm::vec3> corners = HullCorners();
+	const ShapeDesc              hull    = { .geometry = ConvexHullDesc { corners }, .category = PROP_CATEGORY };
+	const glm::vec3              resting = UP * HULL_HALF_EXTENT;
+	RigidBody                    prop(scene, { .position = resting, .type = BodyType::eDynamic, .shapes = { &hull, 1 }, .startAsleep = true });
+
+	Step(scene, SETTLE_STEPS);
+	EXPECT_EQ(prop.getPosition(), resting) << "a sleeping prop stays exactly where it was placed";
+
+	RigidBody projectile(scene, { .position = resting - FORWARD * IMPACT_DISTANCE, .type = BodyType::eDynamic, .shapes = { &hull, 1 } });
+	projectile.setLinearVelocity(FORWARD * IMPACT_SPEED);
+	Step(scene, IMPACT_STEPS);
+
+	EXPECT_GT(glm::distance(prop.getPosition(), resting), KNOCKED_DISTANCE) << "a hit wakes the prop up";
+}
+
+TEST(RigidBody, ConvexHullsReportTheirCategoryToRays)
+{
+	lunar::Scene                 scene;
+	const std::vector<glm::vec3> corners = HullCorners();
+	const ShapeDesc              hull    = { .geometry = ConvexHullDesc { corners }, .category = PROP_CATEGORY };
+	RigidBody                    prop(scene, { .shapes = { &hull, 1 } });
+
+	const std::optional<RaycastHit> hit = CastRay(scene, UP * RAY_START, -UP * RAY_START, PROP_CATEGORY);
+	ASSERT_TRUE(hit.has_value());
+	EXPECT_EQ(hit->category, PROP_CATEGORY);
+	EXPECT_NEAR(hit->point.y, HULL_HALF_EXTENT, REST_TOLERANCE);
+	EXPECT_FALSE(CastRay(scene, UP * RAY_START, -UP * RAY_START, TERRAIN_CATEGORY).has_value());
 }

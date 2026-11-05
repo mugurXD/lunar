@@ -143,7 +143,7 @@ namespace lunar::Render::imp
 				return VK_FALSE;
 			})
 			.set_debug_callback_user_data_pointer(&validationErrorCount)
-			.request_validation_layers(true)
+			.request_validation_layers(settings.validation)
 			.require_api_version(1, 3)
 			.build();
 
