@@ -74,6 +74,14 @@ namespace lunar
 		float     intensity   = 0.3f;
 	};
 
+	struct LUNAR_API AmbientOcclusion
+	{
+		float radius          = 3.f;
+		float intensity       = 2.f;
+		float distance        = 300.f;
+		float resolutionScale = 0.5f;
+	};
+
 	struct LUNAR_API DistanceFog
 	{
 		glm::vec3 color         = { 0.6f, 0.745f, 0.76f };

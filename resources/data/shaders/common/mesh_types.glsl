@@ -35,4 +35,6 @@ layout(buffer_reference, std430) readonly buffer SceneData
 	vec4          fogRange;
 	ShadowCascade shadowCascades[SHADOW_CASCADE_COUNT];
 	vec4          shadowRange;
+	vec2          screenTexelSize;
+	uint          ambientOcclusion;
 };

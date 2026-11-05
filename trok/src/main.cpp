@@ -409,6 +409,7 @@ int main(int argc, char* argv[])
 	GameObject  sky           = scene.createGameObject("Sky");
 	sky->addComponent<DistanceFog>(SKY_COLOR, view_distance * FOG_START_FRACTION, view_distance * FOG_END_FRACTION);
 	sky->addComponent<SkyLight>(SKY_COLOR, GROUND_BOUNCE_COLOR, SKY_LIGHT_INTENSITY);
+	sky->addComponent<AmbientOcclusion>();
 
 	window.registerAction("toggle_menu",        { { "keyboard.esc" } });
 	window.registerAction("sprint",             { { "keyboard.shift" }, { "gamepad.ls" } });

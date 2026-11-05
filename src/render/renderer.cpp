@@ -7,8 +7,11 @@
 #include <lunar/core/scene.hpp>
 #include <lunar/debug.hpp>
 
+#include <glm/gtc/matrix_transform.hpp>
+
 #include <algorithm>
 #include <bit>
+#include <cmath>
 #include <iterator>
 #include <span>
 #include <string_view>
@@ -22,10 +25,13 @@ namespace lunar::Render
 
 		constexpr Format    DEPTH_FORMAT            = Format::eD32Float;
 		constexpr Format    HDR_FORMAT              = Format::eRGBA16Float;
-		constexpr Format    SHADOW_MAP_FORMAT       = Format::eR32Float;
+		constexpr Format    DEPTH_TEXTURE_FORMAT    = Format::eR32Float;
+		constexpr Format    OCCLUSION_FORMAT        = Format::eR32Float;
 		constexpr uint32_t  SHADOW_MAP_RESOLUTION   = 2048;
 		constexpr Extent2D  SHADOW_MAP_EXTENT       = { SHADOW_MAP_RESOLUTION, SHADOW_MAP_RESOLUTION };
 		constexpr float     SHADOW_FADE_START       = 0.9f;
+		constexpr float     OCCLUSION_FADE_START    = 0.8f;
+		constexpr uint32_t  MIN_TARGET_SIZE         = 1;
 		constexpr float     REVERSE_Z_CLEAR_DEPTH   = 0.f;
 		constexpr CompareOp REVERSE_Z_DEPTH_COMPARE = CompareOp::eGreater;
 		constexpr uint32_t  SINGLE_SAMPLE           = 1;
@@ -39,6 +45,8 @@ namespace lunar::Render
 		constexpr std::string_view SHADOW_FRAGMENT_SHADER   = "shadow.frag";
 		constexpr std::string_view INSTANCED_FADE_SHADER    = "instanced_fade.frag";
 		constexpr std::string_view SHADOW_FADE_SHADER       = "shadow_fade.frag";
+		constexpr std::string_view OCCLUSION_SHADER         = "ambient_occlusion.frag";
+		constexpr std::string_view OCCLUSION_BLUR_SHADER    = "ambient_occlusion_blur.frag";
 		constexpr uint32_t         FULLSCREEN_VERTEX_COUNT  = 3;
 		constexpr size_t           STD430_MATRIX_ALIGN      = 16;
 
@@ -61,8 +69,10 @@ namespace lunar::Render
 			glm::vec4                                           cameraPosition = {};
 			glm::vec4                                           fogColor       = {};
 			glm::vec4                                           fogRange       = {};
-			std::array<ShadowCascadeData, SHADOW_CASCADE_COUNT> shadowCascades = {};
-			glm::vec4                                           shadowRange    = {};
+			std::array<ShadowCascadeData, SHADOW_CASCADE_COUNT> shadowCascades   = {};
+			glm::vec4                                           shadowRange      = {};
+			glm::vec2                                           screenTexelSize  = {};
+			uint32_t                                            ambientOcclusion = INVALID_TEXTURE_INDEX;
 		};
 
 		struct DrawData
@@ -100,6 +110,18 @@ namespace lunar::Render
 			float    exposure     = 1.f;
 		};
 
+		struct AmbientOcclusionConstants
+		{
+			glm::vec2 tanHalfFov       = {};
+			glm::vec2 texelSize        = {};
+			glm::vec2 fadeRange        = {};
+			float     nearPlane        = 0.f;
+			float     radius           = 0.f;
+			float     intensity        = 0.f;
+			uint32_t  depthTexture     = 0;
+			uint32_t  occlusionTexture = 0;
+		};
+
 		struct MeshInstance
 		{
 			const Mesh* mesh = nullptr;
@@ -123,14 +145,44 @@ namespace lunar::Render
 			return camera.getProjectionMatrix(static_cast<int>(extent.width), static_cast<int>(extent.height)) * camera.getViewMatrix();
 		}
 
+		// The camera projection is reverse Z with an infinite far plane, so culling at a distance needs a finite reverse Z projection, which swaps near and far.
+		glm::mat4 BoundedViewProjection(const Camera& camera, float aspect_ratio, float far_distance)
+		{
+			return glm::perspectiveRH_ZO(glm::radians(camera.fov), aspect_ratio, far_distance, camera.nearPlane) * camera.getViewMatrix();
+		}
+
+		float AspectRatio(Extent2D extent)
+		{
+			return static_cast<float>(extent.width) / static_cast<float>(extent.height);
+		}
+
+		Extent2D ScaleExtent(Extent2D extent, float scale)
+		{
+			const auto scaled = [scale](uint32_t size) {
+				return std::max(MIN_TARGET_SIZE, static_cast<uint32_t>(std::ceil(static_cast<float>(size) * scale)));
+			};
+
+			return { scaled(extent.width), scaled(extent.height) };
+		}
+
+		void DestroyImages(RenderDevice& device, std::initializer_list<ImageHandle*> images)
+		{
+			for (ImageHandle* image : images)
+			{
+				device.destroyImage(*image);
+				*image = {};
+			}
+		}
+
 		SceneData BuildSceneData(Scene& scene, const Camera& camera, Extent2D extent)
 		{
 			SceneData scene_data =
 			{
-				.viewProjection = ViewProjection(camera, extent),
-				.skyColor       = AMBIENT_COLOR,
-				.groundColor    = AMBIENT_COLOR,
-				.cameraPosition = glm::vec4(camera.position, 1.f)
+				.viewProjection  = ViewProjection(camera, extent),
+				.skyColor        = AMBIENT_COLOR,
+				.groundColor     = AMBIENT_COLOR,
+				.cameraPosition  = glm::vec4(camera.position, 1.f),
+				.screenTexelSize = 1.f / glm::vec2(extent.width, extent.height)
 			};
 
 			if (const DirectionalLight* light = FindFirst<DirectionalLight>(scene))
@@ -183,6 +235,31 @@ namespace lunar::Render
 			commands.bindIndexBuffer(mesh.indexBuffer, 0, IndexType::eUint32);
 			commands.drawIndexed(mesh.indexCount, static_cast<uint32_t>(draws.size()));
 		}
+
+		PipelineHandle CreateFullscreenPipeline(RenderDevice& device, std::string_view fragment_shader_name, Format target_format)
+		{
+			const std::vector<char> vertex_shader   = LoadShader(FULLSCREEN_VERTEX_SHADER);
+			const std::vector<char> fragment_shader = LoadShader(fragment_shader_name);
+
+			return device.createGraphicsPipeline({
+				.vertexShader   = std::as_bytes(std::span(vertex_shader)),
+				.fragmentShader = std::as_bytes(std::span(fragment_shader)),
+				.colorFormats   = std::span(&target_format, 1)
+			});
+		}
+
+		template<typename T>
+		void DrawFullscreen(CommandList& commands, PipelineHandle pipeline, ImageHandle target, const T& constants)
+		{
+			const ColorAttachment attachment = { .image = target, .loadOp = LoadOp::eClear };
+
+			commands.beginRendering({ .colorAttachments = std::span(&attachment, 1) });
+			commands.bindPipeline(pipeline);
+			commands.pushConstants(constants);
+			commands.draw(FULLSCREEN_VERTEX_COUNT);
+			commands.endRendering();
+			commands.prepareSampling(target);
+		}
 	}
 
 	Renderer::Renderer(RenderDevice& device, Swapchain* swapchain, uint32_t samples) noexcept
@@ -201,7 +278,7 @@ namespace lunar::Render
 		cubeMesh = meshes.create(CreateCubeMeshData());
 		setSamples(samples);
 		defaultMaterial = createMaterial({ .vertexShader = DEFAULT_VERTEX_SHADER, .fragmentShader = DEFAULT_FRAGMENT_SHADER });
-		createTonemapPipeline();
+		createFullscreenPipelines();
 	}
 
 	Renderer::~Renderer() noexcept
@@ -214,6 +291,8 @@ namespace lunar::Render
 			destroyPipelines(material);
 		});
 		device.destroyPipeline(tonemapPipeline);
+		device.destroyPipeline(occlusionPipeline);
+		device.destroyPipeline(occlusionBlurPipeline);
 
 		for (const ImageHandle shadow_map : shadowMaps)
 			device.destroyImage(shadow_map);
@@ -286,8 +365,11 @@ namespace lunar::Render
 
 		GraphicsPipelineDesc shadow_desc = mesh_desc;
 		shadow_desc.fragmentShader = std::as_bytes(std::span(shadow_shader));
-		shadow_desc.colorFormats   = std::span(&SHADOW_MAP_FORMAT, 1);
+		shadow_desc.colorFormats   = std::span(&DEPTH_TEXTURE_FORMAT, 1);
 		shadow_desc.samples        = SINGLE_SAMPLE;
+
+		// The depth prepass has to cover exactly what the main pass shows, so it keeps back face culling.
+		GraphicsPipelineDesc depth_desc = shadow_desc;
 
 		// Single sided meshes still have to block the sun when it shines on their back.
 		shadow_desc.cullMode = CullMode::eNone;
@@ -295,32 +377,29 @@ namespace lunar::Render
 		material.opaquePipeline      = device.createGraphicsPipeline(mesh_desc);
 		material.translucentPipeline = device.createGraphicsPipeline(translucent_desc);
 		material.shadowPipeline      = device.createGraphicsPipeline(shadow_desc);
+		material.depthPipeline       = device.createGraphicsPipeline(depth_desc);
 	}
 
 	void Renderer::destroyPipelines(Material& material)
 	{
+		device.destroyPipeline(material.depthPipeline);
 		device.destroyPipeline(material.shadowPipeline);
 		device.destroyPipeline(material.translucentPipeline);
 		device.destroyPipeline(material.opaquePipeline);
+		material.depthPipeline       = {};
 		material.shadowPipeline      = {};
 		material.translucentPipeline = {};
 		material.opaquePipeline      = {};
 	}
 
-	void Renderer::createTonemapPipeline()
+	void Renderer::createFullscreenPipelines()
 	{
 		if (swapchain == nullptr)
 			return;
 
-		const std::vector<char> vertex_shader   = LoadShader(FULLSCREEN_VERTEX_SHADER);
-		const std::vector<char> fragment_shader = LoadShader(TONEMAP_FRAGMENT_SHADER);
-		const Format            target_format   = swapchain->getFormat();
-
-		tonemapPipeline = device.createGraphicsPipeline({
-			.vertexShader   = std::as_bytes(std::span(vertex_shader)),
-			.fragmentShader = std::as_bytes(std::span(fragment_shader)),
-			.colorFormats   = std::span(&target_format, 1)
-		});
+		tonemapPipeline       = CreateFullscreenPipeline(device, TONEMAP_FRAGMENT_SHADER, swapchain->getFormat());
+		occlusionPipeline     = CreateFullscreenPipeline(device, OCCLUSION_SHADER, OCCLUSION_FORMAT);
+		occlusionBlurPipeline = CreateFullscreenPipeline(device, OCCLUSION_BLUR_SHADER, OCCLUSION_FORMAT);
 	}
 
 	void Renderer::render(Scene& scene, UI::UiLayer* ui, ImGuiLayer* debug_ui)
@@ -387,20 +466,15 @@ namespace lunar::Render
 
 	void Renderer::destroyTargets()
 	{
-		device.destroyImage(colorImage);
-		device.destroyImage(hdrImage);
-		device.destroyImage(depthImage);
-		colorImage = {};
-		hdrImage   = {};
-		depthImage = {};
+		DestroyImages(device, { &colorImage, &hdrImage, &depthImage, &prepassDepthImage, &viewDepthImage, &rawOcclusionImage, &occlusionImage });
 	}
 
 	void Renderer::recordFrame(Frame& frame, Scene& scene, Extent2D extent)
 	{
-		CommandList&       commands      = frame.commandList();
-		const DistanceFog* fog           = FindFirst<DistanceFog>(scene);
-		const Camera*      camera        = scene.getMainCamera();
-		const uint64_t     scene_address = camera != nullptr ? prepareSceneData(frame, scene, *camera, extent) : 0;
+		CommandList&         commands  = frame.commandList();
+		const DistanceFog*   fog       = FindFirst<DistanceFog>(scene);
+		const Camera*        camera    = scene.getMainCamera();
+		const SceneAddresses addresses = camera != nullptr ? prepareSceneData(frame, scene, *camera, extent) : SceneAddresses {};
 
 		const bool            multisampled     = colorImage != ImageHandle {};
 		const ColorAttachment color_attachment =
@@ -423,42 +497,41 @@ namespace lunar::Render
 			.depthAttachment  = depth_attachment
 		});
 
-		if (scene_address != 0)
+		if (addresses.opaque != 0 && addresses.translucent != 0)
 		{
 			const Frustum frustum(ViewProjection(*camera, extent));
-			const auto    draw_materials = [&](bool translucent) {
-				materials.forEach([&](PoolHandle<Material> handle, const Material& material) {
-					const PipelineHandle pipeline = translucent ? material.translucentPipeline : material.opaquePipeline;
-					drawMeshes(frame, scene, scene_address, frustum, ToGpuHandle<MaterialTag>(handle), pipeline, translucent);
-				});
-			};
-
-			draw_materials(false);
-			drawInstances(frame, scene, scene_address, frustum, camera->position, instancedMaterial.opaquePipeline, fadingInstancedMaterial.opaquePipeline);
-			draw_materials(true);
-			drawLines(frame, scene_address);
+			drawOpaque(frame, scene, addresses.opaque, frustum, camera->position, &Material::opaquePipeline);
+			materials.forEach([&](PoolHandle<Material> handle, const Material& material) {
+				drawMeshes(frame, scene, addresses.translucent, frustum, ToGpuHandle<MaterialTag>(handle), material.translucentPipeline, true);
+			});
+			drawLines(frame, addresses.opaque);
 		}
 
 		commands.endRendering();
 	}
 
-	uint64_t Renderer::prepareSceneData(Frame& frame, Scene& scene, const Camera& camera, Extent2D extent)
+	Renderer::SceneAddresses Renderer::prepareSceneData(Frame& frame, Scene& scene, const Camera& camera, Extent2D extent)
 	{
 		SceneData               scene_data = BuildSceneData(scene, camera, extent);
 		const DirectionalLight* light      = FindFirst<DirectionalLight>(scene);
 		const CascadedShadows*  shadows    = FindFirst<CascadedShadows>(scene);
-		if (light == nullptr || shadows == nullptr)
-			return frame.writeTransient(scene_data);
+		if (light != nullptr && shadows != nullptr)
+		{
+			const auto cascades = FitShadowCascades(camera, AspectRatio(extent), light->direction, *shadows, SHADOW_MAP_RESOLUTION);
+			recordShadows(frame, scene, camera.position, cascades);
 
-		const float aspect_ratio = static_cast<float>(extent.width) / static_cast<float>(extent.height);
-		const auto  cascades     = FitShadowCascades(camera, aspect_ratio, light->direction, *shadows, SHADOW_MAP_RESOLUTION);
-		recordShadows(frame, scene, camera.position, cascades);
+			for (size_t index = 0; index < cascades.size(); index++)
+				scene_data.shadowCascades[index] = { cascades[index].viewProjection, cascades[index].texelSize, device.getTextureIndex(shadowMaps[index]) };
 
-		for (size_t index = 0; index < cascades.size(); index++)
-			scene_data.shadowCascades[index] = { cascades[index].viewProjection, cascades[index].texelSize, device.getTextureIndex(shadowMaps[index]) };
+			scene_data.shadowRange = glm::vec4(shadows->distance * SHADOW_FADE_START, shadows->distance, 0.f, 0.f);
+		}
 
-		scene_data.shadowRange = glm::vec4(shadows->distance * SHADOW_FADE_START, shadows->distance, 0.f, 0.f);
-		return frame.writeTransient(scene_data);
+		// Translucent surfaces are missing from the depth the occlusion is traced against, so they would pick up the occlusion of whatever lies behind them.
+		const uint64_t translucent_address = frame.writeTransient(scene_data);
+		if (const AmbientOcclusion* occlusion = FindFirst<AmbientOcclusion>(scene))
+			scene_data.ambientOcclusion = recordAmbientOcclusion(frame, scene, camera, *occlusion, extent, translucent_address);
+
+		return { frame.writeTransient(scene_data), translucent_address };
 	}
 
 	void Renderer::recordShadows(Frame& frame, Scene& scene, const glm::vec3& eye, std::span<const ShadowCascade> cascades)
@@ -476,17 +549,75 @@ namespace lunar::Render
 			commands.beginRendering({ .colorAttachments = std::span(&shadow_attachment, 1), .depthAttachment = depth_attachment });
 
 			if (scene_address != 0)
-			{
-				const Frustum frustum(cascades[index].viewProjection);
-				materials.forEach([&](PoolHandle<Material> handle, const Material& material) {
-					drawMeshes(frame, scene, scene_address, frustum, ToGpuHandle<MaterialTag>(handle), material.shadowPipeline, false);
-				});
-				drawInstances(frame, scene, scene_address, frustum, eye, instancedMaterial.shadowPipeline, fadingInstancedMaterial.shadowPipeline);
-			}
+				drawOpaque(frame, scene, scene_address, Frustum(cascades[index].viewProjection), eye, &Material::shadowPipeline);
 
 			commands.endRendering();
 			commands.prepareSampling(shadowMaps[index]);
 		}
+	}
+
+	uint32_t Renderer::recordAmbientOcclusion(Frame&                  frame,
+	                                          Scene&                  scene,
+	                                          const Camera&           camera,
+	                                          const AmbientOcclusion& occlusion,
+	                                          Extent2D                extent,
+	                                          uint64_t                scene_address)
+	{
+		if (occlusionPipeline == PipelineHandle {} || occlusionBlurPipeline == PipelineHandle {} || scene_address == 0)
+			return INVALID_TEXTURE_INDEX;
+
+		const Extent2D occlusion_extent = ScaleExtent(extent, occlusion.resolutionScale);
+		if (device.getImageExtent(viewDepthImage) != occlusion_extent)
+			createOcclusionTargets(occlusion_extent);
+
+		CommandList&          commands         = frame.commandList();
+		const ColorAttachment view_depth       = { .image = viewDepthImage, .loadOp = LoadOp::eClear, .clearColor = glm::vec4(REVERSE_Z_CLEAR_DEPTH) };
+		const DepthAttachment depth_attachment = { .image = prepassDepthImage, .loadOp = LoadOp::eClear, .clearDepth = REVERSE_Z_CLEAR_DEPTH };
+		const Frustum         frustum(BoundedViewProjection(camera, AspectRatio(extent), occlusion.distance));
+
+		commands.beginRendering({ .colorAttachments = std::span(&view_depth, 1), .depthAttachment = depth_attachment });
+		drawOpaque(frame, scene, scene_address, frustum, camera.position, &Material::depthPipeline);
+		commands.endRendering();
+		commands.prepareSampling(viewDepthImage);
+
+		const glm::mat4                 projection = camera.getProjectionMatrix(static_cast<int>(extent.width), static_cast<int>(extent.height));
+		const AmbientOcclusionConstants constants  =
+		{
+			.tanHalfFov       = glm::vec2(1.f / projection[0][0], 1.f / projection[1][1]),
+			.texelSize        = 1.f / glm::vec2(occlusion_extent.width, occlusion_extent.height),
+			.fadeRange        = glm::vec2(occlusion.distance * OCCLUSION_FADE_START, occlusion.distance),
+			.nearPlane        = camera.nearPlane,
+			.radius           = occlusion.radius,
+			.intensity        = occlusion.intensity,
+			.depthTexture     = device.getTextureIndex(viewDepthImage),
+			.occlusionTexture = device.getTextureIndex(rawOcclusionImage)
+		};
+
+		DrawFullscreen(commands, occlusionPipeline, rawOcclusionImage, constants);
+		DrawFullscreen(commands, occlusionBlurPipeline, occlusionImage, constants);
+		return device.getTextureIndex(occlusionImage);
+	}
+
+	void Renderer::createOcclusionTargets(Extent2D extent)
+	{
+		DestroyImages(device, { &prepassDepthImage, &viewDepthImage, &rawOcclusionImage, &occlusionImage });
+		prepassDepthImage = device.createImage({
+			.extent = extent,
+			.format = DEPTH_FORMAT,
+			.usage  = ImageUsageFlags(ImageUsageFlagBits::eDepthAttachment)
+		});
+
+		const auto create_texture = [&](Format format) {
+			return device.createImage({
+				.extent = extent,
+				.format = format,
+				.usage  = ImageUsageFlags(ImageUsageFlagBits::eColorAttachment) | ImageUsageFlagBits::eSampled
+			});
+		};
+
+		viewDepthImage    = create_texture(DEPTH_TEXTURE_FORMAT);
+		rawOcclusionImage = create_texture(OCCLUSION_FORMAT);
+		occlusionImage    = create_texture(OCCLUSION_FORMAT);
 	}
 
 	void Renderer::createShadowTargets()
@@ -500,7 +631,7 @@ namespace lunar::Render
 		for (ImageHandle& shadow_map : shadowMaps)
 			shadow_map = device.createImage({
 				.extent = SHADOW_MAP_EXTENT,
-				.format = SHADOW_MAP_FORMAT,
+				.format = DEPTH_TEXTURE_FORMAT,
 				.usage  = ImageUsageFlags(ImageUsageFlagBits::eColorAttachment) | ImageUsageFlagBits::eSampled
 			});
 	}
@@ -528,6 +659,14 @@ namespace lunar::Render
 			debug_ui->record(commands);
 
 		commands.endRendering();
+	}
+
+	void Renderer::drawOpaque(Frame& frame, Scene& scene, uint64_t scene_address, const Frustum& frustum, const glm::vec3& eye, PipelineHandle Material::* pipeline)
+	{
+		materials.forEach([&](PoolHandle<Material> handle, const Material& material) {
+			drawMeshes(frame, scene, scene_address, frustum, ToGpuHandle<MaterialTag>(handle), material.*pipeline, false);
+		});
+		drawInstances(frame, scene, scene_address, frustum, eye, instancedMaterial.*pipeline, fadingInstancedMaterial.*pipeline);
 	}
 
 	void Renderer::drawMeshes(Frame& frame, Scene& scene, uint64_t scene_address, const Frustum& frustum, MaterialHandle material, PipelineHandle pipeline, bool translucent)

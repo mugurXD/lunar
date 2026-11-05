@@ -60,28 +60,43 @@ namespace lunar::Render
 			PipelineHandle    opaquePipeline       = {};
 			PipelineHandle    translucentPipeline  = {};
 			PipelineHandle    shadowPipeline       = {};
+			PipelineHandle    depthPipeline        = {};
 		};
 
-		void     recreatePipelines(Material& material);
-		void     createPipelines(Material& material);
-		void     destroyPipelines(Material& material);
-		void     createTonemapPipeline();
-		void     resizeTargets(Extent2D extent);
-		void     destroyTargets();
-		void     recordFrame(Frame& frame, Scene& scene, Extent2D extent);
-		uint64_t prepareSceneData(Frame& frame, Scene& scene, const Camera& camera, Extent2D extent);
-		void     recordShadows(Frame& frame, Scene& scene, const glm::vec3& eye, std::span<const ShadowCascade> cascades);
-		void     createShadowTargets();
-		void     recordComposite(Frame& frame, Scene& scene, ImageHandle target, Extent2D extent, UI::UiLayer* ui, ImGuiLayer* debug_ui);
-		void     drawMeshes(Frame& frame, Scene& scene, uint64_t scene_address, const Frustum& frustum, MaterialHandle material, PipelineHandle pipeline, bool translucent);
-		void     drawInstances(Frame&           frame,
-		                       Scene&           scene,
-		                       uint64_t         scene_address,
-		                       const Frustum&   frustum,
-		                       const glm::vec3& eye,
-		                       PipelineHandle   steady_pipeline,
-		                       PipelineHandle   fading_pipeline);
-		void     drawLines(Frame& frame, uint64_t scene_address);
+		struct SceneAddresses
+		{
+			uint64_t opaque      = 0;
+			uint64_t translucent = 0;
+		};
+
+		void           recreatePipelines(Material& material);
+		void           createPipelines(Material& material);
+		void           destroyPipelines(Material& material);
+		void           createFullscreenPipelines();
+		void           resizeTargets(Extent2D extent);
+		void           destroyTargets();
+		void           recordFrame(Frame& frame, Scene& scene, Extent2D extent);
+		SceneAddresses prepareSceneData(Frame& frame, Scene& scene, const Camera& camera, Extent2D extent);
+		void           recordShadows(Frame& frame, Scene& scene, const glm::vec3& eye, std::span<const ShadowCascade> cascades);
+		void           createShadowTargets();
+		uint32_t       recordAmbientOcclusion(Frame&                  frame,
+		                                      Scene&                  scene,
+		                                      const Camera&           camera,
+		                                      const AmbientOcclusion& occlusion,
+		                                      Extent2D                extent,
+		                                      uint64_t                scene_address);
+		void           createOcclusionTargets(Extent2D extent);
+		void           recordComposite(Frame& frame, Scene& scene, ImageHandle target, Extent2D extent, UI::UiLayer* ui, ImGuiLayer* debug_ui);
+		void           drawOpaque(Frame& frame, Scene& scene, uint64_t scene_address, const Frustum& frustum, const glm::vec3& eye, PipelineHandle Material::* pipeline);
+		void           drawMeshes(Frame& frame, Scene& scene, uint64_t scene_address, const Frustum& frustum, MaterialHandle material, PipelineHandle pipeline, bool translucent);
+		void           drawInstances(Frame&           frame,
+		                             Scene&           scene,
+		                             uint64_t         scene_address,
+		                             const Frustum&   frustum,
+		                             const glm::vec3& eye,
+		                             PipelineHandle   steady_pipeline,
+		                             PipelineHandle   fading_pipeline);
+		void           drawLines(Frame& frame, uint64_t scene_address);
 
 		RenderDevice&       device;
 		Swapchain*          swapchain       = nullptr;
@@ -101,5 +116,12 @@ namespace lunar::Render
 
 		std::array<ImageHandle, SHADOW_CASCADE_COUNT> shadowMaps       = {};
 		ImageHandle                                   shadowDepthImage = {};
+
+		PipelineHandle occlusionPipeline     = {};
+		PipelineHandle occlusionBlurPipeline = {};
+		ImageHandle    prepassDepthImage     = {};
+		ImageHandle    viewDepthImage        = {};
+		ImageHandle    rawOcclusionImage     = {};
+		ImageHandle    occlusionImage        = {};
 	};
 }
