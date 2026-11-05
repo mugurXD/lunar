@@ -39,8 +39,9 @@ namespace lunar::World
 
 	struct LUNAR_API DecorationLod
 	{
-		std::string model    = {};
-		float       distance = 0.f;
+		std::string model      = {};
+		float       distance   = 0.f;
+		float       fadeLength = 0.f;
 
 		bool operator==(const DecorationLod&) const = default;
 	};

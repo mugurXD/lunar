@@ -42,6 +42,7 @@ namespace lunar
 	{
 		Render::MeshHandle mesh        = {};
 		float              maxDistance = 0.f;
+		float              fadeLength  = 0.f;
 	};
 
 	struct LUNAR_API InstanceBatch

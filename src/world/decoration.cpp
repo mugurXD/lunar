@@ -18,7 +18,7 @@ namespace lunar::World
 		{
 			nlohmann::json lods = nlohmann::json::array();
 			for (const DecorationLod& lod : type.lods)
-				lods.push_back({ { "model", lod.model }, { "distance", lod.distance } });
+				lods.push_back({ { "model", lod.model }, { "distance", lod.distance }, { "fade", lod.fadeLength } });
 
 			return nlohmann::json
 			{
@@ -39,9 +39,19 @@ namespace lunar::World
 			};
 
 			for (const nlohmann::json& lod : json.at("lods"))
-				type.lods.push_back({ lod.at("model").get<std::string>(), lod.at("distance").get<float>() });
+				type.lods.push_back({ lod.at("model").get<std::string>(), lod.at("distance").get<float>(), lod.value("fade", 0.f) });
 
 			return type;
+		}
+
+		bool FadesWithinItsRange(const DecorationLod& lod)
+		{
+			return lod.fadeLength >= 0.f && lod.fadeLength <= lod.distance;
+		}
+
+		bool FadeOverlapsPrevious(const DecorationLod& previous, const DecorationLod& next)
+		{
+			return next.distance - next.fadeLength < previous.distance;
 		}
 
 		bool IsValid(const DecorationType& type)
@@ -51,6 +61,8 @@ namespace lunar::World
 			    && type.lods.size() <= MAX_INSTANCE_LODS
 			    && type.lods.front().distance > 0.f
 			    && std::ranges::adjacent_find(type.lods, std::ranges::greater_equal {}, &DecorationLod::distance) == type.lods.end()
+			    && std::ranges::all_of(type.lods, FadesWithinItsRange)
+			    && std::ranges::adjacent_find(type.lods, FadeOverlapsPrevious) == type.lods.end()
 			    && (!type.breakable || type.mass > 0.f);
 		}
 
@@ -98,7 +110,7 @@ namespace lunar::World
 
 		if (!std::ranges::all_of(catalog.types, IsValid) || !HasUniqueNames(catalog.types))
 		{
-			Fs::ReportMalformedJson(std::format("decorations need unique names, 1 to {} levels of detail with increasing positive distances, and a positive mass when breakable", MAX_INSTANCE_LODS));
+			Fs::ReportMalformedJson(std::format("decorations need unique names, 1 to {} levels of detail with increasing positive distances whose fades don't overlap the previous level, and a positive mass when breakable", MAX_INSTANCE_LODS));
 			return std::nullopt;
 		}
 
@@ -126,7 +138,7 @@ namespace lunar::World
 					found          = true;
 				}
 
-				kind.lods[level] = { meshes.create(model->mesh), type.lods[level].distance };
+				kind.lods[level] = { meshes.create(model->mesh), type.lods[level].distance, type.lods[level].fadeLength };
 			}
 
 			kinds.push_back(std::move(kind));

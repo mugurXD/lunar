@@ -44,8 +44,8 @@ namespace
 		{
 			.types =
 			{
-				{ .name = "test:rock",    .lods = { { "rock.gltf", 100.f } } },
-				{ .name = "test:sapling", .lods = { { "sapling.gltf", 50.f }, { "sapling_far.gltf", 200.f } }, .breakable = true, .mass = 10.f }
+				{ .name = "test:rock",    .lods = { { "rock.gltf", 100.f, 20.f } } },
+				{ .name = "test:sapling", .lods = { { "sapling.gltf", 50.f }, { "sapling_far.gltf", 200.f, 30.f } }, .breakable = true, .mass = 10.f }
 			}
 		};
 	}
@@ -95,7 +95,13 @@ TEST(DecorationCatalog, MalformedCatalogsAreRejected)
 	DecorationCatalog invisible = TwoKinds();
 	invisible.types[0].lods.clear();
 
-	for (const DecorationCatalog& catalog : { duplicated, unordered, weightless, overdetailed, invisible })
+	DecorationCatalog overfaded = TwoKinds();
+	overfaded.types[0].lods[0].fadeLength = overfaded.types[0].lods[0].distance * 2.f;
+
+	DecorationCatalog overlapping = TwoKinds();
+	overlapping.types[1].lods[1].fadeLength = overlapping.types[1].lods[1].distance - overlapping.types[1].lods[0].distance * 0.5f;
+
+	for (const DecorationCatalog& catalog : { duplicated, unordered, weightless, overdetailed, invisible, overfaded, overlapping })
 		EXPECT_FALSE(RoundTrip(catalog).has_value());
 }
 
