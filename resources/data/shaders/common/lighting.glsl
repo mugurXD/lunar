@@ -48,7 +48,7 @@ float SunShadow(vec3 world_position, vec3 normal)
 		const vec2          uv      = clip.xy * CLIP_TO_UV_SCALE + HALF;
 		const vec2          margin  = SHADOW_EDGE_TEXELS / vec2(TextureSize(cascade.shadowMap));
 
-		if (all(greaterThan(uv, margin)) && all(lessThan(uv, 1.0 - margin)))
+		if (clip.z > 0.0 && all(greaterThan(uv, margin)) && all(lessThan(uv, 1.0 - margin)))
 			return mix(FilterShadow(cascade.shadowMap, uv, clip.z), FULLY_LIT, smoothstep(shadow_range.x, shadow_range.y, distance));
 	}
 
