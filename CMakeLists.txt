@@ -40,9 +40,10 @@ find_package(nlohmann_json REQUIRED)
 find_package(RmlUi REQUIRED)
 find_package(Jolt REQUIRED)
 
-get_target_property(JOLT_DEFINITIONS Jolt::Jolt INTERFACE_COMPILE_DEFINITIONS)
-string(REGEX REPLACE "\\$<\\$<CONFIG:[^>]*>:[^>]*>;?" "" JOLT_DEFINITIONS "${JOLT_DEFINITIONS}")
-set_target_properties(Jolt::Jolt PROPERTIES INTERFACE_COMPILE_DEFINITIONS "${JOLT_DEFINITIONS}")
+#get_target_property(JOLT_DEFINITIONS Jolt::Jolt INTERFACE_COMPILE_DEFINITIONS)
+#string(REGEX REPLACE "\\$<\\$<CONFIG:[^>]*>:[^>]*>;?" "" JOLT_DEFINITIONS "${JOLT_DEFINITIONS}")
+#set_target_properties(Jolt::Jolt PROPERTIES INTERFACE_COMPILE_DEFINITIONS "${JOLT_DEFINITIONS}")
+#set_target_properties(Jolt::Jolt PROPERTIES INTERFACE_COMPILE_DEFINITIONS "${JOLT_DEFINITIONS}")
 
 file(GLOB_RECURSE LUNAR_HEADERS "inc/lunar/*.hpp")
 file(GLOB_RECURSE LUNAR_SRC

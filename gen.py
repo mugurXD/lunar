@@ -148,6 +148,10 @@ dependencies = [
         .gen_flag('RMLUI_SAMPLES=OFF'),
     Dependency('joltphysics/Build')
         .gen_flag('JPH_USE_VK=ON')
+        .gen_flag('USE_STATIC_MSVC_RUNTIME_LIBRARY=OFF')
+        .gen_flag('FLOATING_POINT_EXCEPTIONS_ENABLED=OFF')
+        .gen_flag('DEBUG_RENDERER_IN_DEBUG_AND_RELEASE=OFF')
+        .gen_flag('PROFILER_IN_DEBUG_AND_RELEASE=OFF')
 ]
 
 def create_prefix_path():
