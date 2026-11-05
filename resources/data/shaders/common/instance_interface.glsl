@@ -18,4 +18,5 @@ layout(push_constant) uniform InstanceConstants
 	InstanceBuffer instanceBuffer;
 	VertexBuffer   vertexBuffer;
 	mat4           transform;
+	vec4           fadeBands;
 } constants;

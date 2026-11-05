@@ -14,6 +14,7 @@ add_executable(lunar_tests
     "test_hash.cpp"
     "test_frustum.cpp"
     "test_shadow_cascades.cpp"
+    "test_lod_fade.cpp"
     "test_physics.cpp"
     "test_decoration.cpp"
 )

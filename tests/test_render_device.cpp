@@ -1448,3 +1448,78 @@ TEST_F(RenderDeviceTest, TonemappingKeepsBaseColorsAndCompressesHighlights)
 	device->destroyImage(target);
 	device->destroyImage(scene);
 }
+
+TEST_F(RenderDeviceTest, LodFadesSplitEverySampleBetweenTwoLevels)
+{
+	constexpr Extent2D FADE_EXTENT   = { 16, 16 };
+	constexpr Format   FADE_FORMAT   = Format::eRGBA16Float;
+	constexpr uint32_t SINGLE_SAMPLE = 1;
+	constexpr float    PROGRESS      = 0.3f;
+	constexpr float    FADED_IN      = 1.f;
+	constexpr float    FADED_OUT     = 0.f;
+	constexpr float    DITHER_STEP   = 1.f / 16.f;
+
+	const glm::vec2         near_level      = { FADED_IN, PROGRESS };
+	const glm::vec2         far_level       = { PROGRESS, FADED_OUT };
+	const std::vector<char> vertex_shader   = LoadShader("fullscreen.vert", LUNAR_ENGINE_SHADER_DIR);
+	const std::vector<char> fragment_shader = LoadShader("lod_fade_coverage.frag");
+
+	for (const uint32_t samples : { SINGLE_SAMPLE, GUARANTEED_SAMPLES })
+	{
+		SCOPED_TRACE(testing::Message() << samples << " samples");
+
+		const bool        multisampled = samples > SINGLE_SAMPLE;
+		const ImageHandle resolved     = device->createImage({
+			.extent = FADE_EXTENT,
+			.format = FADE_FORMAT,
+			.usage  = ImageUsageFlags(ImageUsageFlagBits::eColorAttachment) | ImageUsageFlagBits::eSampled
+		});
+		const ImageHandle samples_image = multisampled
+			? device->createImage({ .extent = FADE_EXTENT, .format = FADE_FORMAT, .usage = ImageUsageFlags(ImageUsageFlagBits::eColorAttachment), .samples = samples })
+			: ImageHandle {};
+		const PipelineHandle pipeline = device->createGraphicsPipeline({
+			.vertexShader   = std::as_bytes(std::span(vertex_shader)),
+			.fragmentShader = std::as_bytes(std::span(fragment_shader)),
+			.colorFormats   = std::span(&FADE_FORMAT, 1),
+			.blendMode      = BlendMode::eAdditive,
+			.samples        = samples
+		});
+		ASSERT_NE(pipeline, PipelineHandle {});
+
+		const auto render = [&](std::initializer_list<glm::vec2> fades) {
+			const ColorAttachment attachment = { .image = multisampled ? samples_image : resolved, .resolveImage = multisampled ? resolved : ImageHandle {} };
+
+			Frame&       frame    = device->beginFrame();
+			CommandList& commands = frame.commandList();
+			commands.beginRendering({ .colorAttachments = std::span(&attachment, 1) });
+			commands.bindPipeline(pipeline);
+			for (const glm::vec2& fade : fades)
+			{
+				commands.pushConstants(fade);
+				commands.draw(TRIANGLE_VERTICES);
+			}
+			commands.endRendering();
+			commands.prepareSampling(resolved);
+			device->endFrame(frame);
+
+			return fetchTexels(resolved, FADE_EXTENT);
+		};
+
+		for (const glm::vec4& texel : render({ near_level, far_level }))
+			EXPECT_FLOAT_EQ(texel.r, 1.f) << "both levels together cover every sample exactly once";
+
+		const std::vector<glm::vec4> far_only = render({ far_level });
+		float                        coverage = 0.f;
+		for (const glm::vec4& texel : far_only)
+		{
+			EXPECT_LE(std::abs(texel.r - PROGRESS), 1.f / static_cast<float>(samples)) << "samples of a pixel are spread over the whole fade";
+			coverage += texel.r / static_cast<float>(far_only.size());
+		}
+
+		EXPECT_NEAR(coverage, PROGRESS, DITHER_STEP) << "the fading in level covers as much as its progress";
+
+		device->destroyPipeline(pipeline);
+		device->destroyImage(samples_image);
+		device->destroyImage(resolved);
+	}
+}

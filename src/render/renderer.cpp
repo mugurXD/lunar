@@ -1,4 +1,5 @@
 #include <lunar/render/renderer.hpp>
+#include <lunar/render/lod_fade.hpp>
 #include <lunar/render/imgui_layer.hpp>
 #include <lunar/render/components.hpp>
 #include <lunar/render/shader.hpp>
@@ -36,6 +37,8 @@ namespace lunar::Render
 		constexpr std::string_view FULLSCREEN_VERTEX_SHADER = "fullscreen.vert";
 		constexpr std::string_view TONEMAP_FRAGMENT_SHADER  = "tonemap.frag";
 		constexpr std::string_view SHADOW_FRAGMENT_SHADER   = "shadow.frag";
+		constexpr std::string_view INSTANCED_FADE_SHADER    = "instanced_fade.frag";
+		constexpr std::string_view SHADOW_FADE_SHADER       = "shadow_fade.frag";
 		constexpr uint32_t         FULLSCREEN_VERTEX_COUNT  = 3;
 		constexpr size_t           STD430_MATRIX_ALIGN      = 16;
 
@@ -81,6 +84,14 @@ namespace lunar::Render
 			uint64_t                               instanceAddress = 0;
 			uint64_t                               vertexAddress   = 0;
 			alignas(STD430_MATRIX_ALIGN) glm::mat4 transform       = glm::mat4(1.f);
+			glm::vec4                              fadeBands       = {};
+		};
+
+		struct InstanceDraw
+		{
+			InstanceConstants constants     = {};
+			const Mesh*       mesh          = nullptr;
+			uint32_t          instanceCount = 0;
 		};
 
 		struct TonemapConstants
@@ -156,10 +167,9 @@ namespace lunar::Render
 			return glm::distance(point, glm::clamp(point, bounds.min, bounds.max));
 		}
 
-		MeshHandle SelectLod(std::span<const InstanceLod> lods, float distance)
+		float FarthestDistanceTo(const Bounds& bounds, const glm::vec3& point)
 		{
-			const auto lod = std::ranges::find_if(lods, [distance](const InstanceLod& candidate) { return candidate.mesh != MeshHandle {} && distance <= candidate.maxDistance; });
-			return lod == lods.end() ? MeshHandle {} : lod->mesh;
+			return glm::length(glm::max(glm::abs(point - bounds.min), glm::abs(point - bounds.max)));
 		}
 
 		void DrawInstanced(Frame& frame, uint64_t scene_address, const Mesh& mesh, std::span<const DrawData> draws)
@@ -183,7 +193,10 @@ namespace lunar::Render
 		               .fragmentShader = std::string(LINE_FRAGMENT_SHADER),
 		               .topology       = PrimitiveTopology::eLineList },
 		instancedMaterial { .vertexShader   = std::string(INSTANCED_VERTEX_SHADER),
-		                    .fragmentShader = std::string(DEFAULT_FRAGMENT_SHADER) }
+		                    .fragmentShader = std::string(DEFAULT_FRAGMENT_SHADER) },
+		fadingInstancedMaterial { .vertexShader         = std::string(INSTANCED_VERTEX_SHADER),
+		                          .fragmentShader       = std::string(INSTANCED_FADE_SHADER),
+		                          .shadowFragmentShader = std::string(SHADOW_FADE_SHADER) }
 	{
 		cubeMesh = meshes.create(CreateCubeMeshData());
 		setSamples(samples);
@@ -196,6 +209,7 @@ namespace lunar::Render
 		destroyTargets();
 		destroyPipelines(lineMaterial);
 		destroyPipelines(instancedMaterial);
+		destroyPipelines(fadingInstancedMaterial);
 		materials.forEach([this](PoolHandle<Material>, Material& material) {
 			destroyPipelines(material);
 		});
@@ -217,6 +231,7 @@ namespace lunar::Render
 		destroyTargets();
 		recreatePipelines(lineMaterial);
 		recreatePipelines(instancedMaterial);
+		recreatePipelines(fadingInstancedMaterial);
 		materials.forEach([this](PoolHandle<Material>, Material& material) {
 			recreatePipelines(material);
 		});
@@ -247,7 +262,7 @@ namespace lunar::Render
 
 		const std::vector<char> vertex_shader   = LoadShader(material.vertexShader);
 		const std::vector<char> fragment_shader = LoadShader(material.fragmentShader);
-		const std::vector<char> shadow_shader   = LoadShader(SHADOW_FRAGMENT_SHADER);
+		const std::vector<char> shadow_shader   = LoadShader(material.shadowFragmentShader.empty() ? SHADOW_FRAGMENT_SHADER : material.shadowFragmentShader);
 
 		const GraphicsPipelineDesc mesh_desc =
 		{
@@ -419,7 +434,7 @@ namespace lunar::Render
 			};
 
 			draw_materials(false);
-			drawInstances(frame, scene, scene_address, frustum, camera->position, instancedMaterial.opaquePipeline);
+			drawInstances(frame, scene, scene_address, frustum, camera->position, instancedMaterial.opaquePipeline, fadingInstancedMaterial.opaquePipeline);
 			draw_materials(true);
 			drawLines(frame, scene_address);
 		}
@@ -456,7 +471,7 @@ namespace lunar::Render
 		{
 			const ColorAttachment shadow_attachment = { .image = shadowMaps[index], .loadOp = LoadOp::eClear, .clearColor = glm::vec4(REVERSE_Z_CLEAR_DEPTH) };
 			const DepthAttachment depth_attachment  = { .image = shadowDepthImage, .loadOp = LoadOp::eClear, .clearDepth = REVERSE_Z_CLEAR_DEPTH };
-			const uint64_t        scene_address     = frame.writeTransient(SceneData { .viewProjection = cascades[index].viewProjection });
+			const uint64_t        scene_address     = frame.writeTransient(SceneData { .viewProjection = cascades[index].viewProjection, .cameraPosition = glm::vec4(eye, 1.f) });
 
 			commands.beginRendering({ .colorAttachments = std::span(&shadow_attachment, 1), .depthAttachment = depth_attachment });
 
@@ -466,7 +481,7 @@ namespace lunar::Render
 				materials.forEach([&](PoolHandle<Material> handle, const Material& material) {
 					drawMeshes(frame, scene, scene_address, frustum, ToGpuHandle<MaterialTag>(handle), material.shadowPipeline, false);
 				});
-				drawInstances(frame, scene, scene_address, frustum, eye, instancedMaterial.shadowPipeline);
+				drawInstances(frame, scene, scene_address, frustum, eye, instancedMaterial.shadowPipeline, fadingInstancedMaterial.shadowPipeline);
 			}
 
 			commands.endRendering();
@@ -552,14 +567,27 @@ namespace lunar::Render
 		}
 	}
 
-	void Renderer::drawInstances(Frame& frame, Scene& scene, uint64_t scene_address, const Frustum& frustum, const glm::vec3& eye, PipelineHandle pipeline)
+	void Renderer::drawInstances(Frame&           frame,
+	                             Scene&           scene,
+	                             uint64_t         scene_address,
+	                             const Frustum&   frustum,
+	                             const glm::vec3& eye,
+	                             PipelineHandle   steady_pipeline,
+	                             PipelineHandle   fading_pipeline)
 	{
-		if (pipeline == PipelineHandle {})
+		if (steady_pipeline == PipelineHandle {} || fading_pipeline == PipelineHandle {})
 			return;
 
-		CommandList& commands = frame.commandList();
-		commands.bindPipeline(pipeline);
+		CommandList&              commands = frame.commandList();
+		std::vector<InstanceDraw> fading_draws;
+		const auto                record   = [&commands](const InstanceDraw& draw) {
+			commands.pushConstants(draw.constants);
+			commands.bindIndexBuffer(draw.mesh->indexBuffer, 0, IndexType::eUint32);
+			commands.drawIndexed(draw.mesh->indexCount, draw.instanceCount);
+		};
 
+		// Fading draws write sample masks, which costs early depth testing, so they are kept to batches that need them.
+		commands.bindPipeline(steady_pipeline);
 		scene.forEach<InstanceBatch>([&](Entity entity, const InstanceBatch& batch) {
 			const InstanceSet* instances = meshes.get(batch.instances);
 			if (!batch.visible || instances == nullptr)
@@ -567,14 +595,28 @@ namespace lunar::Render
 
 			const glm::mat4 transform = scene.resolveWorldTransform(entity).matrix;
 			const Bounds    bounds    = batch.bounds.transformed(transform);
-			const Mesh*     mesh      = meshes.get(SelectLod(batch.lods, DistanceTo(bounds, eye)));
-			if (mesh == nullptr || !frustum.intersects(bounds))
+			if (!frustum.intersects(bounds))
 				return;
 
-			commands.pushConstants(InstanceConstants { scene_address, instances->address, mesh->vertexAddress, transform });
-			commands.bindIndexBuffer(mesh->indexBuffer, 0, IndexType::eUint32);
-			commands.drawIndexed(mesh->indexCount, instances->count);
+			for (const LodDraw& lod : SelectLodDraws(batch.lods, DistanceTo(bounds, eye), FarthestDistanceTo(bounds, eye)))
+			{
+				const Mesh* mesh = meshes.get(lod.mesh);
+				if (mesh == nullptr)
+					continue;
+
+				const InstanceDraw draw = { { scene_address, instances->address, mesh->vertexAddress, transform, lod.fadeBands }, mesh, instances->count };
+				if (lod.fading)
+					fading_draws.push_back(draw);
+				else
+					record(draw);
+			}
 		});
+
+		if (fading_draws.empty())
+			return;
+
+		commands.bindPipeline(fading_pipeline);
+		std::ranges::for_each(fading_draws, record);
 	}
 
 	void Renderer::drawLines(Frame& frame, uint64_t scene_address)

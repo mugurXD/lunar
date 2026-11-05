@@ -53,12 +53,13 @@ namespace lunar::Render
 	private:
 		struct Material
 		{
-			std::string       vertexShader        = {};
-			std::string       fragmentShader      = {};
-			PrimitiveTopology topology            = PrimitiveTopology::eTriangleList;
-			PipelineHandle    opaquePipeline      = {};
-			PipelineHandle    translucentPipeline = {};
-			PipelineHandle    shadowPipeline      = {};
+			std::string       vertexShader         = {};
+			std::string       fragmentShader       = {};
+			std::string       shadowFragmentShader = {};
+			PrimitiveTopology topology             = PrimitiveTopology::eTriangleList;
+			PipelineHandle    opaquePipeline       = {};
+			PipelineHandle    translucentPipeline  = {};
+			PipelineHandle    shadowPipeline       = {};
 		};
 
 		void     recreatePipelines(Material& material);
@@ -73,7 +74,13 @@ namespace lunar::Render
 		void     createShadowTargets();
 		void     recordComposite(Frame& frame, Scene& scene, ImageHandle target, Extent2D extent, UI::UiLayer* ui, ImGuiLayer* debug_ui);
 		void     drawMeshes(Frame& frame, Scene& scene, uint64_t scene_address, const Frustum& frustum, MaterialHandle material, PipelineHandle pipeline, bool translucent);
-		void     drawInstances(Frame& frame, Scene& scene, uint64_t scene_address, const Frustum& frustum, const glm::vec3& eye, PipelineHandle pipeline);
+		void     drawInstances(Frame&           frame,
+		                       Scene&           scene,
+		                       uint64_t         scene_address,
+		                       const Frustum&   frustum,
+		                       const glm::vec3& eye,
+		                       PipelineHandle   steady_pipeline,
+		                       PipelineHandle   fading_pipeline);
 		void     drawLines(Frame& frame, uint64_t scene_address);
 
 		RenderDevice&       device;
@@ -83,6 +90,7 @@ namespace lunar::Render
 		Pool<Material>      materials;
 		Material            lineMaterial;
 		Material            instancedMaterial;
+		Material            fadingInstancedMaterial;
 		std::vector<Vertex> lineVertices;
 		MaterialHandle      defaultMaterial = {};
 		PipelineHandle      tonemapPipeline = {};

@@ -55,6 +55,12 @@ float SunShadow(vec3 world_position, vec3 normal)
 	return FULLY_LIT;
 }
 
+vec3 FaceNormal(vec3 world_position, vec3 interpolated_normal)
+{
+	const vec3 face_normal = normalize(cross(dFdx(world_position), dFdy(world_position)));
+	return dot(face_normal, interpolated_normal) < 0.0 ? -face_normal : face_normal;
+}
+
 vec3 ShadeSurface(vec3 base_color, vec3 normal, vec3 world_position)
 {
 	const float diffuse    = max(dot(normal, -constants.scene.lightDirection.xyz), 0.0);
