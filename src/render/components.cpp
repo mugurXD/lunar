@@ -55,13 +55,21 @@ namespace lunar
 	void UpdateInstanceBounds(Scene& scene, const FrameTime&)
 	{
 		ZoneScoped;
+		size_t visited_count    = 0;
+		size_t recomputed_count = 0;
+
 		scene.forEach<InstanceBatch>([&](Entity entity, InstanceBatch& batch) {
+			visited_count++;
+
 			const WorldTransform& world = scene.resolveWorldTransform(entity);
 			if (world.version == batch.boundsVersion)
 				return;
 
 			batch.worldBounds   = batch.bounds.transformed(world.matrix);
 			batch.boundsVersion = world.version;
+			recomputed_count++;
 		});
+
+		ZoneTextF("Visited: %zu, Recomputed: %zu", visited_count, recomputed_count);
 	}
 }

@@ -767,9 +767,15 @@ namespace lunar::Render
 			commands.drawIndexed(draw.mesh->indexCount, draw.instanceCount);
 		};
 
+		size_t batch_count   = 0;
+		size_t visible_count = 0;
+		size_t draw_count    = 0;
+
 		// Fading draws write sample masks, which costs early depth testing, so they are kept to batches that need them.
 		commands.bindPipeline(steady_pipeline);
 		scene.forEach<InstanceBatch, WorldTransform>([&](Entity, const InstanceBatch& batch, const WorldTransform& world) {
+			batch_count++;
+
 			const InstanceSet* instances = meshes.get(batch.instances);
 			if (!batch.visible || instances == nullptr)
 				return;
@@ -780,6 +786,8 @@ namespace lunar::Render
 			const Bounds&    bounds    = batch.worldBounds;
 			if (!frustum.intersects(bounds))
 				return;
+
+			visible_count++;
 
 			for (const LodDraw& lod : SelectLodDraws(batch.lods, DistanceTo(bounds, eye), FarthestDistanceTo(bounds, eye)))
 			{
@@ -792,8 +800,14 @@ namespace lunar::Render
 					fading_draws.push_back(draw);
 				else
 					record(draw);
+
+				draw_count++;
 			}
 		});
+
+		ZoneTextF("Total batches: %zu, Visible batches: %zu, Draws: %zu", batch_count, visible_count, draw_count);
+		TracyPlot("Instance baches", static_cast<int64_t>(batch_count));
+		TracyPlot("Mesh candidates", static_cast<int64_t>(meshCandidates.size()));
 
 		if (fading_draws.empty())
 			return;
