@@ -3,6 +3,7 @@
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
+#include <tracy/Tracy.hpp>
 
 namespace lunar
 {
@@ -48,6 +49,19 @@ namespace lunar
 			camera.up       = glm::normalize(glm::cross(camera.right, camera.front));
 			camera.position = glm::vec3(scene.resolveWorldTransform(entity).matrix[3]);
 			camera.view     = glm::lookAt(camera.position, camera.position + camera.front, camera.up);
+		});
+	}
+
+	void UpdateInstanceBounds(Scene& scene, const FrameTime&)
+	{
+		ZoneScoped;
+		scene.forEach<InstanceBatch>([&](Entity entity, InstanceBatch& batch) {
+			const WorldTransform& world = scene.resolveWorldTransform(entity);
+			if (world.version == batch.boundsVersion)
+				return;
+
+			batch.worldBounds   = batch.bounds.transformed(world.matrix);
+			batch.boundsVersion = world.version;
 		});
 	}
 }

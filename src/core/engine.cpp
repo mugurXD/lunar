@@ -147,6 +147,7 @@ namespace lunar
 		});
 
 		systemScheduler.addSystem(SystemPhase::eLateUpdate, UpdateCameras);
+		systemScheduler.addSystem(SystemPhase::ePreRender,  UpdateInstanceBounds);
 	}
 
 	Engine EngineBuilder::build() const

@@ -678,6 +678,7 @@ namespace lunar::Render
 
 	void Renderer::drawMeshes(Frame& frame, Scene& scene, uint64_t scene_address, const Frustum& frustum, MaterialHandle material, PipelineHandle pipeline, bool translucent)
 	{
+		ZoneScoped;
 		if (pipeline == PipelineHandle {})
 			return;
 
@@ -724,6 +725,8 @@ namespace lunar::Render
 		if (steady_pipeline == PipelineHandle {} || fading_pipeline == PipelineHandle {})
 			return;
 
+		ZoneScoped;
+
 		CommandList&              commands = frame.commandList();
 		std::vector<InstanceDraw> fading_draws;
 		const auto                record   = [&commands](const InstanceDraw& draw) {
@@ -734,13 +737,15 @@ namespace lunar::Render
 
 		// Fading draws write sample masks, which costs early depth testing, so they are kept to batches that need them.
 		commands.bindPipeline(steady_pipeline);
-		scene.forEach<InstanceBatch>([&](Entity entity, const InstanceBatch& batch) {
+		scene.forEach<InstanceBatch, WorldTransform>([&](Entity, const InstanceBatch& batch, const WorldTransform& world) {
 			const InstanceSet* instances = meshes.get(batch.instances);
 			if (!batch.visible || instances == nullptr)
 				return;
 
-			const glm::mat4 transform = scene.resolveWorldTransform(entity).matrix;
-			const Bounds    bounds    = batch.bounds.transformed(transform);
+			DEBUG_ASSERT(batch.boundsVersion != 0, "Instance batch bounds were not updated before rendering");
+
+			const glm::mat4& transform = world.matrix;
+			const Bounds&    bounds    = batch.worldBounds;
 			if (!frustum.intersects(bounds))
 				return;
 

@@ -47,10 +47,12 @@ namespace lunar
 
 	struct LUNAR_API InstanceBatch
 	{
-		std::array<InstanceLod, MAX_INSTANCE_LODS> lods      = {};
-		Render::InstanceSetHandle                  instances = {};
-		Render::Bounds                             bounds    = {};
-		bool                                       visible   = true;
+		std::array<InstanceLod, MAX_INSTANCE_LODS> lods          = {};
+		Render::InstanceSetHandle                  instances     = {};
+		Render::Bounds                             bounds        = {};
+		bool                                       visible       = true;
+		Render::Bounds                             worldBounds   = {};
+		uint64_t                                   boundsVersion = 0;
 	};
 
 	struct LUNAR_API DirectionalLight
@@ -91,4 +93,5 @@ namespace lunar
 
 	LUNAR_API glm::quat CameraRotation(float yaw_degrees, float pitch_degrees);
 	LUNAR_API void      UpdateCameras(Scene& scene, const FrameTime& frame_time);
+	LUNAR_API void      UpdateInstanceBounds(Scene& scene, const FrameTime& frame_time);
 }
