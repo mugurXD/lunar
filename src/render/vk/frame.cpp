@@ -2,6 +2,7 @@
 #include "vk_swapchain.hpp"
 
 #include <vulkan/vk_enum_string_helper.h>
+#include <tracy/Tracy.hpp>
 
 #include <lunar/debug.hpp>
 
@@ -299,6 +300,7 @@ namespace lunar::Render::imp
 
 	ImageHandle VkFrame::acquire(Swapchain& swapchain)
 	{
+		ZoneScoped;
 		DEBUG_ASSERT(acquiredSwapchain == nullptr, "A frame can only acquire one swapchain image");
 
 		VkSwapchain&      vk_swapchain = static_cast<VkSwapchain&>(swapchain);
@@ -381,6 +383,7 @@ namespace lunar::Render::imp
 
 	Frame& VkRenderDevice::beginFrame()
 	{
+		ZoneScoped;
 		VkFrame& frame = *frames[(frameValue + 1) % FRAMES_IN_FLIGHT];
 		WaitForTimeline(device, frameTimeline, frame.signalValue);
 
@@ -394,6 +397,7 @@ namespace lunar::Render::imp
 
 	void VkRenderDevice::endFrame(Frame& base_frame)
 	{
+		ZoneScoped;
 		VkFrame&           frame     = static_cast<VkFrame&>(base_frame);
 		VkSwapchain* const swapchain = frame.acquiredSwapchain;
 		const UploadTicket uploads   = flushUploads();

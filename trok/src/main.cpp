@@ -315,12 +315,13 @@ int main(int argc, char* argv[])
 	auto engine = EngineBuilder()
 		.applicationName(WINDOW_TITLE)
 		.renderBackend(Backend::eVulkan)
-		.samples(8)
+		.samples(4)
 		.validation(arguments.has(VALIDATION_FLAG) != MISSING_ARGUMENT)
 		.window(
 			WindowBuilder()
 				.title(WINDOW_TITLE)
 				.size(WINDOW_WIDTH, WINDOW_HEIGHT)
+				.vsync(false)
 		)
 		.build();
 

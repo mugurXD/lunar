@@ -1,6 +1,7 @@
 #include <lunar/core/jobs.hpp>
 
 #include <algorithm>
+#include <tracy/Tracy.hpp>
 
 namespace lunar
 {
@@ -46,6 +47,7 @@ namespace lunar
 
 	size_t JobSystem::processCompleted()
 	{
+		ZoneScoped;
 		std::vector<CompletedJob> completed;
 		{
 			const std::lock_guard lock(mutex);
@@ -60,6 +62,7 @@ namespace lunar
 
 	void JobSystem::waitIdle()
 	{
+		ZoneScoped;
 		std::unique_lock lock(mutex);
 		idle.wait(lock, [&] { return pendingJobs.empty() && runningJobs.empty(); });
 	}

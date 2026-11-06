@@ -6,6 +6,7 @@
 #include <lunar/physics/rigid_body.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
+#include <tracy/Tracy.hpp>
 
 namespace lunar
 {
@@ -132,6 +133,7 @@ namespace lunar
 
 	void Scene::shiftOrigin(const glm::dvec3& offset)
 	{
+		ZoneScoped;
 		const glm::vec3 shift = glm::vec3(-offset);
 		origin += offset;
 
@@ -197,6 +199,7 @@ namespace lunar
 
 	void Scene::flushDestroyedEntities()
 	{
+		ZoneScoped;
 		for (size_t position = 0; position < destroyedEntities.size(); position++)
 		{
 			const Entity entity = destroyedEntities[position];

@@ -59,6 +59,7 @@ namespace lunar
 			window.pollEvents();
 			timeContext.update();
 			frameStats.record(timeContext.getFrameTime().deltaTime);
+			
 			jobSystem.processCompleted();
 
 			if (imguiLayer.has_value())
@@ -96,6 +97,7 @@ namespace lunar
 
 	void Engine::renderFrame()
 	{
+		ZoneScoped;
 		renderer.render(activeScene, getUi(), imguiLayer.has_value() ? &*imguiLayer : nullptr);
 	}
 
@@ -105,6 +107,7 @@ namespace lunar
 		window(
 			Render::WindowBuilder(builder.windowBuilder)
 				.renderBackend(builder.backend)
+				.vsync(false)
 				.build()
 		),
 		renderDevice(Render::CreateRenderDevice(

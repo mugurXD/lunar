@@ -8,6 +8,7 @@
 #include <lunar/debug.hpp>
 
 #include <glm/gtc/matrix_transform.hpp>
+#include <tracy/Tracy.hpp>
 
 #include <algorithm>
 #include <bit>
@@ -404,6 +405,7 @@ namespace lunar::Render
 
 	void Renderer::render(Scene& scene, UI::UiLayer* ui, ImGuiLayer* debug_ui)
 	{
+		ZoneScoped;
 		Frame&            frame      = device.beginFrame();
 		const ImageHandle backbuffer = swapchain != nullptr ? frame.acquire(*swapchain) : ImageHandle {};
 
@@ -471,6 +473,7 @@ namespace lunar::Render
 
 	void Renderer::recordFrame(Frame& frame, Scene& scene, Extent2D extent)
 	{
+		ZoneScoped;
 		CommandList&         commands  = frame.commandList();
 		const DistanceFog*   fog       = FindFirst<DistanceFog>(scene);
 		const Camera*        camera    = scene.getMainCamera();
@@ -536,6 +539,7 @@ namespace lunar::Render
 
 	void Renderer::recordShadows(Frame& frame, Scene& scene, const glm::vec3& eye, std::span<const ShadowCascade> cascades)
 	{
+		ZoneScoped;
 		if (shadowDepthImage == ImageHandle {})
 			createShadowTargets();
 
@@ -563,6 +567,7 @@ namespace lunar::Render
 	                                          Extent2D                extent,
 	                                          uint64_t                scene_address)
 	{
+		ZoneScoped;
 		if (occlusionPipeline == PipelineHandle {} || occlusionBlurPipeline == PipelineHandle {} || scene_address == 0)
 			return INVALID_TEXTURE_INDEX;
 
@@ -638,6 +643,7 @@ namespace lunar::Render
 
 	void Renderer::recordComposite(Frame& frame, Scene& scene, ImageHandle target, Extent2D extent, UI::UiLayer* ui, ImGuiLayer* debug_ui)
 	{
+		ZoneScoped;
 		CommandList&          commands          = frame.commandList();
 		const Camera*         camera            = scene.getMainCamera();
 		const ColorAttachment target_attachment = { .image = target, .loadOp = LoadOp::eClear };
@@ -663,6 +669,7 @@ namespace lunar::Render
 
 	void Renderer::drawOpaque(Frame& frame, Scene& scene, uint64_t scene_address, const Frustum& frustum, const glm::vec3& eye, PipelineHandle Material::* pipeline)
 	{
+		ZoneScoped;
 		materials.forEach([&](PoolHandle<Material> handle, const Material& material) {
 			drawMeshes(frame, scene, scene_address, frustum, ToGpuHandle<MaterialTag>(handle), material.*pipeline, false);
 		});

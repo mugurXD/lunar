@@ -1,6 +1,7 @@
 #include <lunar/core/system.hpp>
 #include <cmath>
 #include <utility>
+#include <tracy/Tracy.hpp>
 
 namespace lunar
 {
@@ -17,6 +18,7 @@ namespace lunar
 
 	void SystemScheduler::runFrame(Scene& scene, const FrameTime& frame_time)
 	{
+		ZoneScoped;
 		FrameTime fixed_frame_time      = frame_time;
 		fixed_frame_time.deltaTime      = static_cast<float>(fixedTimestep);
 		fixed_frame_time.fixedDeltaTime = static_cast<float>(fixedTimestep);
@@ -24,6 +26,7 @@ namespace lunar
 		accumulator += frame_time.deltaTime;
 		for (uint32_t step = 0; step < maxFixedSteps && accumulator >= fixedTimestep; step++)
 		{
+			ZoneScoped;
 			runPhase(SystemPhase::eFixedUpdate, scene, fixed_frame_time);
 			accumulator -= fixedTimestep;
 		}
@@ -34,9 +37,9 @@ namespace lunar
 		variable_frame_time.fixedDeltaTime = static_cast<float>(fixedTimestep);
 		variable_frame_time.fixedAlpha     = static_cast<float>(accumulator / fixedTimestep);
 
-		runPhase(SystemPhase::eUpdate,     scene, variable_frame_time);
-		runPhase(SystemPhase::eLateUpdate, scene, variable_frame_time);
-		runPhase(SystemPhase::ePreRender,  scene, variable_frame_time);
+		{ ZoneScopedN("Update phase");     runPhase(SystemPhase::eUpdate,     scene, variable_frame_time); }
+		{ ZoneScopedN("LateUpdate phase"); runPhase(SystemPhase::eLateUpdate, scene, variable_frame_time); }
+		{ ZoneScopedN("PreRender phase");  runPhase(SystemPhase::ePreRender,  scene, variable_frame_time); }
 	}
 
 	void SystemScheduler::runPhase(SystemPhase phase, Scene& scene, const FrameTime& frame_time) const

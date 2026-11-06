@@ -1,5 +1,7 @@
 #include "vk_render_device.hpp"
 
+#include <tracy/Tracy.hpp>
+
 namespace lunar::Render::imp
 {
 	VkResult SubmitCommandBuffer(VkQueue                                queue,
@@ -8,6 +10,7 @@ namespace lunar::Render::imp
 	                             std::span<const VkSemaphoreSubmitInfo> signal_semaphores,
 	                             VkFence                                fence)
 	{
+		ZoneScoped;
 		const VkCommandBufferSubmitInfo command_buffer_info =
 		{
 			.sType         = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
@@ -78,6 +81,7 @@ namespace lunar::Render::imp
 
 	void WaitForTimeline(VkDevice device, VkSemaphore timeline, uint64_t value)
 	{
+		ZoneScoped;
 		const VkSemaphoreWaitInfo wait_info =
 		{
 			.sType          = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO,
