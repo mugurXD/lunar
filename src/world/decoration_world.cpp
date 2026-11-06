@@ -425,19 +425,28 @@ namespace lunar::World
 			bounds[instance.kind] = Enclose(bounds[instance.kind], kind->bounds.transformed(InstanceMatrix(instance)));
 		}
 
-		GameObject chunk = GameObject(&scene, state.chunk);
+		GameObject                    chunk        = GameObject(&scene, state.chunk);
+		std::optional<Render::Bounds> group_bounds = std::nullopt;
+		float                         max_distance = 0.f;
 		for (size_t kind = 0; kind < instances.size(); kind++)
 		{
 			if (instances[kind].empty())
 				continue;
 
+			const auto&                     lods  = library.find(static_cast<DecorationKind>(kind))->lods;
 			const Render::InstanceSetHandle set   = meshes.createInstances(instances[kind]);
 			GameObject                      batch = chunk.createChildObject(BATCH_NAME);
 
-			batch->addComponent<InstanceBatch>(library.find(static_cast<DecorationKind>(kind))->lods, set, *bounds[kind]);
+			batch->addComponent<InstanceBatch>(lods, set, *bounds[kind]);
 			state.batches.push_back(batch.getEntity());
 			state.sets.push_back(set);
+
+			group_bounds = Enclose(group_bounds, *bounds[kind]);
+			max_distance = std::max(max_distance, std::ranges::max(lods, {}, &InstanceLod::maxDistance).maxDistance);
 		}
+
+		if (group_bounds.has_value())
+			scene.addComponent<InstanceBatchGroup>(state.chunk, state.batches, *group_bounds, max_distance);
 	}
 
 	void DecorationWorld::buildCollider(ChunkCoord coord, ChunkState& state)
@@ -470,6 +479,7 @@ namespace lunar::World
 		for (const Render::InstanceSetHandle set : state.sets)
 			meshes.destroy(set);
 
+		scene.removeComponent<InstanceBatchGroup>(state.chunk);
 		state.batches.clear();
 		state.sets.clear();
 		state.collider.reset();

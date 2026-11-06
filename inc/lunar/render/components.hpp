@@ -1,5 +1,6 @@
 #pragma once
 #include <lunar/api.hpp>
+#include <lunar/core/component_storage.hpp>
 #include <lunar/core/time.hpp>
 #include <lunar/render/frustum.hpp>
 #include <lunar/render/gpu_types.hpp>
@@ -7,6 +8,7 @@
 
 #include <array>
 #include <cstddef>
+#include <vector>
 
 namespace lunar
 {
@@ -53,6 +55,15 @@ namespace lunar
 		bool                                       visible       = true;
 		Render::Bounds                             worldBounds   = {};
 		uint64_t                                   boundsVersion = 0;
+	};
+
+	struct LUNAR_API InstanceBatchGroup
+	{
+		std::vector<Entity> batches       = {};
+		Render::Bounds      bounds        = {};
+		float               maxDistance   = 0.f;
+		Render::Bounds      worldBounds   = {};
+		uint64_t            boundsVersion = 0;
 	};
 
 	struct LUNAR_API DirectionalLight

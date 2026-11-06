@@ -58,16 +58,27 @@ namespace lunar
 		size_t visited_count    = 0;
 		size_t recomputed_count = 0;
 
-		scene.forEach<InstanceBatch>([&](Entity entity, InstanceBatch& batch) {
+		scene.forEach<InstanceBatchGroup>([&](Entity entity, InstanceBatchGroup& group) {
 			visited_count++;
 
 			const WorldTransform& world = scene.resolveWorldTransform(entity);
-			if (world.version == batch.boundsVersion)
+			if (world.version == group.boundsVersion)
 				return;
 
-			batch.worldBounds   = batch.bounds.transformed(world.matrix);
-			batch.boundsVersion = world.version;
+			group.worldBounds   = group.bounds.transformed(world.matrix);
+			group.boundsVersion = world.version;
 			recomputed_count++;
+
+			for (const Entity batch_entity : group.batches)
+			{
+				InstanceBatch* const batch = scene.getComponent<InstanceBatch>(batch_entity);
+				if (batch == nullptr)
+					continue;
+
+				const WorldTransform& batch_world = scene.resolveWorldTransform(batch_entity);
+				batch->worldBounds   = batch->bounds.transformed(batch_world.matrix);
+				batch->boundsVersion = batch_world.version;
+			}
 		});
 
 		ZoneTextF("Visited: %zu, Recomputed: %zu", visited_count, recomputed_count);

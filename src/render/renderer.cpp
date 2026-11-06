@@ -767,13 +767,13 @@ namespace lunar::Render
 			commands.drawIndexed(draw.mesh->indexCount, draw.instanceCount);
 		};
 
-		size_t batch_count   = 0;
-		size_t visible_count = 0;
-		size_t draw_count    = 0;
+		size_t group_count         = 0;
+		size_t visible_group_count = 0;
+		size_t batch_count         = 0;
+		size_t visible_count       = 0;
+		size_t draw_count          = 0;
 
-		// Fading draws write sample masks, which costs early depth testing, so they are kept to batches that need them.
-		commands.bindPipeline(steady_pipeline);
-		scene.forEach<InstanceBatch, WorldTransform>([&](Entity, const InstanceBatch& batch, const WorldTransform& world) {
+		const auto draw_batch = [&](const InstanceBatch& batch, const WorldTransform& world) {
 			batch_count++;
 
 			const InstanceSet* instances = meshes.get(batch.instances);
@@ -803,9 +803,31 @@ namespace lunar::Render
 
 				draw_count++;
 			}
+		};
+
+		// Fading draws write sample masks, which costs early depth testing, so they are kept to batches that need them.
+		commands.bindPipeline(steady_pipeline);
+		scene.forEach<InstanceBatchGroup>([&](Entity, const InstanceBatchGroup& group) {
+			group_count++;
+			if (!frustum.intersects(group.worldBounds) || DistanceTo(group.worldBounds, eye) > group.maxDistance)
+				return;
+
+			visible_group_count++;
+			for (const Entity batch_entity : group.batches)
+			{
+				const InstanceBatch*  batch = scene.getComponent<InstanceBatch>(batch_entity);
+				const WorldTransform* world = scene.getComponent<WorldTransform>(batch_entity);
+				if (batch != nullptr && world != nullptr)
+					draw_batch(*batch, *world);
+			}
 		});
 
-		ZoneTextF("Total batches: %zu, Visible batches: %zu, Draws: %zu", batch_count, visible_count, draw_count);
+		ZoneTextF("Groups: %zu, Visible groups: %zu, Batches visited: %zu, Visible batches: %zu, Draws: %zu",
+		          group_count,
+		          visible_group_count,
+		          batch_count,
+		          visible_count,
+		          draw_count);
 		TracyPlot("Instance baches", static_cast<int64_t>(batch_count));
 		TracyPlot("Mesh candidates", static_cast<int64_t>(meshCandidates.size()));
 
