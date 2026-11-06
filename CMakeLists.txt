@@ -22,6 +22,7 @@ if(LUNAR_ADD_INSTALL_PATHS)
         "deps/freetype/install"
         "deps/RmlUi/install"
         "deps/joltphysics/Build/install"
+        "deps/tracy/install"
     )
 
     if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
@@ -39,6 +40,7 @@ find_package(fastgltf REQUIRED)
 find_package(nlohmann_json REQUIRED)
 find_package(RmlUi REQUIRED)
 find_package(Jolt REQUIRED)
+find_package(Tracy REQUIRED)
 
 #get_target_property(JOLT_DEFINITIONS Jolt::Jolt INTERFACE_COMPILE_DEFINITIONS)
 #string(REGEX REPLACE "\\$<\\$<CONFIG:[^>]*>:[^>]*>;?" "" JOLT_DEFINITIONS "${JOLT_DEFINITIONS}")
@@ -195,6 +197,7 @@ target_link_libraries(lunar PUBLIC
     glfw
     fastgltf::fastgltf
     RmlUi::RmlUi
+    Tracy::TracyClient
 )
 
 target_link_libraries(lunar PRIVATE

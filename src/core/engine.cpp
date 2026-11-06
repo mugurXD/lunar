@@ -1,7 +1,8 @@
 #include "lunar/core/engine.hpp"
 #include <lunar/render/components.hpp>
 #include <lunar/physics/rigid_body.hpp>
-#include <lunar/debug.hpp>
+
+#include <tracy/Tracy.hpp>
 
 namespace lunar
 {
@@ -88,6 +89,8 @@ namespace lunar
 			renderFrame();
 			activeScene.flushDestroyedEntities();
 			window.update();
+
+			FrameMark;
 		}
 	}
 

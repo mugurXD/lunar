@@ -151,7 +151,10 @@ dependencies = [
         .gen_flag('USE_STATIC_MSVC_RUNTIME_LIBRARY=OFF')
         .gen_flag('FLOATING_POINT_EXCEPTIONS_ENABLED=OFF')
         .gen_flag('DEBUG_RENDERER_IN_DEBUG_AND_RELEASE=OFF')
-        .gen_flag('PROFILER_IN_DEBUG_AND_RELEASE=OFF')
+        .gen_flag('PROFILER_IN_DEBUG_AND_RELEASE=OFF'),
+    Dependency('tracy')
+        .gen_flag('TRACY_ENABLE=ON')
+        .gen_flag('TRACY_ON_DEMAND=ON')
 ]
 
 def create_prefix_path():
