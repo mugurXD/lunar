@@ -69,6 +69,16 @@ namespace lunar::Render
 			uint64_t translucent = 0;
 		};
 
+		struct MeshCandidate
+		{
+			const Mesh*    mesh         = nullptr;
+			MaterialHandle material     = {};
+			bool           translucent  = false;
+			Bounds         bounds       = {};
+			glm::mat4      model        = glm::mat4(1.f);
+			glm::mat4      normalMatrix = glm::mat4(1.f);
+		};
+
 		void           recreatePipelines(Material& material);
 		void           createPipelines(Material& material);
 		void           destroyPipelines(Material& material);
@@ -88,7 +98,8 @@ namespace lunar::Render
 		void           createOcclusionTargets(Extent2D extent);
 		void           recordComposite(Frame& frame, Scene& scene, ImageHandle target, Extent2D extent, UI::UiLayer* ui, ImGuiLayer* debug_ui);
 		void           drawOpaque(Frame& frame, Scene& scene, uint64_t scene_address, const Frustum& frustum, const glm::vec3& eye, PipelineHandle Material::* pipeline);
-		void           drawMeshes(Frame& frame, Scene& scene, uint64_t scene_address, const Frustum& frustum, MaterialHandle material, PipelineHandle pipeline, bool translucent);
+		void           gatherMeshes(Scene& scene);
+		void           drawMeshes(Frame& frame, uint64_t scene_address, const Frustum& frustum, PipelineHandle Material::* pipeline, bool translucent);
 		void           drawInstances(Frame&           frame,
 		                             Scene&           scene,
 		                             uint64_t         scene_address,
@@ -107,6 +118,8 @@ namespace lunar::Render
 		Material            instancedMaterial;
 		Material            fadingInstancedMaterial;
 		std::vector<Vertex> lineVertices;
+
+		std::vector<MeshCandidate> meshCandidates;
 		MaterialHandle      defaultMaterial = {};
 		PipelineHandle      tonemapPipeline = {};
 		ImageHandle         colorImage      = {};

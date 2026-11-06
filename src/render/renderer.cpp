@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <bit>
 #include <cmath>
+#include <functional>
 #include <iterator>
 #include <span>
 #include <string_view>
@@ -237,6 +238,21 @@ namespace lunar::Render
 			commands.drawIndexed(mesh.indexCount, static_cast<uint32_t>(draws.size()));
 		}
 
+		void DrawMeshGroups(Frame& frame, uint64_t scene_address, std::span<const MeshInstance> instances)
+		{
+			std::vector<DrawData> draws;
+			for (auto first = instances.begin(); first != instances.end();)
+			{
+				const Mesh* mesh = first->mesh;
+				const auto  last = std::ranges::find_if(first, instances.end(), [mesh](const Mesh* other) { return other != mesh; }, &MeshInstance::mesh);
+
+				draws.clear();
+				std::ranges::transform(first, last, std::back_inserter(draws), &MeshInstance::draw);
+				DrawInstanced(frame, scene_address, *mesh, draws);
+				first = last;
+			}
+		}
+
 		PipelineHandle CreateFullscreenPipeline(RenderDevice& device, std::string_view fragment_shader_name, Format target_format)
 		{
 			const std::vector<char> vertex_shader   = LoadShader(FULLSCREEN_VERTEX_SHADER);
@@ -413,6 +429,7 @@ namespace lunar::Render
 		{
 			const Extent2D extent = device.getImageExtent(backbuffer);
 			resizeTargets(extent);
+			gatherMeshes(scene);
 			recordFrame(frame, scene, extent);
 			recordComposite(frame, scene, backbuffer, extent, ui, debug_ui);
 		}
@@ -504,9 +521,7 @@ namespace lunar::Render
 		{
 			const Frustum frustum(ViewProjection(*camera, extent));
 			drawOpaque(frame, scene, addresses.opaque, frustum, camera->position, &Material::opaquePipeline);
-			materials.forEach([&](PoolHandle<Material> handle, const Material& material) {
-				drawMeshes(frame, scene, addresses.translucent, frustum, ToGpuHandle<MaterialTag>(handle), material.translucentPipeline, true);
-			});
+			drawMeshes(frame, addresses.translucent, frustum, &Material::translucentPipeline, true);
 			drawLines(frame, addresses.opaque);
 		}
 
@@ -670,47 +685,64 @@ namespace lunar::Render
 	void Renderer::drawOpaque(Frame& frame, Scene& scene, uint64_t scene_address, const Frustum& frustum, const glm::vec3& eye, PipelineHandle Material::* pipeline)
 	{
 		ZoneScoped;
-		materials.forEach([&](PoolHandle<Material> handle, const Material& material) {
-			drawMeshes(frame, scene, scene_address, frustum, ToGpuHandle<MaterialTag>(handle), material.*pipeline, false);
-		});
+		drawMeshes(frame, scene_address, frustum, pipeline, false);
 		drawInstances(frame, scene, scene_address, frustum, eye, instancedMaterial.*pipeline, fadingInstancedMaterial.*pipeline);
 	}
 
-	void Renderer::drawMeshes(Frame& frame, Scene& scene, uint64_t scene_address, const Frustum& frustum, MaterialHandle material, PipelineHandle pipeline, bool translucent)
+	void Renderer::gatherMeshes(Scene& scene)
 	{
 		ZoneScoped;
-		if (pipeline == PipelineHandle {})
-			return;
-
-		std::vector<MeshInstance> instances;
+		meshCandidates.clear();
 		scene.forEach<MeshRenderer>([&](Entity entity, const MeshRenderer& mesh_renderer) {
-			const Mesh*          mesh  = meshes.get(mesh_renderer.mesh);
-			const MaterialHandle drawn = mesh_renderer.material == MaterialHandle {} ? defaultMaterial : mesh_renderer.material;
-			if (mesh == nullptr || !mesh_renderer.visible || mesh_renderer.translucent != translucent || drawn != material)
+			const Mesh* mesh = meshes.get(mesh_renderer.mesh);
+			if (mesh == nullptr || !mesh_renderer.visible)
 				return;
 
 			const glm::mat4 model = scene.resolveWorldTransform(entity).matrix;
-			if (frustum.intersects(mesh->bounds.transformed(model)))
-				instances.push_back({ mesh, { model, NormalMatrix(model) } });
+			meshCandidates.push_back({
+				.mesh         = mesh,
+				.material     = mesh_renderer.material == MaterialHandle {} ? defaultMaterial : mesh_renderer.material,
+				.translucent  = mesh_renderer.translucent,
+				.bounds       = mesh->bounds.transformed(model),
+				.model        = model,
+				.normalMatrix = NormalMatrix(model)
+			});
 		});
 
-		if (instances.empty())
-			return;
-
 		// Stable so translucent instances of the same mesh keep a consistent blend order between frames.
-		std::ranges::stable_sort(instances, {}, &MeshInstance::mesh);
-		frame.commandList().bindPipeline(pipeline);
+		std::ranges::stable_sort(meshCandidates, [](const MeshCandidate& left, const MeshCandidate& right) {
+			if (left.material.index != right.material.index)
+				return left.material.index < right.material.index;
 
-		std::vector<DrawData> draws;
-		for (auto first = instances.begin(); first != instances.end();)
+			return std::less<const Mesh*> {}(left.mesh, right.mesh);
+		});
+	}
+
+	void Renderer::drawMeshes(Frame& frame, uint64_t scene_address, const Frustum& frustum, PipelineHandle Material::* pipeline, bool translucent)
+	{
+		ZoneScoped;
+		std::vector<MeshInstance> visible;
+		for (auto first = meshCandidates.begin(); first != meshCandidates.end();)
 		{
-			const Mesh* mesh = first->mesh;
-			const auto  last = std::ranges::find_if(first, instances.end(), [mesh](const Mesh* other) { return other != mesh; }, &MeshInstance::mesh);
-
-			draws.clear();
-			std::ranges::transform(first, last, std::back_inserter(draws), &MeshInstance::draw);
-			DrawInstanced(frame, scene_address, *mesh, draws);
+			const MaterialHandle material = first->material;
+			const auto           last     = std::find_if(first, meshCandidates.end(), [material](const MeshCandidate& candidate) { return candidate.material != material; });
+			const auto           group    = std::span(first, last);
+			const Material*      resolved = materials.get(FromGpuHandle(materials, material));
 			first = last;
+
+			if (resolved == nullptr || resolved->*pipeline == PipelineHandle {})
+				continue;
+
+			visible.clear();
+			for (const MeshCandidate& candidate : group)
+				if (candidate.translucent == translucent && frustum.intersects(candidate.bounds))
+					visible.push_back({ candidate.mesh, { candidate.model, candidate.normalMatrix } });
+
+			if (visible.empty())
+				continue;
+
+			frame.commandList().bindPipeline(resolved->*pipeline);
+			DrawMeshGroups(frame, scene_address, visible);
 		}
 	}
 
