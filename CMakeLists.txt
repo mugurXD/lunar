@@ -10,7 +10,11 @@ set(LUNAR_ADD_INSTALL_PATHS ON)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-set(CMAKE_MAP_IMPORTED_CONFIG_RELWITHDEBINFO Release "")
+if(WIN32)
+    # This shit breaks the fucking build on MacOS but, without it, Windows won't build
+    # (thank Jolt)
+    set(CMAKE_MAP_IMPORTED_CONFIG_RELWITHDEBINFO Release "")
+endif()
 
 if(LUNAR_ADD_INSTALL_PATHS)
     list(APPEND CMAKE_PREFIX_PATH
@@ -18,7 +22,6 @@ if(LUNAR_ADD_INSTALL_PATHS)
         "deps/glfw/install"
         "deps/fastgltf/install"
         "deps/nlohmann-json/install"
-        "deps/reactphysics3d/install"
         "deps/googletest/install"
         "deps/vk-bootstrap/install"
         "deps/freetype/install"
@@ -35,7 +38,6 @@ if(LUNAR_ADD_INSTALL_PATHS)
     endif()
 endif()
 
-find_package(ReactPhysics3D REQUIRED)
 find_package(glm CONFIG REQUIRED)
 find_package(glfw3 REQUIRED)
 find_package(fastgltf REQUIRED)
@@ -202,10 +204,7 @@ target_link_libraries(lunar PUBLIC
     Tracy::TracyClient
 )
 
-target_link_libraries(lunar PRIVATE
-    ReactPhysics3D::ReactPhysics3D
-    Jolt::Jolt
-)
+target_link_libraries(lunar PRIVATE Jolt::Jolt)
 
 if(${MACOSX})
     target_link_libraries(lunar PUBLIC std23::nontype_functional)

@@ -125,9 +125,6 @@ dependencies = [
     Dependency('nlohmann-json'),
     Dependency('glm')
         .gen_flag('GLM_BUILD_TESTS=OFF'),
-    Dependency('reactphysics3d')
-        .gen_flag('CMAKE_CXX_FLAGS_INIT=/FIchrono', platform = "win32")
-        .gen_flag('CMAKE_CXX_FLAGS_INIT=-include chrono', platform = "darwin"),
     Dependency('vk-bootstrap')
         .gen_flag("VK_BOOTSTRAP_INSTALL=ON")
         .gen_flag("VK_BOOTSTRAP_TEST=OFF"),

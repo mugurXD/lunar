@@ -14,10 +14,6 @@
 	path = deps/fastgltf
 	url = https://github.com/spnda/fastgltf.git
 	ignore = all
-[submodule "deps/reactphysics3d"]
-	path = deps/reactphysics3d
-	url = https://github.com/DanielChappuis/reactphysics3d
-	ignore = all
 [submodule "deps/imgui"]
 	path = deps/imgui
 	url = https://github.com/ocornut/imgui.git
