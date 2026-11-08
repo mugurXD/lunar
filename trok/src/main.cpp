@@ -65,6 +65,11 @@ namespace
 	constexpr int                     WINDOW_WIDTH         = 1280;
 	constexpr int                     WINDOW_HEIGHT        = 720;
 	constexpr int32_t                 VIEW_RADIUS          = 32;
+	constexpr int32_t                 MIN_VIEW_RADIUS      = 2;
+	constexpr int32_t                 MAX_VIEW_RADIUS      = 64;
+	constexpr char                    VIEW_WINDOW_TITLE[]  = "View distance";
+	constexpr char                    VIEW_RADIUS_LABEL[]  = "Radius";
+	constexpr char                    VIEW_RADIUS_FORMAT[] = "%d chunks";
 	constexpr std::string_view        WINDOW_TITLE         = "trok";
 	constexpr std::string_view        VALIDATION_FLAG      = "--validation";
 	constexpr int                     MISSING_ARGUMENT     = -1;
@@ -119,6 +124,21 @@ namespace
 	const glm::vec3 GROUND_BOUNCE_COLOR    = { 0.4f, 0.42f, 0.3f };
 	const glm::vec3 ENDPOINT_MARKER_COLOR  = { 0.9f, 0.1f, 0.1f };
 	const glm::vec3 NODE_MARKER_COLOR      = { 0.1f, 0.9f, 0.2f };
+
+	DistanceFog MakeViewFog(int32_t view_radius, const World::WorldSettings& settings)
+	{
+		const float view_distance = static_cast<float>(view_radius) * settings.getChunkSize();
+		return { SKY_COLOR, view_distance * FOG_START_FRACTION, view_distance * FOG_END_FRACTION };
+	}
+
+	bool DrawViewDistanceWindow(int& view_radius)
+	{
+		const bool changed = ImGui::Begin(VIEW_WINDOW_TITLE, nullptr, ImGuiWindowFlags_AlwaysAutoResize)
+		                  && ImGui::SliderInt(VIEW_RADIUS_LABEL, &view_radius, MIN_VIEW_RADIUS, MAX_VIEW_RADIUS, VIEW_RADIUS_FORMAT);
+
+		ImGui::End();
+		return changed;
+	}
 
 	MeshHandle MakeMarkerMesh(MeshRegistry& meshes, const glm::vec3& color)
 	{
@@ -315,7 +335,7 @@ int main(int argc, char* argv[])
 	auto engine = EngineBuilder()
 		.applicationName(WINDOW_TITLE)
 		.renderBackend(Backend::eVulkan)
-		.samples(4)
+		.samples(2)
 		.validation(arguments.has(VALIDATION_FLAG) != MISSING_ARGUMENT)
 		.window(
 			WindowBuilder()
@@ -407,9 +427,8 @@ int main(int argc, char* argv[])
 	sun->addComponent<DirectionalLight>(SUN_DIRECTION, SUN_COLOR, SUN_INTENSITY);
 	sun->addComponent<CascadedShadows>();
 
-	const float view_distance = static_cast<float>(VIEW_RADIUS) * world_settings.getChunkSize();
-	GameObject  sky           = scene.createGameObject("Sky");
-	sky->addComponent<DistanceFog>(SKY_COLOR, view_distance * FOG_START_FRACTION, view_distance * FOG_END_FRACTION);
+	GameObject sky = scene.createGameObject("Sky");
+	sky->addComponent<DistanceFog>(MakeViewFog(VIEW_RADIUS, world_settings));
 	sky->addComponent<SkyLight>(SKY_COLOR, GROUND_BOUNCE_COLOR, SKY_LIGHT_INTENSITY);
 	sky->addComponent<AmbientOcclusion>();
 
@@ -520,6 +539,7 @@ int main(int argc, char* argv[])
 	};
 
 	bool                      placed_above_terrain = false;
+	int                       view_radius          = VIEW_RADIUS;
 	std::optional<glm::dvec2> travelling;
 	engine.addSystem(SystemPhase::eUpdate, [&](Scene&, const FrameTime&) {
 		const glm::vec3 viewer          = is_driving() ? chase_camera->getTransform().position : player->getTransform().position;
@@ -530,6 +550,12 @@ int main(int argc, char* argv[])
 
 		if (engine.isDebugMode() && biome_tuning.draw())
 			regenerate_chunks();
+
+		if (engine.isDebugMode() && DrawViewDistanceWindow(view_radius))
+		{
+			terrain.setViewRadius(view_radius);
+			*sky->getComponent<DistanceFog>() = MakeViewFog(view_radius, world_settings);
+		}
 
 		if (engine.isDebugMode())
 		{

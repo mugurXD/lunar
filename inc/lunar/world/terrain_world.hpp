@@ -34,6 +34,7 @@ namespace lunar::World
 		void   update(const glm::vec3& focus_position);
 		void   reload();
 		void   refresh(std::span<const ChunkCoord> coords);
+		void   setViewRadius(int32_t view_radius);
 		size_t           getLoadedChunkCount()          const;
 		size_t           getPendingChunkCount()         const;
 		const Heightmap*             findHeightmap(ChunkCoord coord) const;

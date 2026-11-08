@@ -79,6 +79,11 @@ namespace lunar::World
 		}
 	}
 
+	void TerrainWorld::setViewRadius(int32_t view_radius)
+	{
+		settings.viewRadius = view_radius;
+	}
+
 	uint64_t TerrainWorld::getRevision(ChunkCoord coord) const
 	{
 		const auto found = chunks.find(coord);
