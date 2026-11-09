@@ -445,7 +445,7 @@ namespace lunar::Render::imp
 		frame.transientOffset = 0;
 		releaseDestroyedResources();
 		frame.commands.begin();
-		TracyVkCollect(this->tracyContext, this->mainCommandBuffer);
+		TracyVkCollect(tracyContext, frame.commands.getHandle());
 		return frame;
 	}
 

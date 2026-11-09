@@ -430,8 +430,11 @@ namespace lunar::Render
 			const Extent2D extent = device.getImageExtent(backbuffer);
 			resizeTargets(extent);
 			gatherMeshes(scene);
+
+			frame.commandList().tracyBeginZone("GPU frame");
 			recordFrame(frame, scene, extent);
 			recordComposite(frame, scene, backbuffer, extent, ui, debug_ui);
+			frame.commandList().tracyEndZone();
 		}
 
 		device.endFrame(frame);
@@ -559,6 +562,7 @@ namespace lunar::Render
 			createShadowTargets();
 
 		CommandList& commands = frame.commandList();
+		commands.tracyBeginZone("Shadows");
 		for (size_t index = 0; index < cascades.size(); index++)
 		{
 			const ColorAttachment shadow_attachment = { .image = shadowMaps[index], .loadOp = LoadOp::eClear, .clearColor = glm::vec4(REVERSE_Z_CLEAR_DEPTH) };
@@ -573,6 +577,7 @@ namespace lunar::Render
 			commands.endRendering();
 			commands.prepareSampling(shadowMaps[index]);
 		}
+		commands.tracyEndZone();
 	}
 
 	uint32_t Renderer::recordAmbientOcclusion(Frame&                  frame,
@@ -595,10 +600,12 @@ namespace lunar::Render
 		const DepthAttachment depth_attachment = { .image = prepassDepthImage, .loadOp = LoadOp::eClear, .clearDepth = REVERSE_Z_CLEAR_DEPTH };
 		const Frustum         frustum(BoundedViewProjection(camera, AspectRatio(extent), occlusion.distance));
 
+		commands.tracyBeginZone("Ambient Occlusion Prepass");
 		commands.beginRendering({ .colorAttachments = std::span(&view_depth, 1), .depthAttachment = depth_attachment });
 		drawOpaque(frame, scene, scene_address, frustum, camera.position, &Material::depthPipeline);
 		commands.endRendering();
 		commands.prepareSampling(viewDepthImage);
+		commands.tracyEndZone();
 
 		const glm::mat4                 projection = camera.getProjectionMatrix(static_cast<int>(extent.width), static_cast<int>(extent.height));
 		const AmbientOcclusionConstants constants  =
@@ -613,8 +620,13 @@ namespace lunar::Render
 			.occlusionTexture = device.getTextureIndex(rawOcclusionImage)
 		};
 
+		commands.tracyBeginZone("Ambient Occlusion");
 		DrawFullscreen(commands, occlusionPipeline, rawOcclusionImage, constants);
+		commands.tracyEndZone();
+		commands.tracyBeginZone("Ambient Occlusion Blur");
 		DrawFullscreen(commands, occlusionBlurPipeline, occlusionImage, constants);
+		commands.tracyEndZone();
+
 		return device.getTextureIndex(occlusionImage);
 	}
 
@@ -663,6 +675,7 @@ namespace lunar::Render
 		const Camera*         camera            = scene.getMainCamera();
 		const ColorAttachment target_attachment = { .image = target, .loadOp = LoadOp::eClear };
 
+		commands.tracyBeginZone("Composite + UI");
 		commands.prepareSampling(hdrImage);
 		commands.beginRendering({ .colorAttachments = std::span(&target_attachment, 1) });
 
@@ -680,6 +693,7 @@ namespace lunar::Render
 			debug_ui->record(commands);
 
 		commands.endRendering();
+		commands.tracyEndZone();
 	}
 
 	void Renderer::drawOpaque(Frame& frame, Scene& scene, uint64_t scene_address, const Frustum& frustum, const glm::vec3& eye, PipelineHandle Material::* pipeline)
