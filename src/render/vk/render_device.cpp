@@ -2,6 +2,7 @@
 #include "vk_frame.hpp"
 #include "vk_swapchain.hpp"
 
+#include <tracy/TracyVulkan.hpp>
 #include <vulkan/vk_enum_string_helper.h>
 #include <GLFW/glfw3.h>
 
@@ -313,6 +314,8 @@ namespace lunar::Render::imp
 
 		DEBUG_LOG("Vulkan rendering interface initialized.");
 		DEBUG_LOG("Graphics queue: {}, Present queue: {}, Transfer queue: {}", graphicsQueueFamilyIndex, presentQueueFamilyIndex, transferQueueFamilyIndex);
+
+		tracyContext = TracyVkContext(this->device.physical_device, this->device.device, this->graphicsQueue, this->mainCommandBuffer);
 	}
 
 	VkRenderDevice::~VkRenderDevice() noexcept
@@ -320,6 +323,9 @@ namespace lunar::Render::imp
 		if (device.device != VK_NULL_HANDLE)
 		{
 			vkDeviceWaitIdle(device);
+
+			TracyVkDestroy(tracyContext);
+
 			destroyFrameResources();
 
 			for (const VkDeferredDestruction& destruction : deferredDestructions)

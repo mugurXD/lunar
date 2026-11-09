@@ -3,6 +3,7 @@
 
 #include <vulkan/vk_enum_string_helper.h>
 #include <tracy/Tracy.hpp>
+#include <tracy/TracyVulkan.hpp>
 
 #include <lunar/debug.hpp>
 
@@ -391,7 +392,7 @@ namespace lunar::Render::imp
 		frame.transientOffset = 0;
 		releaseDestroyedResources();
 		frame.commands.begin();
-
+		TracyVkCollect(this->tracyContext, this->mainCommandBuffer);
 		return frame;
 	}
 

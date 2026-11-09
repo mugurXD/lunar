@@ -5,6 +5,7 @@
 #include <vulkan/vulkan.h>
 #include <vma/vk_mem_alloc.h>
 #include <VkBootstrap.h>
+#include <tracy/TracyVulkan.hpp>
 
 #include <algorithm>
 #include <array>
@@ -216,5 +217,6 @@ namespace lunar::Render::imp
 		Pool<VkBufferRecord>                                   buffers;
 		Pool<VkImageRecord>                                    images;
 		Pool<VkPipelineRecord>                                 pipelines;
+		TracyVkCtx                                             tracyContext;
 	};
 }
