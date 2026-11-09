@@ -1,6 +1,8 @@
 #pragma once
 #include "vk_render_device.hpp"
 
+#include <stack>
+
 namespace lunar::Render::imp
 {
 	class VkSwapchain;
@@ -37,6 +39,8 @@ namespace lunar::Render::imp
 		void dispatch(uint32_t group_count_x,
 		              uint32_t group_count_y,
 		              uint32_t group_count_z)                                           override;
+		void tracyBeginZone(std::string_view name, std::source_location location)       override;
+		void tracyEndZone()                                                             override;
 
 		using CommandList::pushConstants;
 
@@ -50,6 +54,10 @@ namespace lunar::Render::imp
 		VkRenderDevice& device;
 		VkCommandPool   commandPool   = VK_NULL_HANDLE;
 		VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
+
+#ifdef TRACY_ENABLE
+		std::stack<tracy::VkCtxScope> tracyZones;
+#endif
 	};
 
 	class VkFrame final : public Frame

@@ -273,6 +273,35 @@ namespace lunar::Render::imp
 		vkCmdDispatch(commandBuffer, group_count_x, group_count_y, group_count_z);
 	}
 
+	void VkCommandList::tracyBeginZone(std::string_view name, std::source_location location)
+	{
+#ifdef TRACY_ENABLE
+		const TracyVkCtx       context  = device.getTracyContext();
+		const std::string_view file     = location.file_name();
+		const std::string_view function = location.function_name();
+		const bool             active   = context != nullptr;
+
+		tracyZones.emplace(context,
+		                   location.line(),
+		                   file.data(),
+		                   file.size(),
+		                   function.data(),
+		                   function.size(),
+		                   name.data(),
+		                   name.size(),
+		                   commandBuffer,
+		                   active);
+#endif
+	}
+
+	void VkCommandList::tracyEndZone()
+	{
+#ifdef TRACY_ENABLE
+		DEBUG_ASSERT(!tracyZones.empty(), "Ending a GPU zone that was never begun");
+		tracyZones.pop();
+#endif
+	}
+
 	void VkCommandList::begin()
 	{
 		BeginOneTimeCommands(commandBuffer);

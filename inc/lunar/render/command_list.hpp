@@ -7,7 +7,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <source_location>
 #include <span>
+#include <string_view>
 #include <type_traits>
 
 namespace lunar::Render
@@ -94,6 +96,11 @@ namespace lunar::Render
 		virtual void dispatch(uint32_t group_count_x,
 		                      uint32_t group_count_y = 1,
 		                      uint32_t group_count_z = 1) = 0;
+
+		virtual void tracyBeginZone(std::string_view     name,
+		                            std::source_location location = std::source_location::current()) = 0;
+
+		virtual void tracyEndZone() = 0;
 
 		template<typename T>
 		void pushConstants(const T& constants)

@@ -404,6 +404,11 @@ namespace lunar::Render::imp
 		return instance;
 	}
 
+	TracyVkCtx VkRenderDevice::getTracyContext() const
+	{
+		return tracyContext;
+	}
+
 	void VkRenderDevice::waitIdle()
 	{
 		flushUploads();

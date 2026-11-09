@@ -148,6 +148,7 @@ namespace lunar::Render::imp
 		uint32_t             getGraphicsQueueFamily() const;
 		VkPipelineLayout     getPipelineLayout()      const;
 		VkDescriptorSet      getTextureSet()          const;
+		TracyVkCtx           getTracyContext()        const;
 		VkBufferRecord*      resolve(BufferHandle buffer);
 		void                 flushBuffer(BufferHandle buffer, size_t offset, size_t size);
 		VkImageRecord*       resolve(ImageHandle image);
