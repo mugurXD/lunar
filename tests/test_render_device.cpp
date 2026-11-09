@@ -59,6 +59,18 @@ namespace
 
 	constexpr uint32_t TRANSIENT_ALLOCATIONS_PER_FRAME = 10000;
 
+	constexpr uint32_t NO_INSTANCES    = 0;
+	constexpr uint32_t SINGLE_INSTANCE = 1;
+	constexpr uint32_t OFFSET_INSTANCE = 1;
+	constexpr float    UNCOVERED       = 0.f;
+	constexpr float    COVERED         = 1.f;
+
+	constexpr std::array<DrawIndirectCommand, 2> EMPTY_THEN_TRIANGLE =
+	{
+		DrawIndirectCommand { .vertexCount = TRIANGLE_VERTICES, .instanceCount = NO_INSTANCES },
+		DrawIndirectCommand { .vertexCount = TRIANGLE_VERTICES, .instanceCount = SINGLE_INSTANCE, .firstInstance = OFFSET_INSTANCE }
+	};
+
 	constexpr Extent2D TEXTURE_EXTENT  = { 4, 2 };
 	constexpr uint32_t TEXEL_COUNT     = TEXTURE_EXTENT.width * TEXTURE_EXTENT.height;
 	constexpr size_t   TEXEL_BYTES     = 4;
@@ -446,6 +458,50 @@ protected:
 		device->destroyBuffer(readback);
 		device->destroyPipeline(fetch);
 		return texels;
+	}
+
+	BufferHandle createIndirectBuffer(std::span<const std::byte> contents)
+	{
+		return device->createBuffer({ contents.size(), BufferUsageFlags(BufferUsageFlagBits::eIndirect), MemoryLocation::eUpload }, contents);
+	}
+
+	template<typename Record>
+	float triangleTexelCoverage(Record record)
+	{
+		constexpr Extent2D   TARGET_EXTENT    = { 16, 16 };
+		constexpr glm::uvec2 INSIDE_NEAR_BASE = { 5, 11 };
+		constexpr Format     COLOR_FORMAT     = Format::eRGBA8Unorm;
+
+		const std::vector<char> vertex_shader   = LoadShader("triangle.vert");
+		const std::vector<char> fragment_shader = LoadShader("white.frag");
+
+		const ImageHandle color = device->createImage({
+			.extent = TARGET_EXTENT,
+			.format = COLOR_FORMAT,
+			.usage  = ImageUsageFlags(ImageUsageFlagBits::eColorAttachment) | ImageUsageFlagBits::eSampled
+		});
+		const PipelineHandle pipeline = device->createGraphicsPipeline({
+			.vertexShader   = std::as_bytes(std::span(vertex_shader)),
+			.fragmentShader = std::as_bytes(std::span(fragment_shader)),
+			.colorFormats   = std::span(&COLOR_FORMAT, 1)
+		});
+
+		const ColorAttachment color_attachment = { .image = color };
+
+		Frame&       frame    = device->beginFrame();
+		CommandList& commands = frame.commandList();
+		commands.beginRendering({ .colorAttachments = std::span(&color_attachment, 1) });
+		commands.bindPipeline(pipeline);
+		record(commands);
+		commands.endRendering();
+		commands.prepareSampling(color);
+		device->endFrame(frame);
+
+		const std::vector<glm::vec4> texels = fetchTexels(color, TARGET_EXTENT);
+
+		device->destroyPipeline(pipeline);
+		device->destroyImage(color);
+		return texels[INSIDE_NEAR_BASE.y * TARGET_EXTENT.width + INSIDE_NEAR_BASE.x].r;
 	}
 
 	static inline std::unique_ptr<RenderDevice> device;
@@ -1388,6 +1444,46 @@ TEST_F(RenderDeviceTest, RenderedImagesCanBeSampledAfterwards)
 		device->destroyPipeline(pipeline);
 		device->destroyImage(color);
 	}
+}
+
+TEST_F(RenderDeviceTest, IndirectDrawsRunEveryCommandInTheBuffer)
+{
+	const uint32_t     draw_count = static_cast<uint32_t>(EMPTY_THEN_TRIANGLE.size());
+	const BufferHandle indirect   = createIndirectBuffer(std::as_bytes(std::span(EMPTY_THEN_TRIANGLE)));
+	ASSERT_NE(indirect, BufferHandle {});
+
+	const float coverage = triangleTexelCoverage([&](CommandList& commands) {
+		commands.drawIndirect(indirect, 0, draw_count);
+	});
+
+	EXPECT_FLOAT_EQ(coverage, COVERED) << "only the second command draws anything";
+
+	device->destroyBuffer(indirect);
+}
+
+TEST_F(RenderDeviceTest, IndirectCountDrawsStopAtTheCountInTheBuffer)
+{
+	constexpr uint32_t EMPTY_DRAW_ONLY = 1;
+
+	const uint32_t     max_draw_count = static_cast<uint32_t>(EMPTY_THEN_TRIANGLE.size());
+	const BufferHandle indirect       = createIndirectBuffer(std::as_bytes(std::span(EMPTY_THEN_TRIANGLE)));
+	ASSERT_NE(indirect, BufferHandle {});
+
+	for (const auto& [draw_count, expected] : { std::pair(EMPTY_DRAW_ONLY, UNCOVERED), std::pair(max_draw_count, COVERED) })
+	{
+		const BufferHandle count = createIndirectBuffer(std::as_bytes(std::span(&draw_count, 1)));
+		ASSERT_NE(count, BufferHandle {});
+
+		const float coverage = triangleTexelCoverage([&](CommandList& commands) {
+			commands.drawIndirectCount(indirect, 0, count, 0, max_draw_count);
+		});
+
+		EXPECT_FLOAT_EQ(coverage, expected) << draw_count << " of " << max_draw_count << " commands";
+
+		device->destroyBuffer(count);
+	}
+
+	device->destroyBuffer(indirect);
 }
 
 TEST_F(RenderDeviceTest, TonemappingKeepsBaseColorsAndCompressesHighlights)

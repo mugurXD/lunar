@@ -47,6 +47,14 @@ namespace lunar::Render
 		std::optional<DepthAttachment>   depthAttachment  = std::nullopt;
 	};
 
+	struct LUNAR_API DrawIndirectCommand
+	{
+		uint32_t vertexCount   = 0;
+		uint32_t instanceCount = 0;
+		uint32_t firstVertex   = 0;
+		uint32_t firstInstance = 0;
+	};
+
 	class LUNAR_API CommandList
 	{
 	public:
@@ -64,6 +72,7 @@ namespace lunar::Render
 		virtual void setScissor(const Rect2D& rect)                                             = 0;
 		virtual void memoryBarrier()                                                            = 0;
 		virtual void prepareSampling(ImageHandle image)                                         = 0;
+		virtual void drawIndirect(BufferHandle buffer, size_t offset, uint32_t draw_count)      = 0;
 
 		virtual void draw(uint32_t vertex_count,
 		                  uint32_t instance_count = 1,
@@ -75,6 +84,12 @@ namespace lunar::Render
 		                         uint32_t first_index    = 0,
 		                         int32_t  vertex_offset  = 0,
 		                         uint32_t first_instance = 0) = 0;
+
+		virtual void drawIndirectCount(BufferHandle buffer,
+		                               size_t       offset,
+		                               BufferHandle count_buffer,
+		                               size_t       count_offset,
+		                               uint32_t     max_draw_count) = 0;
 
 		virtual void dispatch(uint32_t group_count_x,
 		                      uint32_t group_count_y = 1,

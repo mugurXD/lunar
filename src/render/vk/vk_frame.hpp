@@ -19,6 +19,7 @@ namespace lunar::Render::imp
 		void setScissor(const Rect2D& rect)                                             override;
 		void memoryBarrier()                                                            override;
 		void prepareSampling(ImageHandle image)                                         override;
+		void drawIndirect(BufferHandle buffer, size_t offset, uint32_t draw_count)      override;
 		void draw(uint32_t vertex_count,
 		          uint32_t instance_count,
 		          uint32_t first_vertex,
@@ -28,6 +29,11 @@ namespace lunar::Render::imp
 		                 uint32_t first_index,
 		                 int32_t  vertex_offset,
 		                 uint32_t first_instance)                                       override;
+		void drawIndirectCount(BufferHandle buffer,
+		                       size_t       offset,
+		                       BufferHandle count_buffer,
+		                       size_t       count_offset,
+		                       uint32_t     max_draw_count)                             override;
 		void dispatch(uint32_t group_count_x,
 		              uint32_t group_count_y,
 		              uint32_t group_count_z)                                           override;

@@ -18,11 +18,12 @@ namespace lunar::Render::imp
 		VkPhysicalDeviceFeatures RequiredCoreFeatures()
 		{
 			VkPhysicalDeviceFeatures features = {};
-			features.samplerAnisotropy = VK_TRUE;
-			features.multiDrawIndirect = VK_FALSE;
-			features.shaderInt64       = VK_FALSE;
-			features.fillModeNonSolid  = VK_FALSE;
-			features.depthClamp        = VK_FALSE;
+			features.samplerAnisotropy         = VK_TRUE;
+			features.multiDrawIndirect         = VK_TRUE;
+			features.drawIndirectFirstInstance = VK_TRUE;
+			features.shaderInt64               = VK_FALSE;
+			features.fillModeNonSolid          = VK_FALSE;
+			features.depthClamp                = VK_FALSE;
 			return features;
 		}
 
@@ -31,7 +32,7 @@ namespace lunar::Render::imp
 			return VkPhysicalDeviceVulkan11Features
 			{
 				.sType                = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
-				.shaderDrawParameters = VK_FALSE
+				.shaderDrawParameters = VK_TRUE
 			};
 		}
 
@@ -40,7 +41,7 @@ namespace lunar::Render::imp
 			return VkPhysicalDeviceVulkan12Features
 			{
 				.sType                                         = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
-				.drawIndirectCount                             = VK_FALSE,
+				.drawIndirectCount                             = VK_TRUE,
 				.descriptorIndexing                            = VK_FALSE,
 				.shaderSampledImageArrayNonUniformIndexing     = VK_TRUE,
 				.descriptorBindingSampledImageUpdateAfterBind  = VK_TRUE,
