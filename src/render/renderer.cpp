@@ -283,7 +283,8 @@ namespace lunar::Render
 		                    .fragmentShader = std::string(DEFAULT_FRAGMENT_SHADER) },
 		fadingInstancedMaterial { .vertexShader         = std::string(INSTANCED_VERTEX_SHADER),
 		                          .fragmentShader       = std::string(INSTANCED_FADE_SHADER),
-		                          .shadowFragmentShader = std::string(SHADOW_FADE_SHADER) }
+		                          .shadowFragmentShader = std::string(SHADOW_FADE_SHADER) },
+		visibleInstances(device)
 	{
 		cubeMesh = meshes.create(CreateCubeMeshData());
 		setSamples(samples);

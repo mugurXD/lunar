@@ -1,6 +1,8 @@
 #include <lunar/render/instance_draw_table.hpp>
+#include <lunar/debug.hpp>
 
 #include <algorithm>
+#include <iterator>
 #include <tuple>
 
 namespace lunar::Render
@@ -31,6 +33,8 @@ namespace lunar::Render
 		const InstanceDraw* previous = nullptr;
 		for (const InstanceDraw& draw : sorted)
 		{
+			DEBUG_ASSERT(glm::mat3(draw.transform) == glm::mat3(1.f), "Visible instances can only fold a translation into their position");
+
 			if (previous == nullptr || SlotKey(*previous) != SlotKey(draw))
 				table.slots.push_back({ draw.mesh, draw.fadeBands, draw.fading, table.instanceCount });
 
@@ -49,5 +53,17 @@ namespace lunar::Render
 		}
 
 		return table;
+	}
+
+	std::vector<DrawIndexedIndirectCommand> BuildInstanceDrawCommands(const InstanceDrawTable& table)
+	{
+		std::vector<DrawIndexedIndirectCommand> commands;
+		commands.reserve(table.slots.size());
+
+		std::ranges::transform(table.slots, std::back_inserter(commands), [](const InstanceDrawSlot& slot) {
+			return DrawIndexedIndirectCommand { .indexCount = slot.mesh->indexCount, .firstInstance = slot.firstInstance };
+		});
+
+		return commands;
 	}
 }

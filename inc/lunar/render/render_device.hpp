@@ -63,6 +63,8 @@ namespace lunar::Render
 	{
 		std::span<std::byte> data    = {};
 		uint64_t             address = 0;
+		BufferHandle         buffer  = {};
+		size_t               offset  = 0;
 	};
 
 	class LUNAR_API Frame
@@ -77,6 +79,7 @@ namespace lunar::Render
 		virtual ImageHandle         acquire(Swapchain& swapchain)                                          = 0;
 		virtual CommandList&        commandList()                                                          = 0;
 		virtual TransientAllocation allocateTransient(size_t size, size_t alignment = TRANSIENT_ALIGNMENT) = 0;
+		virtual size_t              getIndex()                                                       const = 0;
 
 		template<typename T>
 		uint64_t writeTransient(const T& value)
@@ -87,14 +90,20 @@ namespace lunar::Render
 		template<typename T>
 		uint64_t writeTransient(std::span<const T> values)
 		{
+			return storeTransient(values).address;
+		}
+
+		template<typename T>
+		TransientAllocation storeTransient(std::span<const T> values)
+		{
 			static_assert(std::is_trivially_copyable_v<T>, "Transient data must be trivially copyable");
 
 			const TransientAllocation allocation = allocateTransient(values.size_bytes());
 			if (allocation.data.empty())
-				return 0;
+				return {};
 
 			std::memcpy(allocation.data.data(), values.data(), values.size_bytes());
-			return allocation.address;
+			return allocation;
 		}
 	};
 

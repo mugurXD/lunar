@@ -5,7 +5,9 @@
 #include <array>
 #include <limits>
 
+using lunar::Render::BuildInstanceDrawCommands;
 using lunar::Render::BuildInstanceDrawTable;
+using lunar::Render::DrawIndexedIndirectCommand;
 using lunar::Render::GpuInstanceDraw;
 using lunar::Render::InstanceDraw;
 using lunar::Render::InstanceDrawTable;
@@ -20,12 +22,14 @@ namespace
 	constexpr uint64_t SECOND_SET   = 0x2000;
 	constexpr uint64_t THIRD_SET    = 0x3000;
 	constexpr size_t   GPU_DRAW_SIZE = 128;
+	constexpr uint32_t NEAR_INDICES  = 270;
+	constexpr uint32_t FAR_INDICES   = 150;
 
 	const glm::vec4 NEAR_BANDS = { -std::numeric_limits<float>::infinity(), -std::numeric_limits<float>::infinity(), 80.f, 100.f };
 	const glm::vec4 FAR_BANDS  = { 80.f, 100.f, 350.f, 400.f };
 
-	const Mesh NEAR_MESH = { .bounds = { glm::vec3(-1.f, 0.f, -2.f), glm::vec3(1.f, 4.f, 2.f) } };
-	const Mesh FAR_MESH  = { .bounds = { glm::vec3(-1.f), glm::vec3(1.f) } };
+	const Mesh NEAR_MESH = { .indexCount = NEAR_INDICES, .bounds = { glm::vec3(-1.f, 0.f, -2.f), glm::vec3(1.f, 4.f, 2.f) } };
+	const Mesh FAR_MESH  = { .indexCount = FAR_INDICES, .bounds = { glm::vec3(-1.f), glm::vec3(1.f) } };
 
 	InstanceDraw Draw(const Mesh& mesh, uint64_t address, uint32_t count, const glm::vec4& bands, bool fading)
 	{
@@ -123,4 +127,25 @@ TEST(InstanceDrawTable, BoundingSpheresEncloseTheMeshBounds)
 
 	EXPECT_EQ(glm::vec3(sphere), glm::vec3(0.f, 2.f, 0.f));
 	EXPECT_FLOAT_EQ(sphere.w, 3.f);
+}
+
+TEST(InstanceDrawTable, EverySlotGetsAnEmptyCommandForItsMeshAndRegion)
+{
+	const std::array draws =
+	{
+		Draw(NEAR_MESH, FIRST_SET, SMALL_BATCH, NEAR_BANDS, false),
+		Draw(FAR_MESH, SECOND_SET, MEDIUM_BATCH, FAR_BANDS, false),
+		Draw(NEAR_MESH, THIRD_SET, LARGE_BATCH, NEAR_BANDS, true)
+	};
+
+	const InstanceDrawTable                       table    = BuildInstanceDrawTable(draws);
+	const std::vector<DrawIndexedIndirectCommand> commands = BuildInstanceDrawCommands(table);
+
+	ASSERT_EQ(commands.size(), table.slots.size());
+	for (size_t slot = 0; slot < commands.size(); slot++)
+	{
+		EXPECT_EQ(commands[slot].indexCount, table.slots[slot].mesh->indexCount);
+		EXPECT_EQ(commands[slot].firstInstance, table.slots[slot].firstInstance);
+		EXPECT_EQ(commands[slot].instanceCount, 0u) << "only the cull pass adds instances";
+	}
 }

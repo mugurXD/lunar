@@ -35,6 +35,8 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 using namespace lunar::Render;
@@ -510,7 +512,11 @@ protected:
 		CommandList& commands = frame.commandList();
 		commands.beginRendering({ .colorAttachments = std::span(&color_attachment, 1) });
 		commands.bindPipeline(pipeline);
-		record(commands);
+		if constexpr (std::is_invocable_v<Record, Frame&>)
+			record(frame);
+		else
+			record(commands);
+
 		commands.endRendering();
 		commands.prepareSampling(color);
 		device->endFrame(frame);
@@ -1658,6 +1664,60 @@ TEST_F(RenderDeviceTest, LodFadesSplitEverySampleBetweenTwoLevels)
 	}
 }
 
+TEST_F(RenderDeviceTest, IndexedIndirectDrawsCanReadCommandsFromTransientMemory)
+{
+	const BufferHandle indices = device->createBuffer({ sizeof(TRIANGLE_INDICES), BufferUsageFlags(BufferUsageFlagBits::eIndex), MemoryLocation::eUpload },
+	                                                  std::as_bytes(std::span(TRIANGLE_INDICES)));
+	ASSERT_NE(indices, BufferHandle {});
+
+	const float coverage = triangleTexelCoverage([&](Frame& frame) {
+		const TransientAllocation padding  = frame.allocateTransient(TRANSIENT_ODD_SIZE);
+		const TransientAllocation indirect = frame.storeTransient(std::span<const DrawIndexedIndirectCommand>(EMPTY_THEN_INDEXED_TRIANGLE));
+		ASSERT_NE(indirect.buffer, BufferHandle {});
+		EXPECT_GT(indirect.offset, padding.offset) << "commands are found through their offset, not the start of the buffer";
+		EXPECT_EQ(indirect.address - indirect.offset, padding.address - padding.offset);
+
+		CommandList& commands = frame.commandList();
+		commands.bindIndexBuffer(indices, 0, IndexType::eUint32);
+		commands.drawIndexedIndirect(indirect.buffer, indirect.offset, static_cast<uint32_t>(EMPTY_THEN_INDEXED_TRIANGLE.size()));
+	});
+
+	EXPECT_FLOAT_EQ(coverage, COVERED);
+
+	device->destroyBuffer(indices);
+}
+
+TEST_F(RenderDeviceTest, VisibleInstanceBuffersAreKeptPerFrameAndGrowOnlyWhenNeeded)
+{
+	constexpr uint32_t FEW_INSTANCES  = 100;
+	constexpr uint32_t MANY_INSTANCES = 100'000;
+
+	VisibleInstanceBuffers buffers(*device);
+
+	const auto reserve_in_new_frame = [&](uint32_t instance_count) {
+		Frame&         frame   = device->beginFrame();
+		const uint64_t address = buffers.reserve(frame, instance_count);
+		EXPECT_EQ(buffers.reserve(frame, FEW_INSTANCES), address) << "a smaller request reuses the buffer";
+
+		device->endFrame(frame);
+		return std::pair(frame.getIndex(), address);
+	};
+
+	const auto [first_frame, first_address]   = reserve_in_new_frame(FEW_INSTANCES);
+	const auto [second_frame, second_address] = reserve_in_new_frame(FEW_INSTANCES);
+	ASSERT_NE(first_frame, second_frame) << "this test needs more than one frame in flight";
+	EXPECT_NE(first_address, 0u);
+	EXPECT_NE(second_address, 0u);
+	EXPECT_NE(first_address, second_address) << "frames in flight never share a buffer";
+
+	const size_t buffers_before_growth = device->getStats().bufferCount;
+	const auto [grown_frame, grown_address] = reserve_in_new_frame(MANY_INSTANCES);
+	ASSERT_EQ(grown_frame, first_frame);
+	EXPECT_NE(grown_address, 0u);
+	EXPECT_NE(grown_address, first_address);
+	EXPECT_EQ(device->getStats().bufferCount, buffers_before_growth) << "the outgrown buffer is released";
+}
+
 TEST_F(RenderDeviceTest, InstanceCullKeepsOnlyInstancesInsideTheFrustumAndFadeRange)
 {
 	constexpr int       VIEWPORT_WIDTH    = 16;
@@ -1701,9 +1761,7 @@ TEST_F(RenderDeviceTest, InstanceCullKeepsOnlyInstancesInsideTheFrustumAndFadeRa
 	const InstanceDrawTable table = BuildInstanceDrawTable(draws);
 	ASSERT_EQ(table.slots.size(), draws.size());
 
-	std::vector<DrawIndexedIndirectCommand> empty_commands;
-	for (const InstanceDrawSlot& slot : table.slots)
-		empty_commands.push_back({ .firstInstance = slot.firstInstance });
+	const std::vector<DrawIndexedIndirectCommand> empty_commands = BuildInstanceDrawCommands(table);
 
 	const BufferDesc   command_desc   = { empty_commands.size() * sizeof(DrawIndexedIndirectCommand), BufferUsageFlags(BufferUsageFlagBits::eStorage), MemoryLocation::eReadback };
 	const BufferDesc   visible_desc   = { table.instanceCount * sizeof(InstanceData), BufferUsageFlags(BufferUsageFlagBits::eStorage), MemoryLocation::eReadback };

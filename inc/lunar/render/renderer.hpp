@@ -1,6 +1,7 @@
 #pragma once
 #include <lunar/api.hpp>
 #include <lunar/render/frustum.hpp>
+#include <lunar/render/instance_cull.hpp>
 #include <lunar/render/instance_draw_table.hpp>
 #include <lunar/render/render_device.hpp>
 #include <lunar/render/mesh_registry.hpp>
@@ -122,6 +123,7 @@ namespace lunar::Render
 		std::vector<Vertex> lineVertices;
 
 		std::vector<MeshCandidate> meshCandidates;
+		VisibleInstanceBuffers     visibleInstances;
 		MaterialHandle      defaultMaterial = {};
 		PipelineHandle      tonemapPipeline = {};
 		ImageHandle         colorImage      = {};

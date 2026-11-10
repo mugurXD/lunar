@@ -64,18 +64,20 @@ namespace lunar::Render::imp
 	class VkFrame final : public Frame
 	{
 	public:
-		VkFrame(VkRenderDevice& device, uint32_t queue_family_index) noexcept;
+		VkFrame(VkRenderDevice& device, uint32_t queue_family_index, size_t index) noexcept;
 		~VkFrame() noexcept override;
 
 		ImageHandle         acquire(Swapchain& swapchain)                  override;
 		CommandList&        commandList()                                  override;
 		TransientAllocation allocateTransient(size_t size, size_t alignment) override;
+		size_t              getIndex()                               const override;
 
 	private:
 		static constexpr size_t TRANSIENT_BUFFER_SIZE = 8 * 1024 * 1024;
 
 		VkRenderDevice& device;
 		VkCommandList   commands;
+		size_t          index             = 0;
 		VkSemaphore     acquireSemaphore  = VK_NULL_HANDLE;
 		VkSwapchain*    acquiredSwapchain = nullptr;
 		uint64_t        signalValue       = 0;

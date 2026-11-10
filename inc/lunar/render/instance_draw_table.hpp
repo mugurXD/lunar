@@ -1,5 +1,6 @@
 #pragma once
 #include <lunar/api.hpp>
+#include <lunar/render/command_list.hpp>
 #include <lunar/render/mesh_registry.hpp>
 
 #include <glm/glm.hpp>
@@ -49,5 +50,6 @@ namespace lunar::Render
 		uint32_t                      instanceCount = 0;
 	};
 
-	LUNAR_API InstanceDrawTable BuildInstanceDrawTable(std::span<const InstanceDraw> draws);
+	LUNAR_API InstanceDrawTable                       BuildInstanceDrawTable(std::span<const InstanceDraw> draws);
+	LUNAR_API std::vector<DrawIndexedIndirectCommand> BuildInstanceDrawCommands(const InstanceDrawTable& table);
 }

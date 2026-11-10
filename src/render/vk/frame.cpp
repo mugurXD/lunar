@@ -335,15 +335,16 @@ namespace lunar::Render::imp
 		return commandBuffer;
 	}
 
-	VkFrame::VkFrame(VkRenderDevice& device, uint32_t queue_family_index) noexcept
+	VkFrame::VkFrame(VkRenderDevice& device, uint32_t queue_family_index, size_t index) noexcept
 		: device(device),
-		commands(device, queue_family_index)
+		commands(device, queue_family_index),
+		index(index)
 	{
 		const VkResult result = CreateVkSemaphore(device.getDevice(), VK_SEMAPHORE_TYPE_BINARY, acquireSemaphore);
 		if (result != VK_SUCCESS)
 			DEBUG_ERROR("Failed to create frame acquire semaphore: {}", string_VkResult(result));
 
-		transientBuffer = device.createBuffer({ TRANSIENT_BUFFER_SIZE, BufferUsageFlags(BufferUsageFlagBits::eStorage), MemoryLocation::eUpload }, {});
+		transientBuffer = device.createBuffer({ TRANSIENT_BUFFER_SIZE, BufferUsageFlags(BufferUsageFlagBits::eStorage) | BufferUsageFlagBits::eIndirect, MemoryLocation::eUpload }, {});
 
 		const VkBufferRecord* transient_record = device.resolve(transientBuffer);
 		if (transient_record == nullptr)
@@ -392,7 +393,12 @@ namespace lunar::Render::imp
 		}
 
 		transientOffset = offset + size;
-		return { { transientData + offset, size }, transientAddress + offset };
+		return { { transientData + offset, size }, transientAddress + offset, transientBuffer, offset };
+	}
+
+	size_t VkFrame::getIndex() const
+	{
+		return index;
 	}
 
 	bool VkRenderDevice::createFrameResources()
@@ -404,8 +410,8 @@ namespace lunar::Render::imp
 			return false;
 		}
 
-		for (std::unique_ptr<VkFrame>& frame : frames)
-			frame = std::make_unique<VkFrame>(*this, graphicsQueueFamilyIndex);
+		for (size_t index = 0; index < frames.size(); index++)
+			frames[index] = std::make_unique<VkFrame>(*this, graphicsQueueFamilyIndex, index);
 
 		return true;
 	}
