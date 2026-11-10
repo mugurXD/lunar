@@ -13,34 +13,35 @@ namespace lunar::Render::imp
 		VkCommandList(VkRenderDevice& device, uint32_t queue_family_index) noexcept;
 		~VkCommandList() noexcept override;
 
-		void beginRendering(const RenderingDesc& desc)                                  override;
-		void endRendering()                                                             override;
-		void bindPipeline(PipelineHandle pipeline)                                      override;
-		void pushConstants(std::span<const std::byte> data)                             override;
-		void bindIndexBuffer(BufferHandle buffer, size_t offset, IndexType index_type) override;
-		void setScissor(const Rect2D& rect)                                             override;
-		void memoryBarrier()                                                            override;
-		void prepareSampling(ImageHandle image)                                         override;
-		void drawIndirect(BufferHandle buffer, size_t offset, uint32_t draw_count)      override;
+		void beginRendering(const RenderingDesc& desc)                                    override;
+		void endRendering()                                                               override;
+		void bindPipeline(PipelineHandle pipeline)                                        override;
+		void pushConstants(std::span<const std::byte> data)                               override;
+		void bindIndexBuffer(BufferHandle buffer, size_t offset, IndexType index_type)    override;
+		void setScissor(const Rect2D& rect)                                               override;
+		void memoryBarrier()                                                              override;
+		void prepareSampling(ImageHandle image)                                           override;
+		void drawIndirect(BufferHandle buffer, size_t offset, uint32_t draw_count)        override;
+		void drawIndexedIndirect(BufferHandle buffer, size_t offset, uint32_t draw_count) override;
 		void draw(uint32_t vertex_count,
 		          uint32_t instance_count,
 		          uint32_t first_vertex,
-		          uint32_t first_instance)                                              override;
+		          uint32_t first_instance)                                                override;
 		void drawIndexed(uint32_t index_count,
 		                 uint32_t instance_count,
 		                 uint32_t first_index,
 		                 int32_t  vertex_offset,
-		                 uint32_t first_instance)                                       override;
+		                 uint32_t first_instance)                                         override;
 		void drawIndirectCount(BufferHandle buffer,
 		                       size_t       offset,
 		                       BufferHandle count_buffer,
 		                       size_t       count_offset,
-		                       uint32_t     max_draw_count)                             override;
+		                       uint32_t     max_draw_count)                               override;
 		void dispatch(uint32_t group_count_x,
 		              uint32_t group_count_y,
-		              uint32_t group_count_z)                                           override;
-		void tracyBeginZone(std::string_view name, std::source_location location)       override;
-		void tracyEndZone()                                                             override;
+		              uint32_t group_count_z)                                             override;
+		void tracyBeginZone(std::string_view name, std::source_location location)         override;
+		void tracyEndZone()                                                               override;
 
 		using CommandList::pushConstants;
 

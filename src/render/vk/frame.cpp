@@ -17,6 +17,7 @@ namespace lunar::Render::imp
 		constexpr float VIEWPORT_MAX_DEPTH = 1.f;
 
 		static_assert(sizeof(DrawIndirectCommand) == sizeof(VkDrawIndirectCommand), "Indirect draw commands must match the Vulkan layout");
+		static_assert(sizeof(DrawIndexedIndirectCommand) == sizeof(VkDrawIndexedIndirectCommand), "Indexed indirect draw commands must match the Vulkan layout");
 
 		constexpr std::pair<IndexType, VkIndexType> INDEX_TYPE_TRANSLATIONS[] =
 		{
@@ -252,6 +253,14 @@ namespace lunar::Render::imp
 		DEBUG_ASSERT(record != nullptr, "Drawing from a null or destroyed indirect buffer");
 
 		vkCmdDrawIndirect(commandBuffer, record->buffer, offset, draw_count, sizeof(DrawIndirectCommand));
+	}
+
+	void VkCommandList::drawIndexedIndirect(BufferHandle buffer, size_t offset, uint32_t draw_count)
+	{
+		const VkBufferRecord* record = device.resolve(buffer);
+		DEBUG_ASSERT(record != nullptr, "Drawing from a null or destroyed indirect buffer");
+
+		vkCmdDrawIndexedIndirect(commandBuffer, record->buffer, offset, draw_count, sizeof(DrawIndexedIndirectCommand));
 	}
 
 	void VkCommandList::drawIndirectCount(BufferHandle buffer,

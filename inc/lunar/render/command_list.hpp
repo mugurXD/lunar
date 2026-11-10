@@ -57,6 +57,15 @@ namespace lunar::Render
 		uint32_t firstInstance = 0;
 	};
 
+	struct LUNAR_API DrawIndexedIndirectCommand
+	{
+		uint32_t indexCount    = 0;
+		uint32_t instanceCount = 0;
+		uint32_t firstIndex    = 0;
+		int32_t  vertexOffset  = 0;
+		uint32_t firstInstance = 0;
+	};
+
 	class LUNAR_API CommandList
 	{
 	public:
@@ -66,15 +75,16 @@ namespace lunar::Render
 		CommandList(const CommandList&)            = delete;
 		CommandList& operator=(const CommandList&) = delete;
 
-		virtual void beginRendering(const RenderingDesc& desc)                                  = 0;
-		virtual void endRendering()                                                             = 0;
-		virtual void bindPipeline(PipelineHandle pipeline)                                      = 0;
-		virtual void pushConstants(std::span<const std::byte> data)                             = 0;
-		virtual void bindIndexBuffer(BufferHandle buffer, size_t offset, IndexType index_type) = 0;
-		virtual void setScissor(const Rect2D& rect)                                             = 0;
-		virtual void memoryBarrier()                                                            = 0;
-		virtual void prepareSampling(ImageHandle image)                                         = 0;
-		virtual void drawIndirect(BufferHandle buffer, size_t offset, uint32_t draw_count)      = 0;
+		virtual void beginRendering(const RenderingDesc& desc)                                    = 0;
+		virtual void endRendering()                                                               = 0;
+		virtual void bindPipeline(PipelineHandle pipeline)                                        = 0;
+		virtual void pushConstants(std::span<const std::byte> data)                               = 0;
+		virtual void bindIndexBuffer(BufferHandle buffer, size_t offset, IndexType index_type)    = 0;
+		virtual void setScissor(const Rect2D& rect)                                               = 0;
+		virtual void memoryBarrier()                                                              = 0;
+		virtual void prepareSampling(ImageHandle image)                                           = 0;
+		virtual void drawIndirect(BufferHandle buffer, size_t offset, uint32_t draw_count)        = 0;
+		virtual void drawIndexedIndirect(BufferHandle buffer, size_t offset, uint32_t draw_count) = 0;
 
 		virtual void draw(uint32_t vertex_count,
 		                  uint32_t instance_count = 1,

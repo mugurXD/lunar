@@ -71,6 +71,14 @@ namespace
 		DrawIndirectCommand { .vertexCount = TRIANGLE_VERTICES, .instanceCount = SINGLE_INSTANCE, .firstInstance = OFFSET_INSTANCE }
 	};
 
+	constexpr std::array<uint32_t, TRIANGLE_VERTICES> TRIANGLE_INDICES = { 0, 1, 2 };
+
+	constexpr std::array<DrawIndexedIndirectCommand, 2> EMPTY_THEN_INDEXED_TRIANGLE =
+	{
+		DrawIndexedIndirectCommand { .indexCount = TRIANGLE_VERTICES, .instanceCount = NO_INSTANCES },
+		DrawIndexedIndirectCommand { .indexCount = TRIANGLE_VERTICES, .instanceCount = SINGLE_INSTANCE, .firstInstance = OFFSET_INSTANCE }
+	};
+
 	constexpr Extent2D TEXTURE_EXTENT  = { 4, 2 };
 	constexpr uint32_t TEXEL_COUNT     = TEXTURE_EXTENT.width * TEXTURE_EXTENT.height;
 	constexpr size_t   TEXEL_BYTES     = 4;
@@ -1458,6 +1466,26 @@ TEST_F(RenderDeviceTest, IndirectDrawsRunEveryCommandInTheBuffer)
 
 	EXPECT_FLOAT_EQ(coverage, COVERED) << "only the second command draws anything";
 
+	device->destroyBuffer(indirect);
+}
+
+TEST_F(RenderDeviceTest, IndexedIndirectDrawsRunEveryCommandInTheBuffer)
+{
+	const uint32_t     draw_count = static_cast<uint32_t>(EMPTY_THEN_INDEXED_TRIANGLE.size());
+	const BufferHandle indirect   = createIndirectBuffer(std::as_bytes(std::span(EMPTY_THEN_INDEXED_TRIANGLE)));
+	const BufferHandle indices    = device->createBuffer({ sizeof(TRIANGLE_INDICES), BufferUsageFlags(BufferUsageFlagBits::eIndex), MemoryLocation::eUpload },
+	                                                     std::as_bytes(std::span(TRIANGLE_INDICES)));
+	ASSERT_NE(indirect, BufferHandle {});
+	ASSERT_NE(indices,  BufferHandle {});
+
+	const float coverage = triangleTexelCoverage([&](CommandList& commands) {
+		commands.bindIndexBuffer(indices, 0, IndexType::eUint32);
+		commands.drawIndexedIndirect(indirect, 0, draw_count);
+	});
+
+	EXPECT_FLOAT_EQ(coverage, COVERED) << "only the second command draws anything";
+
+	device->destroyBuffer(indices);
 	device->destroyBuffer(indirect);
 }
 
