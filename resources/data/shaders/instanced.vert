@@ -12,9 +12,16 @@ vec3 Rotate(vec4 rotation, vec3 vector)
 	return vector + rotation.w * doubled_cross + cross(rotation.xyz, doubled_cross);
 }
 
+const vec4 CULLED_POSITION = vec4(0.0, 0.0, 2.0, 1.0);
+
 float FadeProgress(vec2 band, float distance)
 {
 	return band.y > band.x ? smoothstep(band.x, band.y, distance) : step(band.x, distance);
+}
+
+bool IsFadedOut(vec2 fade)
+{
+	return fade.x <= 0.0 || fade.y >= 1.0;
 }
 
 void main()
@@ -30,5 +37,5 @@ void main()
 	outColor         = vertex.color;
 	outWorldPosition = world_position.xyz;
 	outFade          = vec2(FadeProgress(constants.fadeBands.xy, distance), FadeProgress(constants.fadeBands.zw, distance));
-	gl_Position      = constants.scene.viewProjection * world_position;
+	gl_Position      = IsFadedOut(outFade) ? CULLED_POSITION : constants.scene.viewProjection * world_position;
 }
