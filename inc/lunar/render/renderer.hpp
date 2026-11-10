@@ -1,6 +1,7 @@
 #pragma once
 #include <lunar/api.hpp>
 #include <lunar/render/frustum.hpp>
+#include <lunar/render/instance_draw_table.hpp>
 #include <lunar/render/render_device.hpp>
 #include <lunar/render/mesh_registry.hpp>
 #include <lunar/render/shadow_cascades.hpp>
@@ -107,6 +108,7 @@ namespace lunar::Render
 		                             const glm::vec3& eye,
 		                             PipelineHandle   steady_pipeline,
 		                             PipelineHandle   fading_pipeline);
+		std::vector<InstanceDraw> gatherInstanceDraws(Scene& scene, const Frustum& frustum, const glm::vec3& eye);
 		void           drawLines(Frame& frame, uint64_t scene_address);
 
 		RenderDevice&       device;

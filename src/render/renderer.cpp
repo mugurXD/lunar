@@ -1,5 +1,6 @@
 #include <lunar/render/renderer.hpp>
 #include <lunar/render/lod_fade.hpp>
+#include <lunar/render/instance_draw_table.hpp>
 #include <lunar/render/imgui_layer.hpp>
 #include <lunar/render/components.hpp>
 #include <lunar/render/shader.hpp>
@@ -50,7 +51,6 @@ namespace lunar::Render
 		constexpr std::string_view OCCLUSION_SHADER         = "ambient_occlusion.frag";
 		constexpr std::string_view OCCLUSION_BLUR_SHADER    = "ambient_occlusion_blur.frag";
 		constexpr uint32_t         FULLSCREEN_VERTEX_COUNT  = 3;
-		constexpr size_t           STD430_MATRIX_ALIGN      = 16;
 
 		const glm::vec4 AMBIENT_COLOR = { 0.08f, 0.08f, 0.1f, 0.f };
 
@@ -97,13 +97,6 @@ namespace lunar::Render
 			uint64_t                               vertexAddress   = 0;
 			alignas(STD430_MATRIX_ALIGN) glm::mat4 transform       = glm::mat4(1.f);
 			glm::vec4                              fadeBands       = {};
-		};
-
-		struct InstanceDraw
-		{
-			InstanceConstants constants     = {};
-			const Mesh*       mesh          = nullptr;
-			uint32_t          instanceCount = 0;
 		};
 
 		struct TonemapConstants
@@ -773,21 +766,42 @@ namespace lunar::Render
 
 		ZoneScoped;
 
-		CommandList&              commands = frame.commandList();
-		std::vector<InstanceDraw> fading_draws;
-		const auto                record   = [&commands](const InstanceDraw& draw) {
-			commands.pushConstants(draw.constants);
-			commands.bindIndexBuffer(draw.mesh->indexBuffer, 0, IndexType::eUint32);
-			commands.drawIndexed(draw.mesh->indexCount, draw.instanceCount);
+		CommandList&                    commands = frame.commandList();
+		const std::vector<InstanceDraw> draws    = gatherInstanceDraws(scene, frustum, eye);
+		const auto                      record   = [&](bool fading) {
+			for (const InstanceDraw& draw : draws)
+			{
+				if (draw.fading != fading)
+					continue;
+
+				commands.pushConstants(InstanceConstants { scene_address, draw.instanceAddress, draw.mesh->vertexAddress, draw.transform, draw.fadeBands });
+				commands.bindIndexBuffer(draw.mesh->indexBuffer, 0, IndexType::eUint32);
+				commands.drawIndexed(draw.mesh->indexCount, draw.instanceCount);
+			}
 		};
 
-		size_t group_count         = 0;
-		size_t visible_group_count = 0;
-		size_t batch_count         = 0;
-		size_t visible_count       = 0;
-		size_t draw_count          = 0;
+		// Fading draws write sample masks, which costs early depth testing, so they are kept to batches that need them.
+		commands.bindPipeline(steady_pipeline);
+		record(false);
 
-		const auto draw_batch = [&](const InstanceBatch& batch, const WorldTransform& world) {
+		if (std::ranges::none_of(draws, &InstanceDraw::fading))
+			return;
+
+		commands.bindPipeline(fading_pipeline);
+		record(true);
+	}
+
+	std::vector<InstanceDraw> Renderer::gatherInstanceDraws(Scene& scene, const Frustum& frustum, const glm::vec3& eye)
+	{
+		ZoneScoped;
+
+		std::vector<InstanceDraw> draws;
+		size_t                    group_count         = 0;
+		size_t                    visible_group_count = 0;
+		size_t                    batch_count         = 0;
+		size_t                    visible_count       = 0;
+
+		const auto gather_batch = [&](const InstanceBatch& batch, const WorldTransform& world) {
 			batch_count++;
 
 			const InstanceSet* instances = meshes.get(batch.instances);
@@ -796,31 +810,17 @@ namespace lunar::Render
 
 			DEBUG_ASSERT(batch.boundsVersion != 0, "Instance batch bounds were not updated before rendering");
 
-			const glm::mat4& transform = world.matrix;
-			const Bounds&    bounds    = batch.worldBounds;
+			const Bounds& bounds = batch.worldBounds;
 			if (!frustum.intersects(bounds))
 				return;
 
 			visible_count++;
 
 			for (const LodDraw& lod : SelectLodDraws(batch.lods, DistanceTo(bounds, eye), FarthestDistanceTo(bounds, eye)))
-			{
-				const Mesh* mesh = meshes.get(lod.mesh);
-				if (mesh == nullptr)
-					continue;
-
-				const InstanceDraw draw = { { scene_address, instances->address, mesh->vertexAddress, transform, lod.fadeBands }, mesh, instances->count };
-				if (lod.fading)
-					fading_draws.push_back(draw);
-				else
-					record(draw);
-
-				draw_count++;
-			}
+				if (const Mesh* mesh = meshes.get(lod.mesh))
+					draws.push_back({ mesh, instances->address, instances->count, world.matrix, lod.fadeBands, lod.fading });
 		};
 
-		// Fading draws write sample masks, which costs early depth testing, so they are kept to batches that need them.
-		commands.bindPipeline(steady_pipeline);
 		scene.forEach<InstanceBatchGroup>([&](Entity, const InstanceBatchGroup& group) {
 			group_count++;
 			if (!frustum.intersects(group.worldBounds) || DistanceTo(group.worldBounds, eye) > group.maxDistance)
@@ -832,7 +832,7 @@ namespace lunar::Render
 				const InstanceBatch*  batch = scene.getComponent<InstanceBatch>(batch_entity);
 				const WorldTransform* world = scene.getComponent<WorldTransform>(batch_entity);
 				if (batch != nullptr && world != nullptr)
-					draw_batch(*batch, *world);
+					gather_batch(*batch, *world);
 			}
 		});
 
@@ -841,15 +841,11 @@ namespace lunar::Render
 		          visible_group_count,
 		          batch_count,
 		          visible_count,
-		          draw_count);
+		          draws.size());
 		TracyPlot("Instance baches", static_cast<int64_t>(batch_count));
 		TracyPlot("Mesh candidates", static_cast<int64_t>(meshCandidates.size()));
 
-		if (fading_draws.empty())
-			return;
-
-		commands.bindPipeline(fading_pipeline);
-		std::ranges::for_each(fading_draws, record);
+		return draws;
 	}
 
 	void Renderer::drawLines(Frame& frame, uint64_t scene_address)
