@@ -81,6 +81,7 @@ target_sources(lunar PRIVATE
     "src/render/shadow_cascades.cpp"
     "src/render/lod_fade.cpp"
     "src/render/instance_draw_table.cpp"
+    "src/render/instance_cull.cpp"
     "src/stb_image.cpp"
 )
 

@@ -1,5 +1,7 @@
 #include <lunar/render/render_device.hpp>
 #include <lunar/render/mesh_registry.hpp>
+#include <lunar/render/instance_cull.hpp>
+#include <lunar/render/components.hpp>
 #include <lunar/physics/raycast.hpp>
 #include <lunar/ui/ui_layer.hpp>
 #include <lunar/core/jobs.hpp>
@@ -17,6 +19,7 @@
 #include <gtest/gtest.h>
 
 #include <RmlUi/Core.h>
+#include <glm/gtc/matrix_transform.hpp>
 
 #include "temporary_directory.hpp"
 #include "test_models.hpp"
@@ -28,6 +31,7 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -410,15 +414,21 @@ protected:
 		device->endFrame(frame);
 	}
 
-	std::vector<uint32_t> readValues(BufferHandle buffer)
+	template<typename T>
+	std::vector<T> readAs(BufferHandle buffer)
 	{
 		device->waitIdle();
 
 		const std::span<const std::byte> bytes = device->readBuffer(buffer);
-		std::vector<uint32_t>            values(bytes.size() / sizeof(uint32_t));
-		std::memcpy(values.data(), bytes.data(), values.size() * sizeof(uint32_t));
+		std::vector<T>                   values(bytes.size() / sizeof(T));
+		std::memcpy(values.data(), bytes.data(), values.size() * sizeof(T));
 
 		return values;
+	}
+
+	std::vector<uint32_t> readValues(BufferHandle buffer)
+	{
+		return readAs<uint32_t>(buffer);
 	}
 
 	std::vector<uint32_t> downloadValues(BufferHandle gpu_buffer)
@@ -1646,4 +1656,85 @@ TEST_F(RenderDeviceTest, LodFadesSplitEverySampleBetweenTwoLevels)
 		device->destroyImage(samples_image);
 		device->destroyImage(resolved);
 	}
+}
+
+TEST_F(RenderDeviceTest, InstanceCullKeepsOnlyInstancesInsideTheFrustumAndFadeRange)
+{
+	constexpr int       VIEWPORT_WIDTH    = 16;
+	constexpr int       VIEWPORT_HEIGHT   = 9;
+	constexpr float     UNIT_SCALE        = 1.f;
+	constexpr float     ALWAYS_FADED_IN   = -std::numeric_limits<float>::infinity();
+	constexpr glm::vec4 IDENTITY_ROTATION = { 0.f, 0.f, 0.f, 1.f };
+	constexpr glm::vec4 NEAR_BANDS        = { ALWAYS_FADED_IN, ALWAYS_FADED_IN, 80.f, 100.f };
+	constexpr glm::vec4 FAR_BANDS         = { 80.f, 100.f, 350.f, 400.f };
+	constexpr glm::vec3 IN_NEAR_RANGE     = { 0.f, 0.f, -50.f };
+	constexpr glm::vec3 BEHIND_THE_CAMERA = { 0.f, 0.f, 50.f };
+	constexpr glm::vec3 BESIDE_THE_VIEW   = { 90.f, 0.f, -10.f };
+	constexpr glm::vec3 PAST_NEAR_RANGE   = { 0.f, 0.f, -150.f };
+	constexpr glm::vec3 FAR_BATCH_OFFSET  = { 0.f, 0.f, -100.f };
+	constexpr glm::vec3 IN_FAR_RANGE      = { 0.f, 0.f, -100.f };
+	constexpr glm::vec3 BEFORE_FAR_RANGE  = { 0.f, 0.f, 50.f };
+
+	const auto instance_at = [&](const glm::vec3& position) {
+		return InstanceData { position, UNIT_SCALE, IDENTITY_ROTATION };
+	};
+
+	const std::array near_instances = { instance_at(BEHIND_THE_CAMERA), instance_at(BESIDE_THE_VIEW), instance_at(IN_NEAR_RANGE), instance_at(PAST_NEAR_RANGE) };
+	const std::array far_instances  = { instance_at(BEFORE_FAR_RANGE), instance_at(IN_FAR_RANGE) };
+
+	const auto create_instances = [&](std::span<const InstanceData> instances) {
+		return device->createBuffer({ instances.size_bytes(), BufferUsageFlags(BufferUsageFlagBits::eStorage), MemoryLocation::eUpload }, std::as_bytes(instances));
+	};
+
+	const std::vector<char> shader        = LoadShader(INSTANCE_CULL_SHADER, LUNAR_ENGINE_SHADER_DIR);
+	const PipelineHandle    cull          = device->createComputePipeline({ std::as_bytes(std::span(shader)) });
+	const BufferHandle      near_buffer   = create_instances(near_instances);
+	const BufferHandle      far_buffer    = create_instances(far_instances);
+	const Mesh              mesh          = { .bounds = { glm::vec3(-1.f), glm::vec3(1.f) } };
+	const std::array        draws         =
+	{
+		InstanceDraw { &mesh, device->getBufferAddress(near_buffer), static_cast<uint32_t>(near_instances.size()), glm::mat4(1.f), NEAR_BANDS },
+		InstanceDraw { &mesh, device->getBufferAddress(far_buffer), static_cast<uint32_t>(far_instances.size()), glm::translate(glm::mat4(1.f), FAR_BATCH_OFFSET), FAR_BANDS }
+	};
+	ASSERT_NE(cull, PipelineHandle {});
+
+	const InstanceDrawTable table = BuildInstanceDrawTable(draws);
+	ASSERT_EQ(table.slots.size(), draws.size());
+
+	std::vector<DrawIndexedIndirectCommand> empty_commands;
+	for (const InstanceDrawSlot& slot : table.slots)
+		empty_commands.push_back({ .firstInstance = slot.firstInstance });
+
+	const BufferDesc   command_desc   = { empty_commands.size() * sizeof(DrawIndexedIndirectCommand), BufferUsageFlags(BufferUsageFlagBits::eStorage), MemoryLocation::eReadback };
+	const BufferDesc   visible_desc   = { table.instanceCount * sizeof(InstanceData), BufferUsageFlags(BufferUsageFlagBits::eStorage), MemoryLocation::eReadback };
+	const BufferHandle command_buffer = device->createBuffer(command_desc, std::as_bytes(std::span(empty_commands)));
+	const BufferHandle visible_buffer = device->createBuffer(visible_desc, {});
+
+	const lunar::Camera camera;
+	const Frustum       frustum(camera.getProjectionMatrix(VIEWPORT_WIDTH, VIEWPORT_HEIGHT) * camera.getViewMatrix());
+
+	Frame& frame = device->beginFrame();
+	frame.commandList().bindPipeline(cull);
+	RecordInstanceCull(frame, table, frustum, camera.position, { device->getBufferAddress(command_buffer), device->getBufferAddress(visible_buffer) });
+	device->endFrame(frame);
+
+	const std::vector<DrawIndexedIndirectCommand> commands = readAs<DrawIndexedIndirectCommand>(command_buffer);
+	const std::vector<InstanceData>               visible  = readAs<InstanceData>(visible_buffer);
+
+	for (const auto& [bands, expected_position] : { std::pair(NEAR_BANDS, IN_NEAR_RANGE), std::pair(FAR_BANDS, FAR_BATCH_OFFSET + IN_FAR_RANGE) })
+	{
+		const auto slot = std::ranges::find(table.slots, bands, &InstanceDrawSlot::fadeBands);
+		ASSERT_NE(slot, table.slots.end());
+
+		const DrawIndexedIndirectCommand& command = commands[slot - table.slots.begin()];
+		EXPECT_EQ(command.instanceCount, SINGLE_INSTANCE);
+		EXPECT_EQ(command.firstInstance, slot->firstInstance);
+		EXPECT_EQ(visible[slot->firstInstance].position, expected_position);
+	}
+
+	device->destroyBuffer(visible_buffer);
+	device->destroyBuffer(command_buffer);
+	device->destroyBuffer(far_buffer);
+	device->destroyBuffer(near_buffer);
+	device->destroyPipeline(cull);
 }

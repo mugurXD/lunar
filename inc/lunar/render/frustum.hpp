@@ -5,6 +5,7 @@
 #include <glm/glm.hpp>
 
 #include <array>
+#include <cstddef>
 #include <span>
 
 namespace lunar::Render
@@ -19,14 +20,19 @@ namespace lunar::Render
 		static Bounds FromVertices(std::span<const Vertex> vertices);
 	};
 
+	constexpr size_t FRUSTUM_PLANE_COUNT = 6;
+
+	using FrustumPlanes = std::array<glm::vec4, FRUSTUM_PLANE_COUNT>;
+
 	class LUNAR_API Frustum
 	{
 	public:
 		Frustum(const glm::mat4& view_projection) noexcept;
 
-		bool intersects(const Bounds& bounds) const;
+		bool                 intersects(const Bounds& bounds) const;
+		const FrustumPlanes& getPlanes()                      const;
 
 	private:
-		std::array<glm::vec4, 6> planes = {};
+		FrustumPlanes planes = {};
 	};
 }

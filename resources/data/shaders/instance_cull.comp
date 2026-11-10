@@ -1,0 +1,110 @@
+#version 460
+#include "common/instance_types.glsl"
+
+layout(local_size_x = 64) in;
+
+const uint FRUSTUM_PLANE_COUNT = 6;
+
+struct InstanceDraw
+{
+	mat4           transform;
+	vec4           fadeBands;
+	vec4           boundingSphere;
+	InstanceBuffer instanceBuffer;
+	uint           instanceCount;
+	uint           outputOffset;
+	uint           slot;
+};
+
+struct DrawCommand
+{
+	uint indexCount;
+	uint instanceCount;
+	uint firstIndex;
+	int  vertexOffset;
+	uint firstInstance;
+};
+
+layout(buffer_reference, std430) readonly buffer CullView
+{
+	vec4 planes[FRUSTUM_PLANE_COUNT];
+	vec4 eye;
+};
+
+layout(buffer_reference, std430) readonly buffer DrawTable
+{
+	InstanceDraw draws[];
+};
+
+layout(buffer_reference, std430) buffer DrawCommands
+{
+	DrawCommand commands[];
+};
+
+layout(buffer_reference, std430) writeonly buffer VisibleInstances
+{
+	Instance instances[];
+};
+
+layout(push_constant) uniform CullConstants
+{
+	CullView         view;
+	DrawTable        table;
+	DrawCommands     drawCommands;
+	VisibleInstances visible;
+	uint             drawCount;
+	uint             instanceCount;
+} constants;
+
+// Output offsets are a running sum over the table, so the last draw starting at or before an instance is the one that owns it.
+uint FindDraw(uint instance_index)
+{
+	uint first = 0;
+	uint count = constants.drawCount;
+
+	while (count > 1)
+	{
+		const uint half_count = count / 2;
+		const bool in_upper   = constants.table.draws[first + half_count].outputOffset <= instance_index;
+
+		first += in_upper ? half_count : 0;
+		count  = in_upper ? count - half_count : half_count;
+	}
+
+	return first;
+}
+
+// The planes are not normalized, and the far plane of an infinite projection has no normal at all, so the radius is scaled instead.
+bool IsInFrustum(vec3 center, float radius)
+{
+	for (uint index = 0; index < FRUSTUM_PLANE_COUNT; index++)
+	{
+		const vec4 plane = constants.view.planes[index];
+		if (dot(plane.xyz, center) + plane.w < -radius * length(plane.xyz))
+			return false;
+	}
+
+	return true;
+}
+
+void main()
+{
+	const uint instance_index = gl_GlobalInvocationID.x;
+	if (instance_index >= constants.instanceCount)
+		return;
+
+	InstanceDraw draw     = constants.table.draws[FindDraw(instance_index)];
+	Instance     instance = draw.instanceBuffer.instances[instance_index - draw.outputOffset];
+	instance.position = (draw.transform * vec4(instance.position, 1.0)).xyz;
+
+	const float eye_distance = length(instance.position - constants.view.eye.xyz);
+	if (eye_distance < draw.fadeBands.x || eye_distance > draw.fadeBands.w)
+		return;
+
+	const vec3 center = instance.position + Rotate(instance.rotation, draw.boundingSphere.xyz * instance.scale);
+	if (!IsInFrustum(center, draw.boundingSphere.w * instance.scale))
+		return;
+
+	const uint visible_index = atomicAdd(constants.drawCommands.commands[draw.slot].instanceCount, 1);
+	constants.visible.instances[constants.drawCommands.commands[draw.slot].firstInstance + visible_index] = instance;
+}

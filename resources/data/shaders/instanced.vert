@@ -6,12 +6,6 @@ layout(location = 1) flat out vec4 outColor;
 layout(location = 2)      out vec3 outWorldPosition;
 layout(location = 3) flat out vec2 outFade;
 
-vec3 Rotate(vec4 rotation, vec3 vector)
-{
-	const vec3 doubled_cross = 2.0 * cross(rotation.xyz, vector);
-	return vector + rotation.w * doubled_cross + cross(rotation.xyz, doubled_cross);
-}
-
 const vec4 CULLED_POSITION = vec4(0.0, 0.0, 2.0, 1.0);
 
 float FadeProgress(vec2 band, float distance)

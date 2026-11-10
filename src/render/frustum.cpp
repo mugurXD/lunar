@@ -59,4 +59,9 @@ namespace lunar::Render
 			return glm::dot(normal, leading_corner) + plane.w < 0.f;
 		});
 	}
+
+	const FrustumPlanes& Frustum::getPlanes() const
+	{
+		return planes;
+	}
 }
