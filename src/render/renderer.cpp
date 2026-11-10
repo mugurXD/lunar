@@ -295,6 +295,12 @@ namespace lunar::Render
 		setSamples(samples);
 		defaultMaterial = createMaterial({ .vertexShader = DEFAULT_VERTEX_SHADER, .fragmentShader = DEFAULT_FRAGMENT_SHADER });
 		createFullscreenPipelines();
+
+		if (swapchain == nullptr)
+			return;
+
+		const std::vector<char> cull_shader = LoadShader(INSTANCE_CULL_SHADER);
+		instanceCullPipeline = device.createComputePipeline({ std::as_bytes(std::span(cull_shader)) });
 	}
 
 	Renderer::~Renderer() noexcept
@@ -311,6 +317,7 @@ namespace lunar::Render
 		device.destroyPipeline(tonemapPipeline);
 		device.destroyPipeline(occlusionPipeline);
 		device.destroyPipeline(occlusionBlurPipeline);
+		device.destroyPipeline(instanceCullPipeline);
 
 		for (const ImageHandle shadow_map : shadowMaps)
 			device.destroyImage(shadow_map);
@@ -339,6 +346,16 @@ namespace lunar::Render
 	uint32_t Renderer::getSamples() const
 	{
 		return sampleCount;
+	}
+
+	void Renderer::setGpuDrivenInstances(bool enabled)
+	{
+		gpuDrivenInstances = enabled;
+	}
+
+	bool Renderer::getGpuDrivenInstances() const
+	{
+		return gpuDrivenInstances;
 	}
 
 	MaterialHandle Renderer::createMaterial(const MaterialDesc& desc)
@@ -500,7 +517,12 @@ namespace lunar::Render
 		CommandList&         commands  = frame.commandList();
 		const DistanceFog*   fog       = FindFirst<DistanceFog>(scene);
 		const Camera*        camera    = scene.getMainCamera();
-		const SceneAddresses addresses = camera != nullptr ? prepareSceneData(frame, scene, *camera, extent) : SceneAddresses {};
+		FrameViews           views     = camera != nullptr ? prepareViews(scene, *camera, extent) : FrameViews {};
+
+		if (gpuDrivenInstances)
+			cullInstances(frame, scene, views);
+
+		const SceneAddresses addresses = camera != nullptr ? prepareSceneData(frame, scene, *camera, extent, views) : SceneAddresses {};
 
 		const bool            multisampled     = colorImage != ImageHandle {};
 		const ColorAttachment color_attachment =
@@ -525,40 +547,97 @@ namespace lunar::Render
 
 		if (addresses.opaque != 0 && addresses.translucent != 0)
 		{
-			const Frustum frustum(ViewProjection(*camera, extent));
-			drawOpaque(frame, scene, addresses.opaque, frustum, camera->position, &Material::opaquePipeline);
-			drawMeshes(frame, addresses.translucent, frustum, &Material::translucentPipeline, true);
+			const RenderView& view = *views.views[MAIN_VIEW];
+			drawOpaque(frame, scene, addresses.opaque, view);
+			drawMeshes(frame, addresses.translucent, view.frustum, &Material::translucentPipeline, true);
 			drawLines(frame, addresses.opaque);
 		}
 
 		commands.endRendering();
 	}
 
-	Renderer::SceneAddresses Renderer::prepareSceneData(Frame& frame, Scene& scene, const Camera& camera, Extent2D extent)
+	Renderer::FrameViews Renderer::prepareViews(Scene& scene, const Camera& camera, Extent2D extent)
 	{
-		SceneData               scene_data = BuildSceneData(scene, camera, extent);
-		const DirectionalLight* light      = FindFirst<DirectionalLight>(scene);
-		const CascadedShadows*  shadows    = FindFirst<CascadedShadows>(scene);
-		if (light != nullptr && shadows != nullptr)
-		{
-			const auto cascades = FitShadowCascades(camera, AspectRatio(extent), light->direction, *shadows, SHADOW_MAP_RESOLUTION);
-			recordShadows(frame, scene, camera.position, cascades);
+		FrameViews frame_views;
+		frame_views.views[MAIN_VIEW] = RenderView { Frustum(ViewProjection(camera, extent)), camera.position, &Material::opaquePipeline };
 
-			for (size_t index = 0; index < cascades.size(); index++)
-				scene_data.shadowCascades[index] = { cascades[index].viewProjection, cascades[index].texelSize, device.getTextureIndex(shadowMaps[index]) };
+		if (const AmbientOcclusion* occlusion = FindFirst<AmbientOcclusion>(scene))
+			frame_views.views[OCCLUSION_VIEW] = RenderView { Frustum(BoundedViewProjection(camera, AspectRatio(extent), occlusion->distance)), camera.position, &Material::depthPipeline };
+
+		const DirectionalLight* light   = FindFirst<DirectionalLight>(scene);
+		const CascadedShadows*  shadows = FindFirst<CascadedShadows>(scene);
+		if (light == nullptr || shadows == nullptr)
+			return frame_views;
+
+		frame_views.cascades = FitShadowCascades(camera, AspectRatio(extent), light->direction, *shadows, SHADOW_MAP_RESOLUTION);
+		for (size_t index = 0; index < frame_views.cascades.size(); index++)
+			frame_views.views[FIRST_SHADOW_VIEW + index] = RenderView { Frustum(frame_views.cascades[index].viewProjection), camera.position, &Material::shadowPipeline };
+
+		return frame_views;
+	}
+
+	void Renderer::cullInstances(Frame& frame, Scene& scene, FrameViews& frame_views)
+	{
+		ZoneScoped;
+		if (instanceCullPipeline == PipelineHandle {})
+			return;
+
+		uint32_t instance_count = 0;
+		for (std::optional<RenderView>& view : frame_views.views)
+		{
+			if (!view.has_value())
+				continue;
+
+			view->instances  = BuildInstanceDrawTable(gatherInstanceDraws(scene, view->frustum, view->eye));
+			instance_count  += view->instances.instanceCount;
+		}
+
+		uint64_t visible_address = visibleInstances.reserve(frame, instance_count);
+		if (visible_address == 0)
+			return;
+
+		CommandList& commands = frame.commandList();
+		commands.tracyBeginZone("Instance Cull");
+		commands.bindPipeline(instanceCullPipeline);
+		for (std::optional<RenderView>& view : frame_views.views)
+		{
+			if (!view.has_value())
+				continue;
+
+			view->instanceCommands = frame.storeTransient(std::span<const DrawIndexedIndirectCommand>(BuildInstanceDrawCommands(view->instances)));
+			view->visibleAddress   = visible_address;
+			visible_address       += view->instances.instanceCount * sizeof(InstanceData);
+			RecordInstanceCull(frame, view->instances, view->frustum, view->eye, { view->instanceCommands.address, view->visibleAddress });
+		}
+
+		commands.memoryBarrier();
+		commands.tracyEndZone();
+	}
+
+	Renderer::SceneAddresses Renderer::prepareSceneData(Frame& frame, Scene& scene, const Camera& camera, Extent2D extent, const FrameViews& frame_views)
+	{
+		SceneData              scene_data = BuildSceneData(scene, camera, extent);
+		const CascadedShadows* shadows    = FindFirst<CascadedShadows>(scene);
+		if (shadows != nullptr && frame_views.views[FIRST_SHADOW_VIEW].has_value())
+		{
+			recordShadows(frame, scene, frame_views);
+
+			for (size_t index = 0; index < frame_views.cascades.size(); index++)
+				scene_data.shadowCascades[index] = { frame_views.cascades[index].viewProjection, frame_views.cascades[index].texelSize, device.getTextureIndex(shadowMaps[index]) };
 
 			scene_data.shadowRange = glm::vec4(shadows->distance * SHADOW_FADE_START, shadows->distance, 0.f, 0.f);
 		}
 
 		// Translucent surfaces are missing from the depth the occlusion is traced against, so they would pick up the occlusion of whatever lies behind them.
-		const uint64_t translucent_address = frame.writeTransient(scene_data);
-		if (const AmbientOcclusion* occlusion = FindFirst<AmbientOcclusion>(scene))
-			scene_data.ambientOcclusion = recordAmbientOcclusion(frame, scene, camera, *occlusion, extent, translucent_address);
+		const uint64_t          translucent_address = frame.writeTransient(scene_data);
+		const AmbientOcclusion* occlusion           = FindFirst<AmbientOcclusion>(scene);
+		if (occlusion != nullptr && frame_views.views[OCCLUSION_VIEW].has_value())
+			scene_data.ambientOcclusion = recordAmbientOcclusion(frame, scene, camera, *occlusion, extent, translucent_address, *frame_views.views[OCCLUSION_VIEW]);
 
 		return { frame.writeTransient(scene_data), translucent_address };
 	}
 
-	void Renderer::recordShadows(Frame& frame, Scene& scene, const glm::vec3& eye, std::span<const ShadowCascade> cascades)
+	void Renderer::recordShadows(Frame& frame, Scene& scene, const FrameViews& frame_views)
 	{
 		ZoneScoped;
 		if (shadowDepthImage == ImageHandle {})
@@ -566,16 +645,17 @@ namespace lunar::Render
 
 		CommandList& commands = frame.commandList();
 		commands.tracyBeginZone("Shadows");
-		for (size_t index = 0; index < cascades.size(); index++)
+		for (size_t index = 0; index < frame_views.cascades.size(); index++)
 		{
+			const RenderView&     view              = *frame_views.views[FIRST_SHADOW_VIEW + index];
 			const ColorAttachment shadow_attachment = { .image = shadowMaps[index], .loadOp = LoadOp::eClear, .clearColor = glm::vec4(REVERSE_Z_CLEAR_DEPTH) };
 			const DepthAttachment depth_attachment  = { .image = shadowDepthImage, .loadOp = LoadOp::eClear, .clearDepth = REVERSE_Z_CLEAR_DEPTH };
-			const uint64_t        scene_address     = frame.writeTransient(SceneData { .viewProjection = cascades[index].viewProjection, .cameraPosition = glm::vec4(eye, 1.f) });
+			const uint64_t        scene_address     = frame.writeTransient(SceneData { .viewProjection = frame_views.cascades[index].viewProjection, .cameraPosition = glm::vec4(view.eye, 1.f) });
 
 			commands.beginRendering({ .colorAttachments = std::span(&shadow_attachment, 1), .depthAttachment = depth_attachment });
 
 			if (scene_address != 0)
-				drawOpaque(frame, scene, scene_address, Frustum(cascades[index].viewProjection), eye, &Material::shadowPipeline);
+				drawOpaque(frame, scene, scene_address, view);
 
 			commands.endRendering();
 			commands.prepareSampling(shadowMaps[index]);
@@ -588,7 +668,8 @@ namespace lunar::Render
 	                                          const Camera&           camera,
 	                                          const AmbientOcclusion& occlusion,
 	                                          Extent2D                extent,
-	                                          uint64_t                scene_address)
+	                                          uint64_t                scene_address,
+	                                          const RenderView&       view)
 	{
 		ZoneScoped;
 		if (occlusionPipeline == PipelineHandle {} || occlusionBlurPipeline == PipelineHandle {} || scene_address == 0)
@@ -601,11 +682,10 @@ namespace lunar::Render
 		CommandList&          commands         = frame.commandList();
 		const ColorAttachment view_depth       = { .image = viewDepthImage, .loadOp = LoadOp::eClear, .clearColor = glm::vec4(REVERSE_Z_CLEAR_DEPTH) };
 		const DepthAttachment depth_attachment = { .image = prepassDepthImage, .loadOp = LoadOp::eClear, .clearDepth = REVERSE_Z_CLEAR_DEPTH };
-		const Frustum         frustum(BoundedViewProjection(camera, AspectRatio(extent), occlusion.distance));
 
 		commands.tracyBeginZone("Ambient Occlusion Prepass");
 		commands.beginRendering({ .colorAttachments = std::span(&view_depth, 1), .depthAttachment = depth_attachment });
-		drawOpaque(frame, scene, scene_address, frustum, camera.position, &Material::depthPipeline);
+		drawOpaque(frame, scene, scene_address, view);
 		commands.endRendering();
 		commands.prepareSampling(viewDepthImage);
 		commands.tracyEndZone();
@@ -699,11 +779,15 @@ namespace lunar::Render
 		commands.tracyEndZone();
 	}
 
-	void Renderer::drawOpaque(Frame& frame, Scene& scene, uint64_t scene_address, const Frustum& frustum, const glm::vec3& eye, PipelineHandle Material::* pipeline)
+	void Renderer::drawOpaque(Frame& frame, Scene& scene, uint64_t scene_address, const RenderView& view)
 	{
 		ZoneScoped;
-		drawMeshes(frame, scene_address, frustum, pipeline, false);
-		drawInstances(frame, scene, scene_address, frustum, eye, instancedMaterial.*pipeline, fadingInstancedMaterial.*pipeline);
+		drawMeshes(frame, scene_address, view.frustum, view.pipeline, false);
+
+		if (gpuDrivenInstances)
+			drawInstancesIndirect(frame, scene_address, view);
+		else
+			drawInstances(frame, scene, scene_address, view.frustum, view.eye, instancedMaterial.*view.pipeline, fadingInstancedMaterial.*view.pipeline);
 	}
 
 	void Renderer::gatherMeshes(Scene& scene)
@@ -799,6 +883,19 @@ namespace lunar::Render
 
 		commands.bindPipeline(fading_pipeline);
 		record(true);
+	}
+
+	void Renderer::drawInstancesIndirect(Frame& frame, uint64_t scene_address, const RenderView& view)
+	{
+		ZoneScoped;
+		RecordInstanceDraws(frame, view.instances.slots, {
+			.commandBuffer  = view.instanceCommands.buffer,
+			.commandOffset  = view.instanceCommands.offset,
+			.visibleAddress = view.visibleAddress,
+			.sceneAddress   = scene_address,
+			.steadyPipeline = visibleInstancedMaterial.*view.pipeline,
+			.fadingPipeline = fadingVisibleInstancedMaterial.*view.pipeline
+		});
 	}
 
 	std::vector<InstanceDraw> Renderer::gatherInstanceDraws(Scene& scene, const Frustum& frustum, const glm::vec3& eye)

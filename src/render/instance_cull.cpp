@@ -93,6 +93,9 @@ namespace lunar::Render
 
 	void RecordInstanceDraws(Frame& frame, std::span<const InstanceDrawSlot> slots, const InstanceDrawInput& input)
 	{
+		if (input.commandBuffer == BufferHandle {} || input.steadyPipeline == PipelineHandle {} || input.fadingPipeline == PipelineHandle {})
+			return;
+
 		CommandList& commands = frame.commandList();
 		for (size_t index = 0; index < slots.size(); index++)
 		{

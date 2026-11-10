@@ -10,6 +10,7 @@
 #include <glm/glm.hpp>
 
 #include <array>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -47,6 +48,8 @@ namespace lunar::Render
 		void           render(Scene& scene, UI::UiLayer* ui = nullptr, ImGuiLayer* debug_ui = nullptr);
 		void           setSamples(uint32_t samples);
 		uint32_t       getSamples() const;
+		void           setGpuDrivenInstances(bool enabled);
+		bool           getGpuDrivenInstances() const;
 		MaterialHandle createMaterial(const MaterialDesc& desc);
 		MeshRegistry&  getMeshes();
 		MeshHandle     getCubeMesh() const;
@@ -81,6 +84,27 @@ namespace lunar::Render
 			glm::mat4      normalMatrix = glm::mat4(1.f);
 		};
 
+		struct RenderView
+		{
+			Frustum                    frustum;
+			glm::vec3                  eye              = {};
+			PipelineHandle Material::* pipeline         = nullptr;
+			InstanceDrawTable          instances        = {};
+			TransientAllocation        instanceCommands = {};
+			uint64_t                   visibleAddress   = 0;
+		};
+
+		static constexpr size_t MAIN_VIEW         = 0;
+		static constexpr size_t OCCLUSION_VIEW    = 1;
+		static constexpr size_t FIRST_SHADOW_VIEW = 2;
+		static constexpr size_t VIEW_COUNT        = FIRST_SHADOW_VIEW + SHADOW_CASCADE_COUNT;
+
+		struct FrameViews
+		{
+			std::array<std::optional<RenderView>, VIEW_COUNT> views    = {};
+			std::array<ShadowCascade, SHADOW_CASCADE_COUNT>   cascades = {};
+		};
+
 		void           recreatePipelines(Material& material);
 		void           createPipelines(Material& material);
 		void           destroyPipelines(Material& material);
@@ -88,18 +112,21 @@ namespace lunar::Render
 		void           resizeTargets(Extent2D extent);
 		void           destroyTargets();
 		void           recordFrame(Frame& frame, Scene& scene, Extent2D extent);
-		SceneAddresses prepareSceneData(Frame& frame, Scene& scene, const Camera& camera, Extent2D extent);
-		void           recordShadows(Frame& frame, Scene& scene, const glm::vec3& eye, std::span<const ShadowCascade> cascades);
+		FrameViews     prepareViews(Scene& scene, const Camera& camera, Extent2D extent);
+		void           cullInstances(Frame& frame, Scene& scene, FrameViews& frame_views);
+		SceneAddresses prepareSceneData(Frame& frame, Scene& scene, const Camera& camera, Extent2D extent, const FrameViews& frame_views);
+		void           recordShadows(Frame& frame, Scene& scene, const FrameViews& frame_views);
 		void           createShadowTargets();
 		uint32_t       recordAmbientOcclusion(Frame&                  frame,
 		                                      Scene&                  scene,
 		                                      const Camera&           camera,
 		                                      const AmbientOcclusion& occlusion,
 		                                      Extent2D                extent,
-		                                      uint64_t                scene_address);
+		                                      uint64_t                scene_address,
+		                                      const RenderView&       view);
 		void           createOcclusionTargets(Extent2D extent);
 		void           recordComposite(Frame& frame, Scene& scene, ImageHandle target, Extent2D extent, UI::UiLayer* ui, ImGuiLayer* debug_ui);
-		void           drawOpaque(Frame& frame, Scene& scene, uint64_t scene_address, const Frustum& frustum, const glm::vec3& eye, PipelineHandle Material::* pipeline);
+		void           drawOpaque(Frame& frame, Scene& scene, uint64_t scene_address, const RenderView& view);
 		void           gatherMeshes(Scene& scene);
 		void           drawMeshes(Frame& frame, uint64_t scene_address, const Frustum& frustum, PipelineHandle Material::* pipeline, bool translucent);
 		void           drawInstances(Frame&           frame,
@@ -109,6 +136,7 @@ namespace lunar::Render
 		                             const glm::vec3& eye,
 		                             PipelineHandle   steady_pipeline,
 		                             PipelineHandle   fading_pipeline);
+		void           drawInstancesIndirect(Frame& frame, uint64_t scene_address, const RenderView& view);
 		std::vector<InstanceDraw> gatherInstanceDraws(Scene& scene, const Frustum& frustum, const glm::vec3& eye);
 		void           drawLines(Frame& frame, uint64_t scene_address);
 
@@ -126,6 +154,8 @@ namespace lunar::Render
 
 		std::vector<MeshCandidate> meshCandidates;
 		VisibleInstanceBuffers     visibleInstances;
+		PipelineHandle             instanceCullPipeline = {};
+		bool                       gpuDrivenInstances   = false;
 		MaterialHandle      defaultMaterial = {};
 		PipelineHandle      tonemapPipeline = {};
 		ImageHandle         colorImage      = {};
