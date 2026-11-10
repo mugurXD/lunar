@@ -8,17 +8,29 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <string_view>
 #include <vector>
 
 namespace lunar::Render
 {
-	constexpr std::string_view INSTANCE_CULL_SHADER = "instance_cull.comp";
+	constexpr std::string_view INSTANCE_CULL_SHADER    = "instance_cull.comp";
+	constexpr std::string_view VISIBLE_INSTANCE_SHADER = "instanced_indirect.vert";
 
 	struct LUNAR_API InstanceCullOutput
 	{
 		uint64_t commandAddress = 0;
 		uint64_t visibleAddress = 0;
+	};
+
+	struct LUNAR_API InstanceDrawInput
+	{
+		BufferHandle   commandBuffer  = {};
+		size_t         commandOffset  = 0;
+		uint64_t       visibleAddress = 0;
+		uint64_t       sceneAddress   = 0;
+		PipelineHandle steadyPipeline = {};
+		PipelineHandle fadingPipeline = {};
 	};
 
 	class LUNAR_API VisibleInstanceBuffers
@@ -48,4 +60,6 @@ namespace lunar::Render
 	                                  const Frustum&            frustum,
 	                                  const glm::vec3&          eye,
 	                                  const InstanceCullOutput& output);
+
+	LUNAR_API void RecordInstanceDraws(Frame& frame, std::span<const InstanceDrawSlot> slots, const InstanceDrawInput& input);
 }

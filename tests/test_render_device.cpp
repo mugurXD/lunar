@@ -1718,6 +1718,155 @@ TEST_F(RenderDeviceTest, VisibleInstanceBuffersAreKeptPerFrameAndGrowOnlyWhenNee
 	EXPECT_EQ(device->getStats().bufferCount, buffers_before_growth) << "the outgrown buffer is released";
 }
 
+TEST_F(RenderDeviceTest, CulledIndirectInstanceDrawsMatchDirectInstanceDraws)
+{
+	constexpr Extent2D  TARGET_EXTENT     = { 32, 32 };
+	constexpr Format    COLOR_FORMAT      = Format::eRGBA8Unorm;
+	constexpr size_t    LIGHTING_VECTORS  = 4;
+	constexpr float     UNIT_SCALE        = 1.f;
+	constexpr float     ALWAYS_FADED_IN   = -std::numeric_limits<float>::infinity();
+	constexpr glm::vec4 IDENTITY_ROTATION = { 0.f, 0.f, 0.f, 1.f };
+	constexpr glm::vec4 TILTED_ROTATION   = { 0.f, 0.38268343f, 0.f, 0.92387953f };
+	constexpr glm::vec4 NEAR_BANDS        = { ALWAYS_FADED_IN, ALWAYS_FADED_IN, 80.f, 100.f };
+	constexpr glm::vec4 FAR_BANDS         = { 80.f, 100.f, 350.f, 400.f };
+	constexpr glm::vec3 FAR_BATCH_OFFSET  = { 0.f, 0.f, -100.f };
+
+	struct SceneView
+	{
+		glm::mat4                               viewProjection = glm::mat4(1.f);
+		std::array<glm::vec4, LIGHTING_VECTORS> lighting       = {};
+		glm::vec4                               cameraPosition = {};
+	};
+
+	struct DirectInstanceConstants
+	{
+		uint64_t                               sceneAddress    = 0;
+		uint64_t                               instanceAddress = 0;
+		uint64_t                               vertexAddress   = 0;
+		alignas(STD430_MATRIX_ALIGN) glm::mat4 transform       = glm::mat4(1.f);
+		glm::vec4                              fadeBands       = {};
+	};
+
+	const std::array near_instances =
+	{
+		InstanceData { { -3.f, 0.f, -10.f }, UNIT_SCALE, TILTED_ROTATION },
+		InstanceData { { 0.f, 0.f, 50.f }, UNIT_SCALE, IDENTITY_ROTATION },
+		InstanceData { { 90.f, 0.f, -10.f }, UNIT_SCALE, IDENTITY_ROTATION },
+		InstanceData { { 0.f, 0.f, -150.f }, UNIT_SCALE, IDENTITY_ROTATION }
+	};
+	const std::array far_instances =
+	{
+		InstanceData { { 10.f, 0.f, 50.f }, UNIT_SCALE, IDENTITY_ROTATION },
+		InstanceData { { 20.f, 10.f, -20.f }, 2.f * UNIT_SCALE, TILTED_ROTATION }
+	};
+
+	const std::vector<char> cull_shader     = LoadShader(INSTANCE_CULL_SHADER, LUNAR_ENGINE_SHADER_DIR);
+	const std::vector<char> direct_shader   = LoadShader("instanced.vert", LUNAR_ENGINE_SHADER_DIR);
+	const std::vector<char> indirect_shader = LoadShader(VISIBLE_INSTANCE_SHADER, LUNAR_ENGINE_SHADER_DIR);
+	const std::vector<char> fragment_shader = LoadShader("white.frag");
+
+	const auto create_pipeline = [&](const std::vector<char>& vertex_shader) {
+		return device->createGraphicsPipeline({
+			.vertexShader   = std::as_bytes(std::span(vertex_shader)),
+			.fragmentShader = std::as_bytes(std::span(fragment_shader)),
+			.colorFormats   = std::span(&COLOR_FORMAT, 1)
+		});
+	};
+
+	const PipelineHandle cull     = device->createComputePipeline({ std::as_bytes(std::span(cull_shader)) });
+	const PipelineHandle direct   = create_pipeline(direct_shader);
+	const PipelineHandle indirect = create_pipeline(indirect_shader);
+	const ImageHandle    color    = device->createImage({
+		.extent = TARGET_EXTENT,
+		.format = COLOR_FORMAT,
+		.usage  = ImageUsageFlags(ImageUsageFlagBits::eColorAttachment) | ImageUsageFlagBits::eSampled
+	});
+	ASSERT_NE(cull,     PipelineHandle {});
+	ASSERT_NE(direct,   PipelineHandle {});
+	ASSERT_NE(indirect, PipelineHandle {});
+
+	{
+		MeshRegistry           registry(*device);
+		VisibleInstanceBuffers visible_buffers(*device);
+		const InstanceSetHandle  near_handle = registry.createInstances(near_instances);
+		const InstanceSetHandle  far_handle  = registry.createInstances(far_instances);
+		const Mesh* const        mesh        = registry.get(registry.create(CreateCubeMeshData()));
+		const InstanceSet* const near_set    = registry.get(near_handle);
+		const InstanceSet* const far_set     = registry.get(far_handle);
+		ASSERT_NE(mesh,     nullptr);
+		ASSERT_NE(near_set, nullptr);
+		ASSERT_NE(far_set,  nullptr);
+
+		const std::array draws =
+		{
+			InstanceDraw { mesh, near_set->address, near_set->count, glm::mat4(1.f), NEAR_BANDS, false },
+			InstanceDraw { mesh, far_set->address, far_set->count, glm::translate(glm::mat4(1.f), FAR_BATCH_OFFSET), FAR_BANDS, true }
+		};
+
+		const lunar::Camera   camera;
+		const glm::mat4       view_projection  = camera.getProjectionMatrix(static_cast<int>(TARGET_EXTENT.width), static_cast<int>(TARGET_EXTENT.height)) * camera.getViewMatrix();
+		const SceneView       scene            = { .viewProjection = view_projection, .cameraPosition = glm::vec4(camera.position, 1.f) };
+		const ColorAttachment color_attachment = { .image = color };
+
+		const auto render = [&](const auto& prepare, const auto& record) {
+			Frame&         frame         = device->beginFrame();
+			CommandList&   commands      = frame.commandList();
+			const uint64_t scene_address = frame.writeTransient(scene);
+
+			const auto prepared = prepare(frame);
+			commands.beginRendering({ .colorAttachments = std::span(&color_attachment, 1) });
+			record(frame, scene_address, prepared);
+			commands.endRendering();
+			commands.prepareSampling(color);
+			device->endFrame(frame);
+
+			return fetchTexels(color, TARGET_EXTENT);
+		};
+
+		const std::vector<glm::vec4> direct_texels = render(
+			[](Frame&) { return 0; },
+			[&](Frame& frame, uint64_t scene_address, int) {
+				CommandList& commands = frame.commandList();
+				commands.bindPipeline(direct);
+				for (const InstanceDraw& draw : draws)
+				{
+					commands.pushConstants(DirectInstanceConstants { scene_address, draw.instanceAddress, mesh->vertexAddress, draw.transform, draw.fadeBands });
+					commands.bindIndexBuffer(mesh->indexBuffer, 0, IndexType::eUint32);
+					commands.drawIndexed(mesh->indexCount, draw.instanceCount);
+				}
+			});
+
+		const InstanceDrawTable      table           = BuildInstanceDrawTable(draws);
+		const std::vector<glm::vec4> indirect_texels = render(
+			[&](Frame& frame) {
+				const TransientAllocation draw_commands   = frame.storeTransient(std::span<const DrawIndexedIndirectCommand>(BuildInstanceDrawCommands(table)));
+				const uint64_t            visible_address = visible_buffers.reserve(frame, table.instanceCount);
+
+				CommandList& commands = frame.commandList();
+				commands.bindPipeline(cull);
+				RecordInstanceCull(frame, table, Frustum(view_projection), camera.position, { draw_commands.address, visible_address });
+				commands.memoryBarrier();
+
+				return InstanceDrawInput { draw_commands.buffer, draw_commands.offset, visible_address };
+			},
+			[&](Frame& frame, uint64_t scene_address, InstanceDrawInput input) {
+				input.sceneAddress   = scene_address;
+				input.steadyPipeline = indirect;
+				input.fadingPipeline = indirect;
+				RecordInstanceDraws(frame, table.slots, input);
+			});
+
+		EXPECT_EQ(indirect_texels, direct_texels);
+		EXPECT_GT(std::ranges::count(direct_texels, COVERED, &glm::vec4::r), 0) << "the comparison needs something on screen";
+		EXPECT_GT(std::ranges::count(direct_texels, UNCOVERED, &glm::vec4::r), 0) << "the comparison needs something off the instances";
+	}
+
+	device->destroyImage(color);
+	device->destroyPipeline(indirect);
+	device->destroyPipeline(direct);
+	device->destroyPipeline(cull);
+}
+
 TEST_F(RenderDeviceTest, InstanceCullKeepsOnlyInstancesInsideTheFrustumAndFadeRange)
 {
 	constexpr int       VIEWPORT_WIDTH    = 16;

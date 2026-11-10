@@ -120,6 +120,8 @@ namespace lunar::Render
 		Material            lineMaterial;
 		Material            instancedMaterial;
 		Material            fadingInstancedMaterial;
+		Material            visibleInstancedMaterial;
+		Material            fadingVisibleInstancedMaterial;
 		std::vector<Vertex> lineVertices;
 
 		std::vector<MeshCandidate> meshCandidates;

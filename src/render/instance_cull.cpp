@@ -25,6 +25,14 @@ namespace lunar::Render
 			uint32_t drawCount      = 0;
 			uint32_t instanceCount  = 0;
 		};
+
+		struct VisibleInstanceConstants
+		{
+			uint64_t                               sceneAddress    = 0;
+			uint64_t                               instanceAddress = 0;
+			uint64_t                               vertexAddress   = 0;
+			alignas(STD430_VECTOR_ALIGN) glm::vec4 fadeBands       = {};
+		};
 	}
 
 	VisibleInstanceBuffers::VisibleInstanceBuffers(RenderDevice& device) noexcept
@@ -63,7 +71,7 @@ namespace lunar::Render
 	                        const glm::vec3&          eye,
 	                        const InstanceCullOutput& output)
 	{
-		if (table.instanceCount == 0)
+		if (table.instanceCount == 0 || output.commandAddress == 0 || output.visibleAddress == 0)
 			return;
 
 		const uint64_t view_address = frame.writeTransient(CullView { frustum.getPlanes(), glm::vec4(eye, 1.f) });
@@ -81,5 +89,20 @@ namespace lunar::Render
 			.instanceCount  = table.instanceCount
 		});
 		commands.dispatch((table.instanceCount + CULL_GROUP_SIZE - 1) / CULL_GROUP_SIZE);
+	}
+
+	void RecordInstanceDraws(Frame& frame, std::span<const InstanceDrawSlot> slots, const InstanceDrawInput& input)
+	{
+		CommandList& commands = frame.commandList();
+		for (size_t index = 0; index < slots.size(); index++)
+		{
+			const InstanceDrawSlot& slot = slots[index];
+			if (index == 0 || slots[index - 1].fading != slot.fading)
+				commands.bindPipeline(slot.fading ? input.fadingPipeline : input.steadyPipeline);
+
+			commands.pushConstants(VisibleInstanceConstants { input.sceneAddress, input.visibleAddress, slot.mesh->vertexAddress, slot.fadeBands });
+			commands.bindIndexBuffer(slot.mesh->indexBuffer, 0, IndexType::eUint32);
+			commands.drawIndexedIndirect(input.commandBuffer, input.commandOffset + index * sizeof(DrawIndexedIndirectCommand), 1);
+		}
 	}
 }

@@ -13,6 +13,7 @@
 namespace lunar::Render
 {
 	constexpr size_t STD430_MATRIX_ALIGN = 16;
+	constexpr size_t STD430_VECTOR_ALIGN = 16;
 
 	struct LUNAR_API InstanceDraw
 	{

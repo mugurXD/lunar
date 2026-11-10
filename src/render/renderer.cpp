@@ -284,6 +284,11 @@ namespace lunar::Render
 		fadingInstancedMaterial { .vertexShader         = std::string(INSTANCED_VERTEX_SHADER),
 		                          .fragmentShader       = std::string(INSTANCED_FADE_SHADER),
 		                          .shadowFragmentShader = std::string(SHADOW_FADE_SHADER) },
+		visibleInstancedMaterial { .vertexShader   = std::string(VISIBLE_INSTANCE_SHADER),
+		                           .fragmentShader = std::string(DEFAULT_FRAGMENT_SHADER) },
+		fadingVisibleInstancedMaterial { .vertexShader         = std::string(VISIBLE_INSTANCE_SHADER),
+		                                 .fragmentShader       = std::string(INSTANCED_FADE_SHADER),
+		                                 .shadowFragmentShader = std::string(SHADOW_FADE_SHADER) },
 		visibleInstances(device)
 	{
 		cubeMesh = meshes.create(CreateCubeMeshData());
@@ -298,6 +303,8 @@ namespace lunar::Render
 		destroyPipelines(lineMaterial);
 		destroyPipelines(instancedMaterial);
 		destroyPipelines(fadingInstancedMaterial);
+		destroyPipelines(visibleInstancedMaterial);
+		destroyPipelines(fadingVisibleInstancedMaterial);
 		materials.forEach([this](PoolHandle<Material>, Material& material) {
 			destroyPipelines(material);
 		});
@@ -322,6 +329,8 @@ namespace lunar::Render
 		recreatePipelines(lineMaterial);
 		recreatePipelines(instancedMaterial);
 		recreatePipelines(fadingInstancedMaterial);
+		recreatePipelines(visibleInstancedMaterial);
+		recreatePipelines(fadingVisibleInstancedMaterial);
 		materials.forEach([this](PoolHandle<Material>, Material& material) {
 			recreatePipelines(material);
 		});
