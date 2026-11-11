@@ -36,6 +36,12 @@ namespace lunar::Render
 		std::string_view fragmentShader = {};
 	};
 
+	struct LUNAR_API InstanceCullStats
+	{
+		uint32_t candidates = 0;
+		uint32_t drawn      = 0;
+	};
+
 	class LUNAR_API Renderer
 	{
 	public:
@@ -50,6 +56,7 @@ namespace lunar::Render
 		uint32_t       getSamples() const;
 		void           setGpuDrivenInstances(bool enabled);
 		bool           getGpuDrivenInstances() const;
+		InstanceCullStats getInstanceCullStats() const;
 		MaterialHandle createMaterial(const MaterialDesc& desc);
 		MeshRegistry&  getMeshes();
 		MeshHandle     getCubeMesh() const;
@@ -99,6 +106,12 @@ namespace lunar::Render
 		static constexpr size_t FIRST_SHADOW_VIEW = 2;
 		static constexpr size_t VIEW_COUNT        = FIRST_SHADOW_VIEW + SHADOW_CASCADE_COUNT;
 
+		struct InstanceReadback
+		{
+			std::vector<TransientAllocation> commands   = {};
+			uint32_t                         candidates = 0;
+		};
+
 		struct FrameViews
 		{
 			std::array<std::optional<RenderView>, VIEW_COUNT> views    = {};
@@ -139,6 +152,7 @@ namespace lunar::Render
 		void           drawInstancesIndirect(Frame& frame, uint64_t scene_address, const RenderView& view);
 		std::vector<InstanceDraw> gatherInstanceDraws(Scene& scene, const Frustum& frustum, const glm::vec3& eye);
 		void           drawLines(Frame& frame, uint64_t scene_address);
+		void           readInstanceCounts(const Frame& frame);
 
 		RenderDevice&       device;
 		Swapchain*          swapchain       = nullptr;
@@ -152,10 +166,13 @@ namespace lunar::Render
 		Material            fadingVisibleInstancedMaterial;
 		std::vector<Vertex> lineVertices;
 
-		std::vector<MeshCandidate> meshCandidates;
-		VisibleInstanceBuffers     visibleInstances;
-		PipelineHandle             instanceCullPipeline = {};
-		bool                       gpuDrivenInstances   = false;
+		std::vector<MeshCandidate>    meshCandidates;
+		VisibleInstanceBuffers        visibleInstances;
+		PipelineHandle                instanceCullPipeline    = {};
+		bool                          gpuDrivenInstances      = false;
+		std::vector<InstanceReadback> instanceReadbacks;
+		uint32_t                      frameInstanceCandidates = 0;
+		InstanceCullStats             instanceCullStats       = {};
 		MaterialHandle      defaultMaterial = {};
 		PipelineHandle      tonemapPipeline = {};
 		ImageHandle         colorImage      = {};

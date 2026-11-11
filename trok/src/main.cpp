@@ -70,6 +70,8 @@ namespace
 	constexpr char                    VIEW_WINDOW_TITLE[]  = "View distance";
 	constexpr char                    VIEW_RADIUS_LABEL[]  = "Radius";
 	constexpr char                    VIEW_RADIUS_FORMAT[] = "%d chunks";
+	constexpr char                    GPU_CULL_LABEL[]     = "GPU-driven decorations";
+	constexpr std::string_view        CULL_STATS_FORMAT    = "Decoration instances: {} candidates, {} drawn";
 	constexpr std::string_view        WINDOW_TITLE         = "trok";
 	constexpr std::string_view        VALIDATION_FLAG      = "--validation";
 	constexpr int                     MISSING_ARGUMENT     = -1;
@@ -131,10 +133,24 @@ namespace
 		return { SKY_COLOR, view_distance * FOG_START_FRACTION, view_distance * FOG_END_FRACTION };
 	}
 
-	bool DrawViewDistanceWindow(int& view_radius)
+	void DrawInstanceCullSettings(Renderer& renderer)
 	{
-		const bool changed = ImGui::Begin(VIEW_WINDOW_TITLE, nullptr, ImGuiWindowFlags_AlwaysAutoResize)
-		                  && ImGui::SliderInt(VIEW_RADIUS_LABEL, &view_radius, MIN_VIEW_RADIUS, MAX_VIEW_RADIUS, VIEW_RADIUS_FORMAT);
+		bool gpu_driven = renderer.getGpuDrivenInstances();
+		if (ImGui::Checkbox(GPU_CULL_LABEL, &gpu_driven))
+			renderer.setGpuDrivenInstances(gpu_driven);
+
+		const InstanceCullStats stats = renderer.getInstanceCullStats();
+		ImGui::TextUnformatted(std::format(CULL_STATS_FORMAT, stats.candidates, stats.drawn).c_str());
+	}
+
+	bool DrawViewDistanceWindow(int& view_radius, Renderer& renderer)
+	{
+		bool changed = false;
+		if (ImGui::Begin(VIEW_WINDOW_TITLE, nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+		{
+			changed = ImGui::SliderInt(VIEW_RADIUS_LABEL, &view_radius, MIN_VIEW_RADIUS, MAX_VIEW_RADIUS, VIEW_RADIUS_FORMAT);
+			DrawInstanceCullSettings(renderer);
+		}
 
 		ImGui::End();
 		return changed;
@@ -551,7 +567,7 @@ int main(int argc, char* argv[])
 		if (engine.isDebugMode() && biome_tuning.draw())
 			regenerate_chunks();
 
-		if (engine.isDebugMode() && DrawViewDistanceWindow(view_radius))
+		if (engine.isDebugMode() && DrawViewDistanceWindow(view_radius, engine.getRenderer()))
 		{
 			terrain.setViewRadius(view_radius);
 			*sky->getComponent<DistanceFog>() = MakeViewFog(view_radius, world_settings);

@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <bit>
 #include <cmath>
+#include <cstring>
 #include <functional>
 #include <iterator>
 #include <span>
@@ -358,6 +359,11 @@ namespace lunar::Render
 		return gpuDrivenInstances;
 	}
 
+	InstanceCullStats Renderer::getInstanceCullStats() const
+	{
+		return instanceCullStats;
+	}
+
 	MaterialHandle Renderer::createMaterial(const MaterialDesc& desc)
 	{
 		const PoolHandle<Material> material = materials.create(Material { .vertexShader = std::string(desc.vertexShader), .fragmentShader = std::string(desc.fragmentShader) });
@@ -442,7 +448,10 @@ namespace lunar::Render
 	void Renderer::render(Scene& scene, UI::UiLayer* ui, ImGuiLayer* debug_ui)
 	{
 		ZoneScoped;
-		Frame&            frame      = device.beginFrame();
+		Frame& frame = device.beginFrame();
+		readInstanceCounts(frame);
+		frameInstanceCandidates = 0;
+
 		const ImageHandle backbuffer = swapchain != nullptr ? frame.acquire(*swapchain) : ImageHandle {};
 
 		if (backbuffer != ImageHandle {})
@@ -459,6 +468,9 @@ namespace lunar::Render
 
 		device.endFrame(frame);
 		lineVertices.clear();
+
+		if (!gpuDrivenInstances)
+			instanceCullStats = { frameInstanceCandidates, frameInstanceCandidates };
 	}
 
 	MeshRegistry& Renderer::getMeshes()
@@ -596,6 +608,12 @@ namespace lunar::Render
 		if (visible_address == 0)
 			return;
 
+		if (frame.getIndex() >= instanceReadbacks.size())
+			instanceReadbacks.resize(frame.getIndex() + 1);
+
+		InstanceReadback& readback = instanceReadbacks[frame.getIndex()];
+		readback.candidates = instance_count;
+
 		CommandList& commands = frame.commandList();
 		commands.tracyBeginZone("Instance Cull");
 		commands.bindPipeline(instanceCullPipeline);
@@ -605,6 +623,9 @@ namespace lunar::Render
 				continue;
 
 			view->instanceCommands = frame.storeTransient(std::span<const DrawIndexedIndirectCommand>(BuildInstanceDrawCommands(view->instances)));
+			if (view->instanceCommands.buffer != BufferHandle {})
+				readback.commands.push_back(view->instanceCommands);
+
 			view->visibleAddress   = visible_address;
 			visible_address       += view->instances.instanceCount * sizeof(InstanceData);
 			RecordInstanceCull(frame, view->instances, view->frustum, view->eye, { view->instanceCommands.address, view->visibleAddress });
@@ -925,7 +946,10 @@ namespace lunar::Render
 
 			for (const LodDraw& lod : SelectLodDraws(batch.lods, DistanceTo(bounds, eye), FarthestDistanceTo(bounds, eye)))
 				if (const Mesh* mesh = meshes.get(lod.mesh))
+				{
 					draws.push_back({ mesh, instances->address, instances->count, world.matrix, lod.fadeBands, lod.fading });
+					frameInstanceCandidates += instances->count;
+				}
 		};
 
 		scene.forEach<InstanceBatchGroup>([&](Entity, const InstanceBatchGroup& group) {
@@ -953,6 +977,32 @@ namespace lunar::Render
 		TracyPlot("Mesh candidates", static_cast<int64_t>(meshCandidates.size()));
 
 		return draws;
+	}
+
+	// The cull pass writes its counts into the frame's transient memory, which stays untouched until this frame is begun again and allocates from it.
+	// Reading it then costs no extra buffer or copy, and the frame's timeline wait has already made the GPU writes visible.
+	void Renderer::readInstanceCounts(const Frame& frame)
+	{
+		if (frame.getIndex() >= instanceReadbacks.size())
+			return;
+
+		InstanceReadback& readback = instanceReadbacks[frame.getIndex()];
+		if (readback.commands.empty())
+			return;
+
+		const std::span<const std::byte> transient = device.readBuffer(readback.commands.front().buffer);
+		uint32_t                         drawn     = 0;
+		for (const TransientAllocation& allocation : readback.commands)
+		{
+			std::vector<DrawIndexedIndirectCommand> commands(allocation.data.size() / sizeof(DrawIndexedIndirectCommand));
+			std::memcpy(commands.data(), transient.subspan(allocation.offset, allocation.data.size()).data(), allocation.data.size());
+
+			for (const DrawIndexedIndirectCommand& command : commands)
+				drawn += command.instanceCount;
+		}
+
+		instanceCullStats = { readback.candidates, drawn };
+		readback          = {};
 	}
 
 	void Renderer::drawLines(Frame& frame, uint64_t scene_address)
